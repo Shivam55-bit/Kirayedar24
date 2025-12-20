@@ -89,3 +89,7 @@ yarn-error.log
 *.tmp
 *.temp
 crash_log.txt
+
+# Sensitive files - Never commit these!
+backend/serviceAccountKey.json
+**/serviceAccountKey.json

@@ -6,7 +6,7 @@ let pkg = {};
 try { pkg = require('../../package.json'); } catch (e) { pkg = {}; }
 
 const AboutScreen = ({ navigation }) => {
-  const appName = pkg.name || 'Gharplot';
+  const appName = 'Kirayedar24';
   const version = pkg.version || '1.0.0';
 
   const openLink = (url) => {
@@ -26,7 +26,7 @@ const AboutScreen = ({ navigation }) => {
         <Text style={styles.appName}>{appName}</Text>
         <Text style={styles.version}>Version {version}</Text>
 
-  <Text style={styles.description}>Gharplot helps buyers, sellers and renters manage property listings and enquiries in one place.</Text>
+  <Text style={styles.description}>Kirayedar24 helps buyers, sellers and renters manage property listings and enquiries in one place.</Text>
 
         <TouchableOpacity style={styles.link} onPress={() => openLink('https://example.com/terms') }>
           <Text style={styles.linkText}>Terms of Service</Text>
@@ -36,7 +36,7 @@ const AboutScreen = ({ navigation }) => {
           <Text style={styles.linkText}>Privacy Policy</Text>
         </TouchableOpacity>
 
-  <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#FF7A00' }]} onPress={() => openLink('mailto:support@gharplot.example') }>
+  <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#FF7A00' }]} onPress={() => openLink('mailto:support@kirayedar24.com') }>
           <Text style={[styles.actionText, { color: '#fff' }]}>Contact Support</Text>
         </TouchableOpacity>
       </View>

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kirayedar24 API Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #FF7A00; border-bottom: 3px solid #FF7A00; padding-bottom: 10px; }
+        h2 { color: #333; border-left: 4px solid #FF7A00; padding-left: 15px; }
+        h3 { color: #555; }
+        .endpoint {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .method { 
+            font-weight: bold; 
+            padding: 2px 8px; 
+            border-radius: 3px; 
+            color: white;
+            font-size: 12px;
+        }
+        .post { background: #28a745; }
+        .get { background: #007bff; }
+        .put { background: #ffc107; color: #000; }
+        .delete { background: #dc3545; }
+        pre {
+            background: #f1f1f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border-left: 4px solid #FF7A00;
+        }
+        .base-url {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .nav {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 20px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            transition: background 0.3s;
+        }
+        .nav a:hover {
+            background: #FF7A00;
+        }
+        .status {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #c3e6cb;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .summary-box {
+            background: linear-gradient(135deg, #FF7A00, #FFA500);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .test-btn {
+            background: #007bff;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 5px;
+        }
+        .test-btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Kirayedar24 Backend API Documentation</h1>
+        
+        <div class="status">
+            ✅ Server Status: Running on http://localhost:5000
+        </div>
+
+        <div class="base-url">
+            🌐 Base URL: <code>http://localhost:5000</code>
+        </div>
+
+        <div class="nav">
+            <a href="#auth">🔐 Authentication</a>
+            <a href="#profile">👤 Profile</a>
+            <a href="#properties">🏠 Properties</a>
+            <a href="#payments">💳 Payments</a>
+            <a href="#chats">💬 Chats</a>
+            <a href="#testing">🧪 Testing</a>
+        </div>
+
+        <div class="summary-box">
+            <h3>📊 API Summary</h3>
+            <p><strong>Total APIs: 30</strong></p>
+            <p>Authentication: 2 | Profile: 5 | Properties: 12 | Payments: 5 | Chats: 6</p>
+        </div>
+
+        <section id="auth">
+            <h2>🔐 Authentication APIs</h2>
+            
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> /api/auth/register</h3>
+                <p><strong>Register new user</strong></p>
+                <pre>{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "password123",
+  "role": "customer"
+}</pre>
+                <a href="#" class="test-btn" onclick="testAPI('POST', '/api/auth/register', {name:'Test User', email:'test@example.com', password:'password123', role:'customer'})">Test API</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> /api/auth/login</h3>
+                <p><strong>Login user</strong></p>
+                <pre>{
+  "email": "john@example.com", 
+  "password": "password123"
+}</pre>
+                <a href="#" class="test-btn" onclick="testAPI('POST', '/api/auth/login', {email:'test@example.com', password:'password123'})">Test API</a>
+            </div>
+        </section>
+
+        <section id="profile">
+            <h2>👤 Profile Management APIs</h2>
+            
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> /api/profile</h3>
+                <p><strong>Get user profile</strong> (Requires Authorization)</p>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('GET', '/api/profile')">Test API</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method put">PUT</span> /api/profile</h3>
+                <p><strong>Update user profile</strong> (Requires Authorization)</p>
+                <pre>{
+  "name": "Updated Name",
+  "phone": "+91 9876543210",
+  "address": "New Address",
+  "city": "Mumbai",
+  "bio": "Updated bio"
+}</pre>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('PUT', '/api/profile', {name:'Updated Name', phone:'+91 9876543210'})">Test API</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method put">PUT</span> /api/profile/change-password</h3>
+                <p><strong>Change password</strong> (Requires Authorization)</p>
+                <pre>{
+  "currentPassword": "password123",
+  "newPassword": "newpassword456"
+}</pre>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('PUT', '/api/profile/change-password', {currentPassword:'password123', newPassword:'newpassword456'})">Test API</a>
+            </div>
+        </section>
+
+        <section id="properties">
+            <h2>🏠 Property Management APIs</h2>
+            
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> /api/properties</h3>
+                <p><strong>Get all properties</strong></p>
+                <a href="http://localhost:5000/api/properties" target="_blank" class="test-btn">View in Browser</a>
+                <a href="#" class="test-btn" onclick="testAPI('GET', '/api/properties')">Test API</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> /api/properties/search</h3>
+                <p><strong>Search properties with filters</strong></p>
+                <p>Query params: city, minRent, maxRent, propertyType, page, limit</p>
+                <a href="http://localhost:5000/api/properties/search?city=Mumbai&minRent=20000" target="_blank" class="test-btn">Test Search</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> /api/properties/categories</h3>
+                <p><strong>Get property categories</strong></p>
+                <a href="http://localhost:5000/api/properties/categories" target="_blank" class="test-btn">View Categories</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> /api/properties</h3>
+                <p><strong>Create new property</strong> (Requires Authorization)</p>
+                <pre>{
+  "rentAmount": 25000,
+  "depositAmount": 50000,
+  "address": "123 Property Street",
+  "city": "Mumbai",
+  "phone": "+91 9876543210"
+}</pre>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('POST', '/api/properties', {rentAmount:25000, depositAmount:50000, address:'Test Property', city:'Mumbai', phone:'+91 9876543210'})">Test API</a>
+            </div>
+        </section>
+
+        <section id="payments">
+            <h2>💳 Payment APIs</h2>
+            
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> /api/payments/rent</h3>
+                <p><strong>Pay rent</strong> (Requires Authorization)</p>
+                <pre>{
+  "amount": 25000,
+  "propertyAddress": "123 Test Street",
+  "ownerName": "Property Owner",
+  "paymentMethod": "upi"
+}</pre>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('POST', '/api/payments/rent', {amount:25000, propertyAddress:'Test Address', ownerName:'Test Owner', paymentMethod:'upi'})">Test API</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> /api/payments/history</h3>
+                <p><strong>Get payment history</strong> (Requires Authorization)</p>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('GET', '/api/payments/history')">Test API</a>
+            </div>
+        </section>
+
+        <section id="chats">
+            <h2>💬 Chat APIs</h2>
+            
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> /api/chats</h3>
+                <p><strong>Get chat list</strong> (Requires Authorization)</p>
+                <a href="#" class="test-btn" onclick="testProtectedAPI('GET', '/api/chats')">Test API</a>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> /api/chats</h3>
+                <p><strong>Create new chat</strong> (Requires Authorization)</p>
+                <pre>{
+  "participantId": "user_id_here",
+  "initialMessage": "Hello!"
+}</pre>
+            </div>
+        </section>
+
+        <section id="testing">
+            <h2>🧪 Testing Tools</h2>
+            <div class="endpoint">
+                <h3>Quick Test Actions</h3>
+                <button class="test-btn" onclick="checkServerStatus()">Check Server Status</button>
+                <button class="test-btn" onclick="registerTestUser()">Register Test User</button>
+                <button class="test-btn" onclick="loginTestUser()">Login Test User</button>
+                <button class="test-btn" onclick="clearToken()">Clear Token</button>
+                
+                <div id="results" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; min-height: 100px;">
+                    <strong>Test Results will appear here...</strong>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let authToken = localStorage.getItem('kirayedar_token') || '';
+        
+        function showResult(result) {
+            document.getElementById('results').innerHTML = '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+        }
+
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('http://localhost:5000/api/properties/categories');
+                const data = await response.json();
+                showResult({status: 'Server is running!', data});
+            } catch (error) {
+                showResult({error: 'Server not running: ' + error.message});
+            }
+        }
+
+        async function registerTestUser() {
+            const userData = {
+                name: 'Test User',
+                email: 'test@example.com',
+                password: 'password123',
+                role: 'customer'
+            };
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(userData)
+                });
+                const data = await response.json();
+                showResult(data);
+            } catch (error) {
+                showResult({error: error.message});
+            }
+        }
+
+        async function loginTestUser() {
+            const loginData = {
+                email: 'test@example.com',
+                password: 'password123'
+            };
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(loginData)
+                });
+                const data = await response.json();
+                
+                if (data.token) {
+                    authToken = data.token;
+                    localStorage.setItem('kirayedar_token', authToken);
+                    showResult({...data, message: 'Token saved for future requests!'});
+                } else {
+                    showResult(data);
+                }
+            } catch (error) {
+                showResult({error: error.message});
+            }
+        }
+
+        async function testAPI(method, endpoint, body = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {'Content-Type': 'application/json'}
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+                
+                const response = await fetch('http://localhost:5000' + endpoint, options);
+                const data = await response.json();
+                showResult(data);
+            } catch (error) {
+                showResult({error: error.message});
+            }
+        }
+
+        async function testProtectedAPI(method, endpoint, body = null) {
+            if (!authToken) {
+                showResult({error: 'Please login first to get auth token!'});
+                return;
+            }
+            
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + authToken
+                    }
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+                
+                const response = await fetch('http://localhost:5000' + endpoint, options);
+                const data = await response.json();
+                showResult(data);
+            } catch (error) {
+                showResult({error: error.message});
+            }
+        }
+
+        function clearToken() {
+            authToken = '';
+            localStorage.removeItem('kirayedar_token');
+            showResult({message: 'Auth token cleared!'});
+        }
+
+        // Check server status on page load
+        window.onload = function() {
+            if (authToken) {
+                showResult({message: 'Auth token found in storage. Ready for protected API calls!'});
+            }
+        };
+    </script>
+</body>
+</html>

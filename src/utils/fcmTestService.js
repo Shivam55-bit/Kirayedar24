@@ -268,7 +268,11 @@ export const sendTestFCMNotification = async () => {
 
     // Try to send via backend (if available)
     try {
-      const response = await fetch('http://abc.ridealmobility.com/api/test-notification', {
+      const { BASE_URL } = await import('../config/api.config');
+      if (!BASE_URL) {
+        throw new Error('BASE_URL not configured');
+      }
+      const response = await fetch(`${BASE_URL}/test-notification`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

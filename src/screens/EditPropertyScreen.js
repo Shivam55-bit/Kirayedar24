@@ -13,9 +13,27 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from 'react-native-linear-gradient';
-import { formatImageUrl, formatPrice } from '../services/homeApi';
+import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { updateProperty } from '../services/propertyapi';
+// import { updateProperty } from '../services/propertyapi';
+
+// Fallback functions in case imports fail
+const safeFormatImageUrl = (url) => {
+  if (!url) return 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('uploads/')) return `https://n5.bhoomitechzone.us/${url}`;
+  return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
+};
+
+const safeFormatPrice = (price) => {
+  if (!price) return '₹0';
+  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+  if (isNaN(numPrice)) return '₹0';
+  if (numPrice >= 10000000) return `₹${(numPrice / 10000000).toFixed(1)}Cr`;
+  if (numPrice >= 100000) return `₹${(numPrice / 100000).toFixed(1)}L`;
+  if (numPrice >= 1000) return `₹${(numPrice / 1000).toFixed(1)}K`;
+  return `₹${numPrice}`;
+};
 
 // --- Color Palette (Consistent) ---
 const COLORS = {
@@ -54,12 +72,19 @@ const mockProperty = {
 const EditPropertyScreen = ({ navigation, route }) => {
   // Use property passed via route params, or mock data for testing
   const initialProperty = route?.params?.listing || route?.params?.property || mockProperty;
+  console.log('[EditPropertyScreen] Received property data:', JSON.stringify(initialProperty, null, 2));
 
   // Normalize incoming property keys from server: propertyLocation -> location, areaDetails -> sqft, photosAndVideo -> images
   const normalizedProperty = {
     ...initialProperty,
+    id: initialProperty._id || initialProperty.id || 'temp_' + Date.now(),
+    title: initialProperty.description || initialProperty.title || 'Property',
     location: initialProperty.propertyLocation || initialProperty.location || initialProperty.property_location || '',
     sqft: initialProperty.areaDetails != null ? String(initialProperty.areaDetails) : (initialProperty.sqft != null ? String(initialProperty.sqft) : (initialProperty.area || initialProperty.size || '')),
+    beds: initialProperty.bedrooms || initialProperty.beds || 1,
+    baths: initialProperty.bathrooms || initialProperty.baths || 1,
+    type: initialProperty.purpose || initialProperty.propertyType || 'Sale',
+    status: initialProperty.status || initialProperty.availabilityStatus || 'Available',
     // normalize price to string for the input
     price: initialProperty.price != null ? String(initialProperty.price) : (initialProperty.amount != null ? String(initialProperty.amount) : ''),
     images: (() => {
@@ -87,13 +112,13 @@ const EditPropertyScreen = ({ navigation, route }) => {
 
   // Derived display values for preview (use safe formatting helpers)
   const firstImage = (property.images && property.images.length > 0)
-    ? (typeof property.images[0] === 'string' ? formatImageUrl(property.images[0]) : property.images[0]?.uri)
-    : (property.image ? formatImageUrl(property.image) : formatImageUrl(null));
+    ? (typeof property.images[0] === 'string' ? (formatImageUrl || safeFormatImageUrl)(property.images[0]) : property.images[0]?.uri)
+    : (property.image ? (formatImageUrl || safeFormatImageUrl)(property.image) : (formatImageUrl || safeFormatImageUrl)(null));
 
   const displayPrice = (() => {
     const p = property.price;
     const n = Number(p);
-    if (!isNaN(n)) return formatPrice(n);
+    if (!isNaN(n)) return (formatPrice || safeFormatPrice)(n);
     return p || '';
   })();
 
@@ -242,7 +267,7 @@ const EditPropertyScreen = ({ navigation, route }) => {
   // --- Utility Components ---
 
   const renderImageUpload = ({ item, index }) => {
-    const uri = typeof item === 'string' ? formatImageUrl(item) : item?.uri;
+    const uri = typeof item === 'string' ? (formatImageUrl || safeFormatImageUrl)(item) : item?.uri;
     return (
       <View style={styles.imageThumbContainer}>
         <Image source={{ uri }} style={styles.imageThumb} />
@@ -325,7 +350,7 @@ const EditPropertyScreen = ({ navigation, route }) => {
           >
             {(property.images || []).map((item, index) => (
               <View key={index} style={styles.imageThumbContainer}>
-                <Image source={{ uri: typeof item === 'string' ? formatImageUrl(item) : item.uri }} style={styles.imageThumb} />
+                <Image source={{ uri: typeof item === 'string' ? (formatImageUrl || safeFormatImageUrl)(item) : item.uri }} style={styles.imageThumb} />
                 <TouchableOpacity 
                   style={styles.deleteImageBtn} 
                   onPress={() => removeImage(index)}

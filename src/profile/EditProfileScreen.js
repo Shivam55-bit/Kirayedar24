@@ -20,10 +20,9 @@ import {
 import Icon from "react-native-vector-icons/Ionicons";
 import { useFocusEffect } from '@react-navigation/native'; // Used to trigger data fetch when screen is active
 
-// Import API services
-// FIX: Changed relative path from './' to '../' assuming API files are one level up from the screens directory
-import { getUserId } from '../services/authApi';
-import { getUserProfile, getCurrentUserProfile, updateUserProfile } from '../services/userapi'; 
+// API services removed
+// import { getUserId } from '../services/authApi';
+// import { getUserProfile, getCurrentUserProfile, updateUserProfile } from '../services/userapi'; 
 
 // Try to require react-native-image-picker if available; show instructions otherwise
 let ImagePicker = null;

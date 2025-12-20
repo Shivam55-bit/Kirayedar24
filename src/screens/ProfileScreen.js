@@ -20,26 +20,30 @@ import Icon from "react-native-vector-icons/Ionicons";
 import FeatherIcon from "react-native-vector-icons/Feather";
 import FontAwesomeIcon from "react-native-vector-icons/FontAwesome";
 import { useFocusEffect } from '@react-navigation/native';
+import { getCurrentUserProfile } from '../services/userApi';
+import { getUserProperties } from '../services/propertyService';
 
-// NOTE: Ensure this path is correct for your project structure
-import { getCurrentUserProfile } from '../services/userapi'; 
+// Real API integration for profile data
 
-// --- Enhanced Color Scheme ---
+// --- Color Scheme (matching HomeScreen) ---
 const COLORS = {
-    primary: "#1E90FF",
-    primaryDark: "#0B5ED7",
-    background: "#F9FAFB",
+    primary: "#FDB022",
+    primaryLight: "#FDC55E",
+    primaryDark: "#E5A01F",
+    background: "#F8FAFC",
     white: "#FFFFFF",
-    black: "#1F2937",
-    greyText: "#6B7280",
-    greyLight: "#E5E7EB",
+    black: "#0F172A",
+    greyText: "#64748B",
+    greyLight: "#F1F5F9",
     redAccent: "#EF4444",
     cardBackground: "#FFFFFF",
-    blueHeader: "#1E90FF",
-    premiumGold: "#F59E0B",
-    premiumGoldLight: "#FEF3C7",
-    secondaryText: "#6B7280",
+    headerGradient: ["#FDB022", "#FDC55E"],
+    accent: "#06B6D4",
     success: "#10B981",
+    warning: "#F59E0B",
+    purple: "#8B5CF6",
+    pink: "#EC4899",
+    orange: "#FDB022",
 };
 
 const ProfileScreen = ({ navigation }) => {
@@ -47,7 +51,6 @@ const ProfileScreen = ({ navigation }) => {
     const [email, setEmail] = useState('');
     const [shortlistedCount, setShortlistedCount] = useState(0);
     const [myListingsCount, setMyListingsCount] = useState(0);
-    const [enquiriesCount, setEnquiriesCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [avatar, setAvatar] = useState(null);
@@ -56,108 +59,62 @@ const ProfileScreen = ({ navigation }) => {
     const loadProfileData = useCallback(async () => {
         setLoading(true);
         setError('');
+        
         try {
-            const data = await getCurrentUserProfile();
-            const fullName = data.fullName || data.name || data.full_name || 'N/A';
-
-            setName(fullName);
-            setEmail(data.email || 'N/A');
-            setShortlistedCount(data.shortlistedCount || 0);
-            setMyListingsCount(data.myListingsCount || 0);
-            setEnquiriesCount(data.enquiriesCount || 0);
-            // Prefer photosAndVideo[0] as the source of truth for user media
-            const avatarUrl = (Array.isArray(data.photosAndVideo) && data.photosAndVideo.length > 0)
-                ? data.photosAndVideo[0]
-                : (data.avatar || data.profileImage || data.photo || data.image || null);
-            // if avatar updated recently (from EditProfile), prefer local optimistic uri first
-            const updatedAt = await AsyncStorage.getItem('avatarUpdatedAt');
-            const localUri = await AsyncStorage.getItem('avatarLocalUri');
-
-            if (updatedAt && localUri) {
-                // If localUri exists, use it optimistically and then poll server for final image
-                setAvatar(localUri);
-                setAvatarVersion(Date.now());
-                // start background polling to replace with server avatar once available
-                pollForServerAvatar(avatarUrl, /*maxAttempts=*/6, /*intervalMs=*/1000).catch(() => {});
+            // Load user profile from API
+            const response = await getCurrentUserProfile();
+            
+            if (response.success && response.user) {
+                const userData = response.user;
+                setName(userData.fullName || 'User');
+                setEmail(userData.email || 'user@example.com');
+                setAvatar(userData.profilePicture || null);
+                
+                // Fetch user's properties count
+                const propertiesResponse = await getUserProperties();
+                if (propertiesResponse.success && propertiesResponse.data) {
+                    setMyListingsCount(propertiesResponse.data.length);
+                } else {
+                    setMyListingsCount(0);
+                }
+                
+                setShortlistedCount(0); // Keep as 0 for now
+                
             } else {
-                setAvatar(avatarUrl);
-                setAvatarVersion(Date.now());
+                // Fallback to stored data if API fails
+                throw new Error(response.message || 'Failed to load profile');
             }
+            
+            setAvatarVersion(Date.now());
+            
         } catch (err) {
-            console.error("Profile API call failed:", err);
-            let errorMessage = err.message.includes("HTTP error") ? err.message : 'Could not load profile. Please try again.';
-            setError(errorMessage);
+            console.error("Profile loading failed:", err);
+            setError('Could not load profile. Please try again.');
+            
+            // Fallback to stored data
+            try {
+                const storedUser = await AsyncStorage.getItem('userData');
+                if (storedUser) {
+                    const user = JSON.parse(storedUser);
+                    setName(user.fullName || user.name || 'User');
+                    setEmail(user.email || '');
+                    setAvatar(user.profilePicture || null);
+                }
+            } catch (fallbackErr) {
+                console.error('Fallback profile loading failed:', fallbackErr);
+            }
         } finally {
             setLoading(false);
         }
     }, []);
 
-    // Poll server until avatar changes from the given oldAvatar or until attempts exhausted
-    const pollForServerAvatar = async (expectedServerAvatar, maxAttempts = 6, intervalMs = 1000) => {
-        try {
-            for (let i = 0; i < maxAttempts; i++) {
-                await new Promise(r => setTimeout(r, intervalMs));
-                const data = await getCurrentUserProfile();
-                // Prefer server photosAndVideo[0] when available
-                const serverAvatar = (Array.isArray(data.photosAndVideo) && data.photosAndVideo.length > 0)
-                    ? data.photosAndVideo[0]
-                    : data.avatar;
-                // If server avatar is different and looks like an http url, use it
-                if (serverAvatar && serverAvatar !== expectedServerAvatar) {
-                    setAvatar(serverAvatar);
-                    setAvatarVersion(Date.now());
-                    // clear AsyncStorage flags
-                    try {
-                        await AsyncStorage.removeItem('avatarUpdatedAt');
-                        await AsyncStorage.removeItem('avatarLocalUri');
-                    } catch (e) {}
-                    return;
-                }
-            }
-            // attempts exhausted: clear local optimistic data after a timeout window
-            try {
-                await AsyncStorage.removeItem('avatarUpdatedAt');
-                await AsyncStorage.removeItem('avatarLocalUri');
-            } catch (e) {}
-        } catch (e) {
-            // swallow errors
-        }
-    };
+    // Dummy profile - no server polling needed
 
     useFocusEffect(
         useCallback(() => {
             loadProfileData();
             return () => {};
         }, [loadProfileData])
-    );
-    
-    const StatCard = ({ count, label, iconName, iconType, color }) => (
-        <View style={styles.statCard}>
-            <View style={[styles.statIconContainer, { backgroundColor: color + '15' }]}>
-                {iconType === 'Feather' ? (
-                    <FeatherIcon name={iconName} size={22} color={color} />
-                ) : (
-                    <Icon name={iconName} size={22} color={color} />
-                )}
-            </View>
-            <Text style={styles.statCount}>{count}</Text>
-            <Text style={styles.statLabel}>{label}</Text>
-        </View>
-    );
-
-    const ProfileListItem = ({ label, iconName, onPress, badge }) => (
-        <TouchableOpacity style={styles.listItem} onPress={onPress} activeOpacity={0.7}>
-            <View style={styles.listItemIconContainer}>
-                <Icon name={iconName} size={22} color={COLORS.primary} />
-            </View>
-            <Text style={styles.listItemLabel}>{label}</Text>
-            {badge && (
-                <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{badge}</Text>
-                </View>
-            )}
-            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
-        </TouchableOpacity>
     );
 
     const getInitials = (fullName) => {
@@ -197,9 +154,9 @@ const ProfileScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={COLORS.blueHeader} />
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
             
-            {/* Enhanced Header with Gradient Effect */}
+            {/* Modern Header with Gradient */}
             <View style={styles.headerSection}>
                 <View style={styles.headerBar}>
                     <TouchableOpacity 
@@ -208,25 +165,21 @@ const ProfileScreen = ({ navigation }) => {
                     >
                         <Icon name="arrow-back" size={24} color={COLORS.white} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Profile</Text>
-                    <TouchableOpacity 
-                        style={styles.headerButton}
-                        onPress={() => console.log('Settings Pressed')}
-                    >
+                    <Text style={styles.headerTitle}>My Profile</Text>
+                    <TouchableOpacity style={styles.headerButton}>
                         <Icon name="settings-outline" size={24} color={COLORS.white} />
                     </TouchableOpacity>
                 </View>
 
-                {/* Avatar Section */}
-                <View style={styles.avatarSection}>
+                {/* Profile Card */}
+                <View style={styles.profileCard}>
                     <TouchableOpacity 
                         style={styles.avatarContainer} 
-                        onPress={() => navigation.navigate('EditProfileScreen')} // Navigate to Edit Profile
+                        onPress={() => navigation.navigate('EditProfileScreen')}
                         activeOpacity={0.8}
                     >
                         {avatar ? (
                             (() => {
-                                // avoid appending query params for non-http URIs (base64/file://)
                                 let uri = avatar;
                                 try {
                                     const low = (avatar || '').toLowerCase();
@@ -235,7 +188,6 @@ const ProfileScreen = ({ navigation }) => {
                                         uri = avatar + sep + 'v=' + avatarVersion;
                                     }
                                 } catch (e) {
-                                    // fallback: use original avatar
                                     uri = avatar;
                                 }
 
@@ -254,21 +206,19 @@ const ProfileScreen = ({ navigation }) => {
                             </View>
                         )}
                         <View style={styles.cameraButton}>
-                            <FeatherIcon name="camera" size={14} color={COLORS.white} />
+                            <FeatherIcon name="edit-3" size={12} color={COLORS.white} />
                         </View>
                     </TouchableOpacity>
                     
                     <Text style={styles.userName}>{name}</Text>
                     <Text style={styles.userEmail}>{email}</Text>
                     
-                    <TouchableOpacity 
-                        style={styles.editProfileButton}
-                        onPress={() => navigation.navigate('EditProfileScreen')}
-                        activeOpacity={0.8}
-                    >
-                        <Icon name="create-outline" size={16} color={COLORS.primary} />
-                        <Text style={styles.editProfileText}>Edit Profile</Text>
-                    </TouchableOpacity>
+                    <View style={styles.badgeContainer}>
+                        <View style={styles.verifiedBadge}>
+                            <Icon name="checkmark-circle" size={16} color={COLORS.success} />
+                            <Text style={styles.badgeText}>Verified</Text>
+                        </View>
+                    </View>
                 </View>
             </View>
             
@@ -277,104 +227,134 @@ const ProfileScreen = ({ navigation }) => {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {/* Stats Cards (Shortlisted, My Listings, Enquiries) */}
-                <View style={styles.statsSection}>
-                    <StatCard 
-                        count={shortlistedCount} 
-                        label="Shortlisted" 
-                        iconName="bookmark" 
-                        iconType="Feather"
-                        color="#F59E0B"
-                    />
-                    <StatCard 
-                        count={myListingsCount} 
-                        label="My Listings" 
-                        iconName="home-outline" 
-                        iconType="Ionicons"
-                        color="#1E90FF"
-                    />
-                    <StatCard 
-                        count={enquiriesCount} 
-                        label="Enquiries" 
-                        iconName="chatbubble-ellipses-outline" 
-                        iconType="Ionicons"
-                        color="#10B981"
-                    />
-                </View>
-                
-                {/* Quick Actions */}
+                {/* Quick Actions Grid */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Quick Actions</Text>
-                    <View style={styles.listCard}>
-                        <ProfileListItem 
-                            label="My Properties" 
-                            iconName="home-outline" 
-                            onPress={() => console.log('Go to My Properties')}
-                            badge={myListingsCount > 0 ? myListingsCount.toString() : null}
-                        />
-                        <View style={styles.divider} />
-                        <ProfileListItem 
-                            label="Shortlisted" 
-                            iconName="heart-outline" 
-                            onPress={() => console.log('Go to Shortlisted')}
-                            badge={shortlistedCount > 0 ? shortlistedCount.toString() : null}
-                        />
-                        <View style={styles.divider} />
-                        <ProfileListItem 
-                            label="Notifications" 
-                            iconName="notifications-outline" 
+                    <View style={styles.actionGrid}>
+                        <TouchableOpacity 
+                            style={[styles.actionCard, { backgroundColor: COLORS.purple + '10' }]}
+                            onPress={() => navigation.navigate('SellScreen')}
+                        >
+                            <View style={[styles.actionIcon, { backgroundColor: COLORS.purple + '20' }]}>
+                                <Icon name="home" size={24} color={COLORS.purple} />
+                            </View>
+                            <Text style={styles.actionTitle}>My Properties</Text>
+                            <Text style={styles.actionCount}>{myListingsCount}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={[styles.actionCard, { backgroundColor: COLORS.pink + '10' }]}
+                            onPress={() => navigation.navigate('Shortlisted')}
+                        >
+                            <View style={[styles.actionIcon, { backgroundColor: COLORS.pink + '20' }]}>
+                                <Icon name="heart" size={24} color={COLORS.pink} />
+                            </View>
+                            <Text style={styles.actionTitle}>Favorites</Text>
+                            <Text style={styles.actionCount}>{shortlistedCount}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={[styles.actionCard, { backgroundColor: COLORS.orange + '10' }]}
                             onPress={() => navigation.navigate('Notifications')}
-                        />
+                        >
+                            <View style={[styles.actionIcon, { backgroundColor: COLORS.orange + '20' }]}>
+                                <Icon name="notifications" size={24} color={COLORS.orange} />
+                            </View>
+                            <Text style={styles.actionTitle}>Notifications</Text>
+                            <Text style={styles.actionCount}>New</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={[styles.actionCard, { backgroundColor: COLORS.accent + '10' }]}
+                            onPress={() => navigation.navigate('PayRentScreen')}
+                        >
+                            <View style={[styles.actionIcon, { backgroundColor: COLORS.accent + '20' }]}>
+                                <Icon name="card" size={24} color={COLORS.accent} />
+                            </View>
+                            <Text style={styles.actionTitle}>Pay Rent</Text>
+                            <Text style={styles.actionCount}>Quick</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Premium CTA */}
+                {/* Premium Features Card */}
                 <TouchableOpacity 
                     style={styles.premiumCard} 
                     onPress={() => console.log('Go Premium')}
                     activeOpacity={0.9}
                 >
-                    <View style={styles.premiumContent}>
-                        <View style={styles.premiumIconCircle}>
-                            <FontAwesomeIcon name="star" size={22} color={COLORS.premiumGold} />
+                    <View style={styles.premiumHeader}>
+                        <View style={styles.premiumIconWrapper}>
+                            <FontAwesomeIcon name="crown" size={20} color={COLORS.warning} />
                         </View>
-                        <View style={styles.premiumTextSection}>
-                            <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
-                            <Text style={styles.premiumSubtitle}>Get exclusive features & priority support</Text>
+                        <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
+                    </View>
+                    <Text style={styles.premiumDescription}>
+                        Unlock exclusive features, priority support, and advanced analytics
+                    </Text>
+                    <View style={styles.premiumFeatures}>
+                        <View style={styles.featureItem}>
+                            <Icon name="checkmark-circle" size={16} color={COLORS.success} />
+                            <Text style={styles.featureText}>Priority Support</Text>
+                        </View>
+                        <View style={styles.featureItem}>
+                            <Icon name="checkmark-circle" size={16} color={COLORS.success} />
+                            <Text style={styles.featureText}>Advanced Analytics</Text>
                         </View>
                     </View>
-                    <View style={styles.premiumArrow}>
-                        <Icon name="arrow-forward" size={20} color={COLORS.premiumGold} />
+                    <View style={styles.premiumButton}>
+                        <Text style={styles.premiumButtonText}>Try Free for 7 Days</Text>
+                        <Icon name="arrow-forward" size={16} color={COLORS.white} />
                     </View>
                 </TouchableOpacity>
 
-                {/* Settings Section */}
+                {/* Settings Menu */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Settings</Text>
-                    <View style={styles.listCard}>
-                        <ProfileListItem 
-                            label="Privacy & Security" 
-                            iconName="shield-checkmark-outline" 
+                    <Text style={styles.sectionTitle}>Settings & Support</Text>
+                    <View style={styles.menuCard}>
+                        <TouchableOpacity 
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate('EditProfileScreen')}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: COLORS.primary + '20' }]}>
+                                <Icon name="person-outline" size={20} color={COLORS.primary} />
+                            </View>
+                            <Text style={styles.menuText}>Edit Profile</Text>
+                            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.menuItem}
                             onPress={() => navigation.navigate('PrivacySecurity')}
-                        />
-                        <View style={styles.divider} />
-                        <ProfileListItem 
-                            label="Help & Support" 
-                            iconName="help-circle-outline" 
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: COLORS.success + '20' }]}>
+                                <Icon name="shield-checkmark-outline" size={20} color={COLORS.success} />
+                            </View>
+                            <Text style={styles.menuText}>Privacy & Security</Text>
+                            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.menuItem}
                             onPress={() => navigation.navigate('Help')}
-                        />
-                        <View style={styles.divider} />
-                        <ProfileListItem 
-                            label="About" 
-                            iconName="information-circle-outline" 
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: COLORS.accent + '20' }]}>
+                                <Icon name="help-circle-outline" size={20} color={COLORS.accent} />
+                            </View>
+                            <Text style={styles.menuText}>Help & Support</Text>
+                            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.menuItem}
                             onPress={() => navigation.navigate('About')}
-                        />
-                        <View style={styles.divider} />
-                        <ProfileListItem 
-                            label="Test FCM (Firebase)" 
-                            iconName="notifications-outline" 
-                            onPress={() => navigation.navigate('TestFCM')}
-                        />
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: COLORS.purple + '20' }]}>
+                                <Icon name="information-circle-outline" size={20} color={COLORS.purple} />
+                            </View>
+                            <Text style={styles.menuText}>About Kirayedar24</Text>
+                            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
+                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -385,16 +365,16 @@ const ProfileScreen = ({ navigation }) => {
                     activeOpacity={0.8}
                 >
                     <Icon name="log-out-outline" size={20} color={COLORS.redAccent} />
-                    <Text style={styles.logoutText}>Logout</Text>
+                    <Text style={styles.logoutText}>Sign Out</Text>
                 </TouchableOpacity>
 
-                <View style={{ height: 30 }} />
+                <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>
     );
 };
 
-// --- Styles ---
+// --- Modern Styles ---
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -404,17 +384,16 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingHorizontal: 16,
-        paddingBottom: 35,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
     },
 
     // Header Section
     headerSection: {
-        backgroundColor: COLORS.blueHeader,
-        // ⬆️ FIX: Slightly increased paddingBottom for better separation from stat cards
-        paddingBottom: 40, 
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
+        backgroundColor: COLORS.primary,
+        paddingBottom: 30,
+        borderBottomLeftRadius: 25,
+        borderBottomRightRadius: 25,
         ...Platform.select({
             ios: {
                 shadowColor: "#000",
@@ -431,53 +410,52 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingTop: 10,
+        paddingHorizontal: 20,
+        paddingTop: 15,
         paddingBottom: 20,
     },
     headerButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     headerTitle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: "700",
         color: COLORS.white,
     },
 
-    // Avatar Section
-    avatarSection: {
+    // Profile Card
+    profileCard: {
         alignItems: 'center',
-        paddingBottom: 20,
+        paddingHorizontal: 20,
     },
     avatarContainer: {
         position: 'relative',
-        marginBottom: 5,
+        marginBottom: 15,
     },
     avatarCircle: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        width: 90,
+        height: 90,
+        borderRadius: 45,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 4,
         borderColor: COLORS.white,
     },
     avatarImage: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
+        width: 90,
+        height: 90,
+        borderRadius: 45,
         borderWidth: 4,
         borderColor: COLORS.white,
-        backgroundColor: 'rgba(0,0,0,0.05)'
     },
     avatarText: {
-        fontSize: 38,
+        fontSize: 32,
         fontWeight: '700',
         color: COLORS.white,
     },
@@ -485,51 +463,145 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 2,
         right: 2,
-        backgroundColor: COLORS.premiumGold,
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        backgroundColor: COLORS.accent,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 3,
+        borderWidth: 2,
         borderColor: COLORS.white,
     },
     userName: {
         fontSize: 24,
         fontWeight: '700',
         color: COLORS.white,
-        marginTop: 8,
+        marginBottom: 4,
     },
     userEmail: {
         fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.85)',
-        marginTop: 4,
+        color: 'rgba(255, 255, 255, 0.8)',
+        marginBottom: 12,
     },
-    editProfileButton: {
+    badgeContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: COLORS.white,
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderRadius: 20,
-        marginTop: 16,
     },
-    editProfileText: {
-        fontSize: 14,
+    verifiedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 15,
+    },
+    badgeText: {
+        fontSize: 12,
         fontWeight: '600',
-        color: COLORS.primary,
-        marginLeft: 6,
+        color: COLORS.white,
+        marginLeft: 4,
     },
 
-    // Stats Section
-    statsSection: {
+    // Stats Grid
+    statsGrid: {
         flexDirection: 'row',
-        backgroundColor: 'transparent',
+        justifyContent: 'space-between',
+        marginTop: -20,
+        marginBottom: 30,
+        paddingHorizontal: 5,
+    },
+    statItem: {
+        flex: 1,
+        backgroundColor: COLORS.white,
+        alignItems: 'center',
+        paddingVertical: 20,
         borderRadius: 16,
-        padding: 0,
-        marginTop: 20,
-        // ⬆️ FIX: Increased margin bottom for more space below the stat cards
-        marginBottom: 35, 
+        marginHorizontal: 5,
+        ...Platform.select({
+            ios: {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.08,
+                shadowRadius: 8,
+            },
+            android: {
+                elevation: 3,
+            },
+        }),
+    },
+    statIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    statNumber: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: COLORS.black,
+        marginBottom: 4,
+    },
+    statLabel: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: COLORS.greyText,
+    },
+
+    // Section
+    section: {
+        marginBottom: 30,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.black,
+        marginBottom: 16,
+    },
+
+    // Action Grid
+    actionGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+    },
+    actionCard: {
+        width: '48%',
+        padding: 20,
+        borderRadius: 16,
+        marginBottom: 12,
+        alignItems: 'center',
+    },
+    actionIcon: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    actionTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.black,
+        marginBottom: 4,
+        textAlign: 'center',
+    },
+    actionCount: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: COLORS.greyText,
+    },
+
+    // Premium Card
+    premiumCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
+        padding: 20,
+        marginBottom: 30,
+        borderWidth: 2,
+        borderColor: COLORS.warning + '30',
         ...Platform.select({
             ios: {
                 shadowColor: "#000",
@@ -538,62 +610,68 @@ const styles = StyleSheet.create({
                 shadowRadius: 12,
             },
             android: {
-                elevation: 6,
+                elevation: 5,
             },
         }),
     },
-    statCard: {
-        flex: 1,
+    premiumHeader: {
+        flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: COLORS.white,
-        // ⬆️ FIX: Increased horizontal margin for more separation between cards
-        marginHorizontal: 8, 
-        paddingVertical: 16, // slightly more vertical padding inside the card
-        borderRadius: 12,
-        justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-        elevation: 2,
+        marginBottom: 12,
     },
-    statIconContainer: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+    premiumIconWrapper: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.warning + '20',
         justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    premiumTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.black,
+    },
+    premiumDescription: {
+        fontSize: 14,
+        color: COLORS.greyText,
+        lineHeight: 20,
+        marginBottom: 16,
+    },
+    premiumFeatures: {
+        marginBottom: 20,
+    },
+    featureItem: {
+        flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 8,
     },
-    statCount: {
-        fontSize: 22,
-        fontWeight: '800',
-        color: COLORS.black,
-        marginBottom: 2,
-    },
-    statLabel: {
-        fontSize: 12,
-        color: COLORS.secondaryText,
+    featureText: {
+        fontSize: 14,
+        color: COLORS.greyText,
+        marginLeft: 8,
         fontWeight: '500',
     },
-
-    // Section
-    section: {
-        // ⬆️ FIX: Increased margin bottom for better vertical section separation
-        marginBottom: 25, 
+    premiumButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.primary,
+        paddingVertical: 14,
+        borderRadius: 12,
     },
-    sectionTitle: {
-        fontSize: 17,
-        fontWeight: '700',
-        color: COLORS.black,
-        marginBottom: 12,
+    premiumButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.white,
+        marginRight: 8,
     },
 
-    // List Card
-    listCard: {
+    // Menu Card
+    menuCard: {
         backgroundColor: COLORS.white,
         borderRadius: 16,
-        paddingHorizontal: 16,
         ...Platform.select({
             ios: {
                 shadowColor: "#000",
@@ -606,91 +684,27 @@ const styles = StyleSheet.create({
             },
         }),
     },
-    listItem: {
+    menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
+        paddingHorizontal: 20,
         paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.greyLight,
     },
-    listItemIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: COLORS.primary + '15',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    listItemLabel: {
-        flex: 1,
-        fontSize: 15,
-        fontWeight: '600',
-        color: COLORS.black,
-    },
-    badge: {
-        backgroundColor: COLORS.primary,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 10,
-        marginRight: 8,
-    },
-    badgeText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: COLORS.white,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: COLORS.greyLight,
-        marginLeft: 52,
-    },
-
-    // Premium Card
-    premiumCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: COLORS.premiumGoldLight,
-        borderRadius: 16,
-        padding: 16,
-        // ⬆️ FIX: Increased margin bottom for separation
-        marginBottom: 25, 
-        borderWidth: 2,
-        borderColor: COLORS.premiumGold + '40',
-    },
-    premiumContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    premiumIconCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: COLORS.white,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    premiumTextSection: {
-        flex: 1,
-    },
-    premiumTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: COLORS.black,
-        marginBottom: 2,
-    },
-    premiumSubtitle: {
-        fontSize: 13,
-        color: COLORS.secondaryText,
-    },
-    premiumArrow: {
+    menuIcon: {
         width: 36,
         height: 36,
         borderRadius: 18,
-        backgroundColor: COLORS.white,
         justifyContent: 'center',
         alignItems: 'center',
+        marginRight: 16,
+    },
+    menuText: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '500',
+        color: COLORS.black,
     },
 
     // Logout Button
@@ -699,14 +713,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: COLORS.white,
-        paddingVertical: 14,
+        paddingVertical: 16,
         borderRadius: 12,
-        borderWidth: 1,
-        borderColor: COLORS.redAccent + '30',
+        borderWidth: 2,
+        borderColor: COLORS.redAccent + '20',
         marginBottom: 20,
     },
     logoutText: {
-        fontSize: 15,
+        fontSize: 16,
         fontWeight: '600',
         color: COLORS.redAccent,
         marginLeft: 8,

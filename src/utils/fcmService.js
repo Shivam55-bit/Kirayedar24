@@ -128,7 +128,7 @@ export const setupForegroundNotificationHandler = () => {
 
     // Save notification to local storage (secondary action)
     try {
-      const { addNotification } = require('./notificationManager');
+      const { addNotification } = await import('./notificationManager');
       
       if (remoteMessage && remoteMessage.notification) {
         const notification = {
@@ -163,7 +163,7 @@ export const setupBackgroundNotificationHandler = () => {
     
     // Save notification to local storage even when app is killed
     try {
-      const { addNotification } = require('./notificationManager');
+      const { addNotification } = await import('./notificationManager');
       
       if (remoteMessage && remoteMessage.notification) {
         const notification = {
@@ -379,9 +379,15 @@ export const sendTokenToBackend = async (userId, token) => {
     }
     
     console.log('📤 Sending FCM token to backend...');
+    const { BASE_URL } = await import('../config/api.config');
+    
+    if (!BASE_URL) {
+      console.warn('⚠️ BASE_URL not configured');
+      return false;
+    }
     
     // Use your existing API structure
-    const response = await fetch('http://abc.ridealmobility.com/api/users/fcm-token', {
+    const response = await fetch(`${BASE_URL}/users/fcm-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

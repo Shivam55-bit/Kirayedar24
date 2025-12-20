@@ -1,4 +1,50 @@
 {
-  "name": "Gharplot",
-  "displayName": "Gharplot"
+  "expo": {
+    "name": "Kirayedar24",
+    "slug": "kirayedar24",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./src/assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kirayedar24.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.kirayedar24.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "Kirayedar24",
+      "shortName": "Kirayedar24",
+      "description": "Complete property management solution for buying, selling and renting properties",
+      "backgroundColor": "#ffffff",
+      "themeColor": "#000000",
+      "display": "standalone",
+      "orientation": "portrait",
+      "scope": "/",
+      "startUrl": "/",  
+      "crossorigin": "use-credentials",
+      "relatedApplications": [],
+      "preferRelatedApplications": false,
+      "dir": "auto",
+      "lang": "en-US"
+    },
+    "plugins": []
+  },
+  "name": "Kirayedar24",
+  "displayName": "Kirayedar24"
 }

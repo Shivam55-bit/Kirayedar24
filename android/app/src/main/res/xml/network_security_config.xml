@@ -5,7 +5,7 @@
 
   <!-- Allow cleartext only for the backend domain (and its subdomains) -->
   <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="true">abc.ridealmobility.com</domain>
+    <domain includeSubdomains="true">n5.bhoomitechzone.us</domain>
   </domain-config>
 
   <!-- Allow cleartext for common emulator/dev hosts (no subdomains) -->

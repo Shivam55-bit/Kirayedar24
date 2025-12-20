@@ -17,17 +17,18 @@ import {
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import { useFocusEffect } from '@react-navigation/native';
-import { getMySellProperties } from '../../services/propertyapi';
-import { formatImageUrl } from '../../services/homeApi';
+// API services
+import propertyService from '../../services/propertyApi';
+import { formatImageUrl } from '../../services/propertyHelpers';
 import MediaCard from '../../components/MediaCard';
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width - 40;
 
 const COLORS = {
-  primary: "#6366F1",
-  primaryDark: "#4F46E5",
-  accent: "#EC4899",
+  primary: "#FDB022",
+  primaryDark: "#E89E0F",
+  accent: "#FDBF4D",
   success: "#10B981",
   warning: "#F59E0B",
   background: "#FAFAFA",
@@ -92,11 +93,45 @@ const SellScreen = ({ navigation }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await getMySellProperties();
-      setListings(res || []);
+      const response = await propertyService.getMySellProperties();
+      console.log('[SellScreen] API Response:', response);
+      
+      if (response.success) {
+        const propertiesData = response.data || response.properties || [];
+        console.log('[SellScreen] Properties data:', propertiesData);
+        
+        // Map API data to screen format
+        const mappedProperties = propertiesData.map(property => ({
+          id: property._id || property.id,
+          purpose: property.purpose || property.purposeType || 'Sell',
+          propertyType: property.propertyType || 'Property',
+          subPropertyType: property.subPropertyType || property.residentialType || property.commercialType || 'Property',
+          location: property.propertyLocation || property.location || property.address || 'Location not specified',
+          areaDetails: property.areaDetails || property.sqft || property.area || property.size || '',
+          availabilityStatus: property.availabilityStatus || property.status || 'Available',
+          price: property.price || property.rentAmount || property.sellingPrice || 'Price not available',
+          description: property.description || property.title || 'Property description',
+          furnishing: property.furnishing || 'Not specified',
+          parking: property.parking || 'Not specified',
+          photosAndVideo: property.photosAndVideo || [],
+          image: property.image,
+          status: property.status || 'Active',
+          views: property.views || 0,
+          beds: property.bedrooms || property.beds || 'N/A',
+          baths: property.bathrooms || property.baths || 'N/A'
+        }));
+        
+        setListings(mappedProperties);
+        console.log('[SellScreen] Mapped properties:', mappedProperties.length);
+      } else {
+        console.error('[SellScreen] API Error:', response.message);
+        setError(response.message || 'Could not load your listings.');
+        setListings([]);
+      }
     } catch (err) {
       console.error('Failed to load my sell properties:', err);
       setError('Could not load your listings.');
+      setListings([]);
     } finally {
       setIsLoading(false);
     }
@@ -148,10 +183,11 @@ const SellScreen = ({ navigation }) => {
     // Prepare media items for MediaCard
     const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
       ? item.photosAndVideo.map(media => ({
-          uri: formatImageUrl(media.uri || media) || media.uri || media,
+          uri: formatImageUrl(media.uri || media.url || media) || media.uri || media.url || media,
           type: media.type || (media.uri?.includes('.mp4') || media.uri?.includes('.mov') || media.uri?.includes('.avi') ? 'video' : 'image')
         }))
-      : item.image ? [{ uri: formatImageUrl(item.image) || item.image, type: 'image' }] : [];
+      : item.image ? [{ uri: formatImageUrl(item.image) || item.image, type: 'image' }] : 
+        [{ uri: 'https://via.placeholder.com/400x200/5da9f6/FFFFFF?text=Property+Image', type: 'image' }];
 
     return (
       <Pressable

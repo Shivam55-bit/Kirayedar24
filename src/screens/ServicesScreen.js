@@ -23,8 +23,9 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from 'react-native-linear-gradient';
-import { createOrder, verifyPayment, submitServiceRequest } from '../services/paymentapi';
-import { getServices } from '../services/homeApi';
+// API services removed
+// import { createOrder, verifyPayment, submitServiceRequest } from '../services/paymentapi';
+// import { getServices } from '../services/homeApi';
 // RazorpayCheckout was unused here — remove unused import to avoid warnings
 
 const { width } = Dimensions.get("window");
@@ -34,7 +35,7 @@ const categories = [];
 
 const propertyTypes = [
     { id: 'office', label: 'Office', icon: 'business-outline', color: '#8B5CF6' },
-    { id: 'apartment', label: 'Apartment', icon: 'home-outline', color: '#1E90FF' },
+    { id: 'apartment', label: 'Apartment', icon: 'home-outline', color: '#FDB022' },
     { id: 'pg', label: 'PG / Hostel', icon: 'bed-outline', color: '#EC4899' },
     { id: 'villa', label: 'Villa', icon: 'location-outline', color: '#10B981' },
 ];
@@ -183,7 +184,7 @@ const PaymentModal = ({ visible, onClose, amount = 0, onPaid, order, rzpKey, onV
 
     const paymentMethods = [
         { id: 'upi', label: 'UPI', icon: 'wallet-outline', color: '#8B5CF6', description: 'Pay via UPI apps' },
-        { id: 'card', label: 'Card', icon: 'card-outline', color: '#1E90FF', description: 'Credit/Debit card' },
+        { id: 'card', label: 'Card', icon: 'card-outline', color: '#FDB022', description: 'Credit/Debit card' },
         { id: 'cod', label: 'Cash', icon: 'cash-outline', color: '#10B981', description: 'Pay on service' },
     ];
 
@@ -448,7 +449,7 @@ const ManualVerifyForm = ({ onVerify, order }) => {
         <View style={{ marginTop: 8 }}>
             <TextInput placeholder="razorpay_payment_id" value={paymentId} onChangeText={setPaymentId} style={[modalStyles.inputField, { marginBottom: 8 }]} autoCapitalize="none" />
             <TextInput placeholder="razorpay_signature" value={signature} onChangeText={setSignature} style={[modalStyles.inputField, { marginBottom: 8 }]} autoCapitalize="none" />
-                <TouchableOpacity onPress={submit} style={{ backgroundColor: '#1E90FF', padding: 10, borderRadius: 8, alignItems: 'center' }} disabled={loading}>
+                <TouchableOpacity onPress={submit} style={{ backgroundColor: '#FDB022', padding: 10, borderRadius: 8, alignItems: 'center' }} disabled={loading}>
                 {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Verify Payment</Text>}
             </TouchableOpacity>
         </View>
@@ -974,7 +975,7 @@ const ServicesScreen = ({ navigation }) => {
                 > 
                     {/* Stats Banner */}
                     <LinearGradient
-                        colors={['#1E90FF', '#5DA9F6']}
+                        colors={['#FDB022', '#FDBF4D']}
                         start={{x: 0, y: 0}}
                         end={{x: 1, y: 1}}
                         style={styles.statsBanner}
@@ -1033,7 +1034,7 @@ const ServicesScreen = ({ navigation }) => {
                         <View style={{ padding: 20, alignItems: 'center' }}>
                             <Text style={{ color: '#6B7280' }}>{servicesError}</Text>
                             <TouchableOpacity onPress={retryLoadServices} style={{ marginTop: 8 }}>
-                                <Text style={{ color: '#1E90FF' }}>Retry</Text>
+                                <Text style={{ color: '#FDB022' }}>Retry</Text>
                             </TouchableOpacity>
                         </View>
                     ) : (
@@ -1061,7 +1062,7 @@ const ServicesScreen = ({ navigation }) => {
                                         ]}
                                     >
                                         <LinearGradient
-                                            colors={active ? ['#BEE3FF', '#1E90FF'] : ['#F3F4F6', '#E5E7EB']}
+                                            colors={active ? ['#BEE3FF', '#FDB022'] : ['#F3F4F6', '#E5E7EB']}
                                             style={[styles.iconCircle, active && styles.iconCircleActive]}
                                         >
                                             {/* If backend provides an image use it, otherwise show initials */}
@@ -1084,7 +1085,7 @@ const ServicesScreen = ({ navigation }) => {
                                         </Text>
                                         {item.raw && item.raw.trending && (
                                             <View style={styles.trendingBadgeSmall}>
-                                                <Icon name="flame" size={8} color="#5DA9F6" />
+                                                <Icon name="flame" size={8} color="#FDBF4D" />
                                             </View>
                                         )}
                                     </Pressable>
@@ -1182,7 +1183,7 @@ const ServicesScreen = ({ navigation }) => {
                     </TouchableOpacity>
                     
                     <TouchableOpacity style={styles.tabItem}>
-                        <Icon name="briefcase" size={24} color="#1E90FF" />
+                        <Icon name="briefcase" size={24} color="#FDB022" />
                         <Text style={[styles.tabLabel, styles.tabLabelActive]}>Services</Text>
                     </TouchableOpacity>
                     
@@ -1226,7 +1227,7 @@ const ServicesScreen = ({ navigation }) => {
                                     <ScrollView style={modalStyles.formContainer} showsVerticalScrollIndicator={false}>
                                         {/* Property Type Display */}
                                         <View style={modalStyles.propertyTypeDisplay}>
-                                            <Icon name={propertyTypes.find(p => p.id === selectedProperty)?.icon} size={24} color="#1E90FF" />
+                                            <Icon name={propertyTypes.find(p => p.id === selectedProperty)?.icon} size={24} color="#FDB022" />
                                             <Text style={modalStyles.propertyTypeText}>{place}</Text>
                                         </View>
 
@@ -1595,7 +1596,7 @@ const styles = StyleSheet.create({
     clearText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#1E90FF',
+        color: '#FDB022',
     },
     // --- Category Grid Styles ---
     categoryTile: {
@@ -1617,7 +1618,7 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     categoryTileActive: {
-        borderColor: '#1E90FF',
+        borderColor: '#FDB022',
         borderWidth: 2,
         backgroundColor: '#E6F4FF',
         shadowOpacity: 0.15,
@@ -1676,7 +1677,7 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     propertyCardActive: {
-        borderColor: '#1E90FF',
+        borderColor: '#FDB022',
         backgroundColor: '#E6F4FF',
         borderWidth: 2,
     },
@@ -1806,7 +1807,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     tabLabelActive: {
-        color: '#1E90FF',
+        color: '#FDB022',
     },
 });
 
@@ -1916,7 +1917,7 @@ const modalStyles = StyleSheet.create({
         borderRadius: 20,
     },
     chipButtonActive: {
-        backgroundColor: '#1E90FF',
+        backgroundColor: '#FDB022',
     },
     chipButtonText: {
         fontSize: 14,
@@ -1968,13 +1969,13 @@ const modalStyles = StyleSheet.create({
         padding: 12,
         borderRadius: 10,
         borderLeftWidth: 4,
-        borderLeftColor: '#1E90FF',
+        borderLeftColor: '#FDB022',
         marginBottom: 16,
     },
     propertyTypeText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#1E90FF',
+        color: '#FDB022',
         marginLeft: 10,
     },
     pickerInput: {
@@ -2147,7 +2148,7 @@ const modalStyles = StyleSheet.create({
     },
     paymentMethodCardActive: {
         backgroundColor: '#E6F4FF',
-        borderColor: '#1E90FF',
+        borderColor: '#FDB022',
     },
     paymentMethodIcon: {
         width: 48,
@@ -2176,13 +2177,13 @@ const modalStyles = StyleSheet.create({
         alignItems: 'center',
     },
     radioOuterActive: {
-        borderColor: '#1E90FF',
+        borderColor: '#FDB022',
     },
     radioInner: {
         width: 12,
         height: 12,
         borderRadius: 6,
-        backgroundColor: '#1E90FF',
+        backgroundColor: '#FDB022',
     },
     paymentDetailsContainer: {
         backgroundColor: '#F9FAFB',

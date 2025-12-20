@@ -4,19 +4,19 @@ import { Dimensions } from 'react-native';
 const { width, height } = Dimensions.get('window');
 
 export const COLORS = {
-  // Primary palette: blue tones (replaces previous orange)
-  primary: '#1E90FF',
+  // Primary palette: green tones from Kirayedar24 logo
+  primary: '#FDB022',
   // softer light background
-  secondary: '#F0F8FF',
-  accent: '#5DA9F6',
+  secondary: '#F0FFF4',
+  accent: '#FDBF4D',
   danger: '#FF6347',
   text: '#2D3748',
   textSecondary: '#718096',
   white: '#FFFFFF',
-  black: '#000000',
-  // gradient from primary blue to lighter blue
-  gradientStart: '#1E90FF',
-  gradientEnd: '#5DA9F6',
+  black: '#1A1A1A',
+  // gradient from primary green to lighter green
+  gradientStart: '#FDB022',
+  gradientEnd: '#FDBF4D',
 };
 
 export const SIZES = {

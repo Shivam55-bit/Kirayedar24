@@ -8,8 +8,10 @@ import {
     ScrollView,
     SafeAreaView,
     Alert, // Using Alert for placeholder messaging as it's standard in RN
+    ActivityIndicator,
 } from 'react-native';
 import Icon from "react-native-vector-icons/Ionicons";
+// import { profileService } from '../services/profileApi.js'; // REMOVED
 
 // --- Theme Colors (Copied for consistency) ---
 const COLORS = {
@@ -29,38 +31,66 @@ const ChangePasswordScreen = ({ navigation }) => {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-    const handleChangePassword = () => {
+    const handleChangePassword = async () => {
         setError(''); // Clear previous errors
 
-        if (!currentPassword || !newPassword || !confirmPassword) {
-            setError('All fields are required.');
+        // Mock validation (API removed)
+        const validation = {
+            isValid: currentPassword && newPassword && newPassword === confirmPassword && newPassword.length >= 6,
+            errors: {
+                ...(!currentPassword && { current: 'Current password is required' }),
+                ...(!newPassword && { new: 'New password is required' }),
+                ...(newPassword && newPassword.length < 6 && { length: 'Password must be at least 6 characters' }),
+                ...(newPassword && confirmPassword && newPassword !== confirmPassword && { match: 'Passwords do not match' })
+            }
+        };
+        
+        if (!validation.isValid) {
+            const errorMessages = Object.values(validation.errors).join('\\n');
+            setError(errorMessages);
             return;
         }
 
-        if (newPassword.length < 6) {
-            setError('New password must be at least 6 characters long.');
-            return;
+        try {
+            setLoading(true);
+            
+            // Mock password change (API removed)
+            const response = {
+                success: true,
+                message: 'Password changed successfully (offline mode)'
+            };
+            
+            if (response.success) {
+                Alert.alert(
+                    'Success', 
+                    'Password changed successfully!',
+                    [
+                        { 
+                            text: 'OK', 
+                            onPress: () => {
+                                // Clear fields and go back
+                                setCurrentPassword('');
+                                setNewPassword('');
+                                setConfirmPassword('');
+                                navigation.goBack();
+                            }
+                        }
+                    ]
+                );
+            } else {
+                setError(response.message || 'Failed to change password');
+            }
+        } catch (error) {
+            console.error('Change password error:', error);
+            setError('Failed to change password. Please try again.');
+        } finally {
+            setLoading(false);
         }
-
-        if (newPassword !== confirmPassword) {
-            setError('New password and confirmation do not match.');
-            return;
-        }
-        
-        // --- REAL WORLD LOGIC PLACEHOLDER ---
-        // In a real application, you would perform these steps:
-        // 1. Verify currentPassword with the backend (re-authentication).
-        // 2. If valid, update the password with the newPassword.
-        
-        console.log("Password change initiated with new password length:", newPassword.length);
-        
-        // Simulating a successful update
-        Alert.alert(
-            "Success",
-            "Your password has been updated!",
-            [{ text: "OK", onPress: () => navigation.goBack() }]
-        );
     };
 
     return (
@@ -82,36 +112,72 @@ const ChangePasswordScreen = ({ navigation }) => {
 
                 {/* Current Password Input */}
                 <Text style={styles.inputLabel}>Current Password</Text>
-                <TextInput
-                    style={styles.input}
-                    secureTextEntry={true}
-                    placeholder="Enter current password"
-                    placeholderTextColor={COLORS.greyText}
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                />
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        style={styles.input}
+                        secureTextEntry={!showCurrentPassword}
+                        placeholder="Enter current password"
+                        placeholderTextColor={COLORS.greyText}
+                        value={currentPassword}
+                        onChangeText={setCurrentPassword}
+                    />
+                    <TouchableOpacity 
+                        style={styles.eyeToggle}
+                        onPress={() => setShowCurrentPassword(!showCurrentPassword)}
+                    >
+                        <Icon 
+                            name={showCurrentPassword ? "eye-off-outline" : "eye-outline"} 
+                            size={20} 
+                            color={COLORS.greyText} 
+                        />
+                    </TouchableOpacity>
+                </View>
 
                 {/* New Password Input */}
                 <Text style={styles.inputLabel}>New Password</Text>
-                <TextInput
-                    style={styles.input}
-                    secureTextEntry={true}
-                    placeholder="Enter new password (min 6 characters)"
-                    placeholderTextColor={COLORS.greyText}
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                />
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        style={styles.input}
+                        secureTextEntry={!showNewPassword}
+                        placeholder="Enter new password (min 6 characters)"
+                        placeholderTextColor={COLORS.greyText}
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                    />
+                    <TouchableOpacity 
+                        style={styles.eyeToggle}
+                        onPress={() => setShowNewPassword(!showNewPassword)}
+                    >
+                        <Icon 
+                            name={showNewPassword ? "eye-off-outline" : "eye-outline"} 
+                            size={20} 
+                            color={COLORS.greyText} 
+                        />
+                    </TouchableOpacity>
+                </View>
 
                 {/* Confirm New Password Input */}
                 <Text style={styles.inputLabel}>Confirm New Password</Text>
-                <TextInput
-                    style={styles.input}
-                    secureTextEntry={true}
-                    placeholder="Confirm new password"
-                    placeholderTextColor={COLORS.greyText}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                />
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        style={styles.input}
+                        secureTextEntry={!showConfirmPassword}
+                        placeholder="Confirm new password"
+                        placeholderTextColor={COLORS.greyText}
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                    />
+                    <TouchableOpacity 
+                        style={styles.eyeToggle}
+                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                        <Icon 
+                            name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} 
+                            size={20} 
+                            color={COLORS.greyText} 
+                        />
+                    </TouchableOpacity>
+                </View>
 
                 {/* Error Message */}
                 {error ? (
@@ -122,11 +188,16 @@ const ChangePasswordScreen = ({ navigation }) => {
 
                 {/* Save Button */}
                 <TouchableOpacity
-                    style={styles.saveButton}
+                    style={[styles.saveButton, loading && { opacity: 0.7 }]}
                     onPress={handleChangePassword}
                     activeOpacity={0.8}
+                    disabled={loading}
                 >
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                    {loading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                        <Text style={styles.saveButtonText}>Change Password</Text>
+                    )}
                 </TouchableOpacity>
 
             </ScrollView>
@@ -182,20 +253,29 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         marginTop: 15,
     },
-    input: {
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: COLORS.white,
         borderWidth: 1,
         borderColor: COLORS.greyLight,
         borderRadius: 8,
-        paddingHorizontal: 15,
-        paddingVertical: 12,
-        fontSize: 16,
-        color: COLORS.black,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
         shadowRadius: 1,
         elevation: 1,
+    },
+    input: {
+        flex: 1,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        fontSize: 16,
+        color: COLORS.black,
+    },
+    eyeToggle: {
+        paddingHorizontal: 15,
+        paddingVertical: 12,
     },
     errorText: {
         marginTop: 15,

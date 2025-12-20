@@ -3,7 +3,8 @@
  * Test file to debug chat connectivity issues
  */
 
-import { getAuthToken, getCurrentUserId } from '../services/chatApi';
+// API services removed
+// import { getAuthToken, getCurrentUserId } from '../services/chatApi';
 
 /**
  * Test authentication and basic connectivity
@@ -49,12 +50,19 @@ export const testChatEndpoints = async () => {
   }
   
   const { token } = authResult;
-  const BASE_URL = 'http://abc.ridealmobility.com/api/chat';
+  const { BASE_URL } = await import('../config/api.config');
+  
+  if (!BASE_URL) {
+    Alert.alert('Configuration Error', 'API BASE_URL is not configured. Please update src/config/api.config.js');
+    return;
+  }
+  
+  const CHAT_BASE_URL = `${BASE_URL}/chat`;
   
   const endpoints = [
-    { name: 'Chat History', url: `${BASE_URL}/history`, method: 'GET' },
-    { name: 'Chat History List', url: `${BASE_URL}/history/list`, method: 'GET' },
-    { name: 'Get Chats', url: `${BASE_URL}/list`, method: 'GET' },
+    { name: 'Chat History', url: `${CHAT_BASE_URL}/history`, method: 'GET' },
+    { name: 'Chat History List', url: `${CHAT_BASE_URL}/history/list`, method: 'GET' },
+    { name: 'Get Chats', url: `${CHAT_BASE_URL}/list`, method: 'GET' },
   ];
   
   const results = [];
@@ -125,12 +133,19 @@ export const testCreateChat = async (receiverId = '673d1234567890abcdef1234') =>
   }
   
   const { token } = authResult;
-  const BASE_URL = 'http://abc.ridealmobility.com/api/chat';
+  const { BASE_URL } = await import('../config/api.config');
+  
+  if (!BASE_URL) {
+    Alert.alert('Configuration Error', 'API BASE_URL is not configured. Please update src/config/api.config.js');
+    return { success: false, error: 'BASE_URL not configured' };
+  }
+  
+  const CHAT_BASE_URL = `${BASE_URL}/chat`;
   
   try {
     console.log(`🔍 Creating chat with receiver: ${receiverId}`);
     
-    const response = await fetch(`${BASE_URL}/get-or-create`, {
+    const response = await fetch(`${CHAT_BASE_URL}/get-or-create`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -172,8 +187,13 @@ export const testSocketConnection = async () => {
   
   try {
     // Dynamically import socket.io-client
-    const io = require('socket.io-client');
-    const SOCKET_URL = 'http://abc.ridealmobility.com';
+    const io = (await import('socket.io-client')).default;
+    const { SOCKET_URL } = await import('../config/api.config');
+    
+    if (!SOCKET_URL) {
+      Alert.alert('Configuration Error', 'SOCKET_URL is not configured');
+      return;
+    }
     
     console.log(`🔌 Connecting to socket: ${SOCKET_URL}`);
     

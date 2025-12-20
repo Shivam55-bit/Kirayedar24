@@ -15,12 +15,9 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import { DeviceEventEmitter } from 'react-native';
-// NOTE: Make sure formatImageUrl correctly prepends your base URL (e.g., http://abc.ridealmobility.com/)
-import { formatImageUrl, formatPrice } from '../services/homeApi'; 
-
-// --- Import the API function from the new service file ---
-import { toggleSaveProperty, getSavedProperties, removeSavedProperty } from '../services/propertyapi'; 
-// ---------------------------------------------------------
+// Import API services and helper functions
+import { formatImageUrl, formatPrice } from '../services/propertyHelpers'; 
+import propertyService from '../services/propertyApi';
 
 // Fallback image URL when a property has no photo link
 const DEFAULT_IMAGE_URL = 'https://via.placeholder.com/180x180.png?text=No+Image';
@@ -36,7 +33,7 @@ const SavedScreen = ({ navigation }) => {
     const loadSaved = useCallback(async () => {
         setLoading(true);
         try {
-            const responseData = await getSavedProperties(); 
+            const responseData = await propertyService.getSavedProperties(); 
             console.log('[SavedScreen] getSavedProperties responseData:', responseData);
             let data = [];
 
@@ -52,6 +49,9 @@ const SavedScreen = ({ navigation }) => {
             if (Array.isArray(data)) {
                 // 2. **FIX: Filter out null entries from the array**
                 data = data.filter(Boolean); 
+                
+                console.log('[SavedScreen] Raw property data sample:', data[0] || 'No data');
+                console.log('[SavedScreen] Total properties:', data.length); 
 
                 const mapped = data.map(p => {
                     // 3. **FIXED: Use exact API field names**
@@ -60,25 +60,42 @@ const SavedScreen = ({ navigation }) => {
                     
                     let imageUrl = DEFAULT_IMAGE_URL;
 
-                    // 4. **FIXED: Handle image path and format it with base URL**
-                    if (p.photosAndVideo && p.photosAndVideo[0]) {
-                        const rawPath = typeof p.photosAndVideo[0] === 'string' 
-                            ? p.photosAndVideo[0] 
-                            : (p.photosAndVideo[0].url || p.photosAndVideo[0]);
+                    // 4. **IMPROVED: Handle image path and format it with base URL**
+                    console.log('[SavedScreen] Processing property:', p.description || p.title, {
+                        photosAndVideo: p.photosAndVideo,
+                        images: p.images,
+                        image: p.image
+                    });
+                    
+                    if (p.photosAndVideo && p.photosAndVideo.length > 0) {
+                        const firstPhoto = p.photosAndVideo[0];
+                        const rawPath = typeof firstPhoto === 'string' 
+                            ? firstPhoto 
+                            : (firstPhoto?.url || firstPhoto?.uri || firstPhoto);
 
                         if (rawPath) {
-                            // Assumes formatImageUrl correctly prepends the base domain
                             imageUrl = formatImageUrl(rawPath);
+                            console.log('[SavedScreen] Using photosAndVideo:', rawPath, '→', imageUrl);
                         }
-                    } else if (p.images && p.images[0]) {
-                        // Fallback for an 'images' array if it exists
-                        const rawPath = typeof p.images[0] === 'string' 
-                            ? p.images[0] 
-                            : (p.images[0].url || p.images[0]);
+                    } else if (p.images && p.images.length > 0) {
+                        const firstImage = p.images[0];
+                        const rawPath = typeof firstImage === 'string' 
+                            ? firstImage 
+                            : (firstImage?.url || firstImage?.uri || firstImage);
                         if (rawPath) {
                             imageUrl = formatImageUrl(rawPath);
+                            console.log('[SavedScreen] Using images array:', rawPath, '→', imageUrl);
+                        }
+                    } else if (p.image) {
+                        // Single image field
+                        const rawPath = typeof p.image === 'string' ? p.image : p.image?.url || p.image?.uri;
+                        if (rawPath) {
+                            imageUrl = formatImageUrl(rawPath);
+                            console.log('[SavedScreen] Using single image:', rawPath, '→', imageUrl);
                         }
                     }
+                    
+                    console.log('[SavedScreen] Final imageUrl for property:', imageUrl);
 
                     return {
                         // Use _id as the primary unique identifier
@@ -153,7 +170,7 @@ const SavedScreen = ({ navigation }) => {
                         setLoadingId(propertyId);
                         try {
                             // Using the dedicated DELETE function as it is clearer for removal
-                            await removeSavedProperty(propertyId); 
+                            await propertyService.removeSavedProperty(propertyId); 
                             await loadSaved();
 
                         } catch (error) {
@@ -177,15 +194,24 @@ const SavedScreen = ({ navigation }) => {
         item.tag.toLowerCase().includes(search.toLowerCase())
     );
 
-    const renderItem = ({ item }) => (
-        <View style={styles.cardRow}>
-            <Image
-                source={item.image}
-                style={styles.imageRow}
-                resizeMode="cover"
-            />
+    const renderItem = ({ item }) => {
+        console.log('[SavedScreen] Rendering item:', item.title, 'with image:', item.image);
+        
+        return (
+            <View style={styles.cardRow}>
+                <Image
+                    source={item.image || { uri: DEFAULT_IMAGE_URL }}
+                    style={styles.imageRow}
+                    resizeMode="cover"
+                    onError={(error) => {
+                        console.log('[SavedScreen] Image load error for:', item.title, error.nativeEvent.error);
+                    }}
+                    onLoad={() => {
+                        console.log('[SavedScreen] Image loaded successfully for:', item.title);
+                    }}
+                />
 
-            <View style={styles.infoRow}>
+                <View style={styles.infoRow}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
@@ -202,7 +228,8 @@ const SavedScreen = ({ navigation }) => {
                 </View>
             </View>
         </View>
-    );
+        );
+    };
 
     const renderEmpty = () => (
         <View style={styles.emptyContainer}>
@@ -325,7 +352,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
     },
-    checkboxSelected: { backgroundColor: "#1E90FF", borderColor: "#1E90FF" },
+    checkboxSelected: { backgroundColor: "#FDB022", borderColor: "#FDB022" },
 
     info: { padding: 12 },
     title: { fontSize: 16, fontWeight: "bold", color: "#333" },
@@ -336,11 +363,9 @@ const styles = StyleSheet.create({
         backgroundColor: "#E3F2FD",
         paddingHorizontal: 8,
         paddingVertical: 4,
-        borderRadius: 6,
-    },
-    tagText: { fontSize: 12, color: "#1E90FF", fontWeight: '500' },
-
-    /* comparison styles removed */
+    borderRadius: 6,
+  },
+  tagText: { fontSize: 12, color: "#FDB022", fontWeight: '500' },    /* comparison styles removed */
     emptyContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -399,7 +424,7 @@ const styles = StyleSheet.create({
     },
     priceTextRow: {
         fontSize: 14,
-    color: '#1E90FF',
+    color: '#FDB022',
         fontWeight: '700'
     },
     deleteCircle: {
@@ -421,7 +446,7 @@ const styles = StyleSheet.create({
     },
     browseBtn: {
         marginTop: 16,
-    backgroundColor: '#1E90FF',
+    backgroundColor: '#FDB022',
         paddingHorizontal: 18,
         paddingVertical: 10,
         borderRadius: 10,

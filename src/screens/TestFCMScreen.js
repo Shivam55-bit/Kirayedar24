@@ -2,19 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { getStoredFCMToken, getFCMToken } from '../utils/fcmService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-  sendNewPropertyNotification,
-  sendInquiryNotification,
-  sendChatNotification,
-  sendServiceCancelNotification,
-  sendServiceCompleteNotification,
-  sendSystemUpdateNotification,
-  broadcastAppUpdate
-} from '../services/notificationService';
+// API services removed
+// import { 
+//   sendNewPropertyNotification,
+//   sendInquiryNotification,
+//   sendChatNotification,
+//   sendServiceCancelNotification,
+//   sendServiceCompleteNotification,
+//   sendSystemUpdateNotification,
+//   broadcastAppUpdate
+// } from '../services/notificationService';
 
 const TestFCMScreen = () => {
   const [fcmToken, setFcmToken] = useState('Loading...');
   const [userId, setUserId] = useState('Not logged in');
+  const [loginToken, setLoginToken] = useState('Not logged in');
 
   useEffect(() => {
     loadFCMInfo();
@@ -34,6 +36,14 @@ const TestFCMScreen = () => {
       const uid = await AsyncStorage.getItem('userId');
       if (uid) {
         setUserId(uid);
+      }
+
+      // Get login/auth token
+      const authToken = await AsyncStorage.getItem('userToken');
+      if (authToken) {
+        setLoginToken(authToken);
+      } else {
+        setLoginToken('No login token found');
       }
     } catch (error) {
       console.error('Error loading FCM info:', error);
@@ -69,6 +79,26 @@ const TestFCMScreen = () => {
             console.log(fcmToken);
             console.log('═══════════════════════════════════════');
             Alert.alert('Copied', 'Token logged to console. Check Metro bundler!');
+          },
+        },
+        { text: 'OK' },
+      ]
+    );
+  };
+
+  const copyLoginToken = () => {
+    Alert.alert(
+      'Login/Auth Token',
+      loginToken,
+      [
+        {
+          text: 'Copy',
+          onPress: () => {
+            console.log('═══════════════════════════════════════');
+            console.log('🔑 COPY THIS LOGIN TOKEN:');
+            console.log(loginToken);
+            console.log('═══════════════════════════════════════');
+            Alert.alert('Copied', 'Login token logged to console!');
           },
         },
         { text: 'OK' },
@@ -211,6 +241,17 @@ const TestFCMScreen = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.label}>Login/Auth Token:</Text>
+        <ScrollView horizontal style={styles.tokenContainer}>
+          <Text style={styles.token} selectable>{loginToken}</Text>
+        </ScrollView>
+      </View>
+
+      <TouchableOpacity style={styles.button} onPress={copyLoginToken}>
+        <Text style={styles.buttonText}>Show Full Login Token</Text>
+      </TouchableOpacity>
+
+      <View style={styles.section}>
         <Text style={styles.label}>FCM Token:</Text>
         <ScrollView horizontal style={styles.tokenContainer}>
           <Text style={styles.token} selectable>{fcmToken}</Text>
@@ -218,11 +259,11 @@ const TestFCMScreen = () => {
       </View>
 
       <TouchableOpacity style={styles.button} onPress={copyToken}>
-        <Text style={styles.buttonText}>Show Full Token</Text>
+        <Text style={styles.buttonText}>Show Full FCM Token</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.button} onPress={refreshToken}>
-        <Text style={styles.buttonText}>Refresh Token</Text>
+        <Text style={styles.buttonText}>Refresh FCM Token</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.button} onPress={loadFCMInfo}>

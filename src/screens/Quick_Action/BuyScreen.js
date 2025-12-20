@@ -13,8 +13,9 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
-import { getAllOtherProperties, toggleSaveProperty, removeSavedProperty } from "../../services/propertyapi";
-import { formatImageUrl, formatPrice, getSavedPropertiesIds } from "../../services/homeApi";
+// API services removed
+// import { getAllOtherProperties, toggleSaveProperty, removeSavedProperty } from "../../services/propertyapi";
+// import { formatImageUrl, formatPrice, getSavedPropertiesIds } from "../../services/homeApi";
 import { DeviceEventEmitter } from 'react-native';
 import MediaCard from "../../components/MediaCard";
 
@@ -22,8 +23,8 @@ const { width } = Dimensions.get("window");
 
 // --- Color Palette ---
 const COLORS = {
-  primary: "#1E90FF",
-  secondary: "#5DA9F6",
+  primary: "#FDB022",
+  secondary: "#FDBF4D",
   background: "#F8F9FA",
   card: "#FFFFFF",
   textPrimary: "#1E1E1E",

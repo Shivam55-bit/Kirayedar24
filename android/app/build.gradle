@@ -21,14 +21,14 @@ def enableProguardInReleaseBuilds = false
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-    namespace "com.gharplot"
+    namespace "com.kirayedar24"
 
     compileSdk rootProject.ext.compileSdkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     ndkVersion rootProject.ext.ndkVersion
 
     defaultConfig {
-        applicationId "com.gharplot"
+        applicationId "com.kirayedar24"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -92,6 +92,18 @@ android {
     }
 }
 
+configurations.all {
+    resolutionStrategy {
+        // Force all support libraries to use AndroidX
+        force 'androidx.core:core:1.16.0'
+        
+        // Exclude old Android Support libraries
+        exclude group: 'com.android.support', module: 'support-compat'
+        exclude group: 'com.android.support', module: 'support-v4'
+        exclude group: 'com.android.support', module: 'support-core-utils'
+    }
+}
+
 dependencies {
     // React Native core
     implementation("com.facebook.react:react-android")
@@ -99,9 +111,6 @@ dependencies {
     // Google Play Services Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.google.android.gms:play-services-base:18.5.0")
-    
-    // react-native-geolocation-service
-    implementation(project(':react-native-geolocation-service'))
 
     // JavaScript engine
     if (project.hasProperty("hermesEnabled") && hermesEnabled.toBoolean()) {
@@ -116,4 +125,7 @@ dependencies {
     // Firebase dependencies
     implementation platform("com.google.firebase:firebase-bom:32.7.0")
     implementation("com.google.firebase:firebase-messaging")
+    
+    // Force AndroidX Core for compatibility
+    implementation("androidx.core:core:1.16.0")
 }

@@ -15,8 +15,8 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
-import { get } from "../../services/api";
-import { formatImageUrl, formatPrice } from '../../services/homeApi';
+// API services removed\n// import { get } from \"../../services/api\";
+// import { formatImageUrl, formatPrice } from '../../services/homeApi';
 import MediaCard from "../../components/MediaCard";
 
 // --- Import the custom asset based on your folder structure ---
@@ -69,8 +69,8 @@ const rentalsData = [
 // --- End Mock Data ---
 
 const COLORS = {
-  primary: "#1E90FF",
-  secondary: "#34C759",
+  primary: "#FDB022",
+  secondary: "#FDBF4D",
   background: "#F8F9FA",
   card: "#FFFFFF",
   textPrimary: "#1E1E1E",
@@ -78,7 +78,7 @@ const COLORS = {
   favorite: "#FF3B30",
   shadow: "rgba(0, 0, 0, 0.1)",
   danger: '#D9534F', // Specific red for scammer warnings
-  buttonBlue: '#1a73e8', // Solid blue for the button
+  buttonBlue: '#FDB022', // Orange for the button
   // New color for the SCAMMER text line
   scammerTextRed: '#FF0000', 
 };

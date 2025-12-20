@@ -17,11 +17,17 @@ import {
     StatusBar,
     KeyboardAvoidingView,
     Keyboard,
+    FlatList,
+    Animated,
 } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
+import { getRecentProperties, getResidentialProperties, getCommercialProperties } from '../services/propertyService';
+import propertyService from '../services/propertyApi';
+import { debugPropertyAPIs } from '../debug/propertyDebug';
+import { checkAuthStatus } from '../utils/quickAuth';
 import { getNotificationCount, addTestNotifications } from '../utils/notificationManager';
 import { getStoredCredentials, clearUserCredentials } from '../utils/authManager';
 import { runCompleteNotificationTest } from '../utils/notificationTest';
@@ -33,48 +39,190 @@ import { showQuickNotificationStatus } from '../utils/notificationStatus';
 // Import MediaCard component
 import MediaCard from '../components/MediaCard';
 
-// Location Service - Using react-native-geolocation-service
-import { getCurrentLocation } from '../utils/locationService';
-
-// Validate import
-if (typeof getCurrentLocation !== 'function') {
-    console.error('❌ getCurrentLocation is not a function:', typeof getCurrentLocation);
-} else {
-    console.log('✅ HomeScreen: locationService imported successfully');
-}
-
-// API imports
-import {
-    getRecentProperties,
-    getNearbyProperties,
-    getAllProperties,
-    formatImageUrl,
-    formatPrice,
-    getSavedPropertiesIds,
-    getFirstImageUrl
-} from '../services/homeApi';
-import { toggleSaveProperty, removeSavedProperty, getMySellProperties } from '../services/propertyapi';
-import { getCurrentUserProfile } from '../services/userapi';
-
 // Theme & Layout Constants
 const { width, height } = Dimensions.get("window");
 
+// Dummy Data
+const DUMMY_PROPERTIES = [
+    {
+        _id: '1',
+        description: 'Sky Dandelions Apartment',
+        propertyLocation: 'Jakarta, Indonesia',
+        price: 290,
+        rating: 4.9,
+        purpose: 'Rent',
+        propertyType: 'Residential',
+        residentialType: 'Apartment',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800', type: 'image' }],
+    },
+    {
+        _id: '2',
+        description: 'Pranay Villa',
+        propertyLocation: 'Ahmedabad, Gujarat',
+        price: 450,
+        rating: 4.8,
+        purpose: 'Sale',
+        propertyType: 'Residential',
+        residentialType: 'Independent House',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800', type: 'image' }],
+    },
+    {
+        _id: '3',
+        description: 'Modern Office Space',
+        propertyLocation: 'Mumbai, Maharashtra',
+        price: 850,
+        rating: 4.7,
+        purpose: 'Rent',
+        propertyType: 'Commercial',
+        commercialType: 'office',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800', type: 'image' }],
+    },
+    {
+        _id: '4',
+        description: 'Luxury Penthouse',
+        propertyLocation: 'Delhi, India',
+        price: 1200,
+        rating: 5.0,
+        purpose: 'Sale',
+        propertyType: 'Residential',
+        residentialType: 'Apartment',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800', type: 'image' }],
+    },
+    {
+        _id: '5',
+        description: 'Commercial Plaza',
+        propertyLocation: 'Bangalore, Karnataka',
+        price: 2500,
+        rating: 4.9,
+        purpose: 'Rent',
+        propertyType: 'Commercial',
+        commercialType: 'showroom',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800', type: 'image' }],
+    },
+    {
+        _id: '6',
+        description: 'Beach House Villa',
+        propertyLocation: 'Goa, India',
+        price: 680,
+        rating: 4.8,
+        purpose: 'Rent',
+        propertyType: 'Residential',
+        residentialType: 'Independent House',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800', type: 'image' }],
+    },
+    {
+        _id: '7',
+        description: 'Corporate Office',
+        propertyLocation: 'Pune, Maharashtra',
+        price: 1500,
+        rating: 4.6,
+        purpose: 'Sale',
+        propertyType: 'Commercial',
+        commercialType: 'office',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800', type: 'image' }],
+    },
+    {
+        _id: '8',
+        description: 'Garden Apartment',
+        propertyLocation: 'Chennai, Tamil Nadu',
+        price: 320,
+        rating: 4.7,
+        purpose: 'Rent',
+        propertyType: 'Residential',
+        residentialType: 'Apartment',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800', type: 'image' }],
+    },
+    {
+        _id: '9',
+        description: 'Retail Shop Space',
+        propertyLocation: 'Kolkata, West Bengal',
+        price: 450,
+        rating: 4.5,
+        purpose: 'Rent',
+        propertyType: 'Commercial',
+        commercialType: 'shop',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=800', type: 'image' }],
+    },
+    {
+        _id: '10',
+        description: 'Hill View Bungalow',
+        propertyLocation: 'Shimla, Himachal Pradesh',
+        price: 890,
+        rating: 5.0,
+        purpose: 'Sale',
+        propertyType: 'Residential',
+        residentialType: 'Independent House',
+        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800', type: 'image' }],
+    }
+];
+
+// Helper functions to format API data
+const formatImageUrl = (url) => {
+    if (!url) return null;
+    
+    // If it's already a full URL, return as is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+    }
+    
+    // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
+    if (url.startsWith('uploads/')) {
+        return `https://n5.bhoomitechzone.us/${url}`;
+    }
+    
+    // For other relative paths, add base URL
+    return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
+};
+
+const formatPrice = (price) => `₹ ${price}`; // Using Rupee symbol instead of dollar
+
+const getFirstImageUrl = (photosAndVideo) => {
+    if (!photosAndVideo || photosAndVideo.length === 0) return null;
+    
+    // Find the first image (not video) if possible
+    const firstImage = photosAndVideo.find(media => {
+        const mediaPath = media.uri || media;
+        return mediaPath && (mediaPath.includes('.jpg') || mediaPath.includes('.jpeg') || 
+               mediaPath.includes('.png') || mediaPath.includes('.webp') || mediaPath.includes('.gif'));
+    });
+    
+    if (firstImage) {
+        return firstImage.uri || firstImage;
+    }
+    
+    // If no image found, return the first item anyway
+    return photosAndVideo[0].uri || photosAndVideo[0];
+};
+
 const theme = {
     COLORS: {
-        primary: "#1E90FF",
-        secondary: "#4CAF50",
-        background: "#f8f9fa",
+        primary: "#FDB022",        // Orange color
+        primaryLight: "#FDBF4D",   // Lighter orange
+        primaryDark: "#E89E0F",    // Darker orange
+        secondary: "#FDB022",      // Orange accent
+        secondaryLight: "#FFD478", // Light orange
+        background: "#F8FAFC",
         white: "#FFFFFF",
-        black: "#111111",
-        greyLight: "#EFEFEF",
-        greyMedium: "#888",
-        greyDark: "#333",
-        accent: "#5DA9F6",
-        star: "#FFD700",
-        overlay: "rgba(0,0,0,0.8)",
-        overlayLight: "rgba(0,0,0,0.3)",
-        notification: "#E74C3C",
-        lightBackground: "#F0F8FF",
+        black: "#1A1A1A",          // Black from logo
+        greyLight: "#E2E8F0",
+        greyMedium: "#64748B",
+        greyDark: "#1E293B",
+        accent: "#FDB022",         // Orange accent
+        star: "#FBBF24",
+        overlay: "rgba(26,26,26,0.85)",
+        overlayLight: "rgba(26,26,26,0.4)",
+        notification: "#EF4444",
+        lightBackground: "rgba(253, 176, 34, 0.05)",
+        success: "#FDB022",
+        warning: "#F59E0B",
+        danger: "#EF4444",
+    },
+    GRADIENTS: {
+        primary: ["#FDBF4D", "#FDB022", "#E89E0F"],      // Orange gradient
+        secondary: ["#FDBF4D", "#FDB022", "#E89E0F"],    // Orange gradient
+        accent: ["#FDBF4D", "#FDB022", "#E89E0F"],       // Orange gradient
+        warm: ["#FCD34D", "#F59E0B", "#D97706"],
+        cool: ["#67E8F9", "#06B6D4", "#0891B2"],
     },
     SPACING: {
         xs: 4, s: 8, m: 16, l: 20, xl: 32,
@@ -87,19 +235,23 @@ const theme = {
     },
 };
 
-// Static Data
+// Banner Images
+const BANNER_IMAGES = [
+    { id: '1', source: require("../assets/banner3.png") },
+    { id: '2', source: require("../assets/banner1.jpeg") },
+    { id: '3', source: require("../assets/banner2.jpeg") },
+];
+
+// Static Data - Get Started With section
 const startedItems = [
-    { id: "1", icon: "home", label: "Buy", color: "#87c1fbff", screen: 'BuyScreen' },
-    { id: "2", icon: "pricetag", label: "Sell", color: "#87c1fbff", screen: 'SellScreen' },
-    { id: "3", icon: "business", label: "Rent", color: "#87c1fbff", screen: 'RentScreen' },
+    { id: "1", icon: "search", label: "Search", color: "#FDB022", gradientColors: ["#FFF4E6", "#FFFFFF"], screen: 'Search' },
+    { id: "2", icon: "receipt", label: "Pay Bill", color: "#FDB022", gradientColors: ["#F0F9FF", "#FFFFFF"], screen: 'PayBillScreen' },
+    { id: "3", icon: "card", label: "Pay Rent", color: "#FDB022", gradientColors: ["#F0FDF4", "#FFFFFF"], screen: 'PayRentScreen' },
 ];
 
 // Layout Calculation
-const BANNER_HEIGHT_RATIO = 0.31;
-const SEARCH_BAR_HEIGHT = 50;
-const OVERLAP_AMOUNT = SEARCH_BAR_HEIGHT / 2;
-const BANNER_HEIGHT = height * BANNER_HEIGHT_RATIO;
-const FIXED_HEADER_HEIGHT = BANNER_HEIGHT + OVERLAP_AMOUNT;
+const HEADER_HEIGHT = 20;
+const FIXED_HEADER_HEIGHT = HEADER_HEIGHT;
 const FALLBACK_IMAGE_URI = "https://via.placeholder.com/400x200/5da9f6/FFFFFF?text=Property+Image";
 
 // Chat Button Component
@@ -116,50 +268,7 @@ const ChatButton = ({ onPress, theme, hasUnreadMessages }) => (
     </TouchableOpacity>
 );
 
-// Update the getCityNameFromCoords function to handle unknown street gracefully
-const getCityNameFromCoords = async (latitude, longitude) => {
-    try {
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`;
-        const response = await fetch(url, { headers: { 'User-Agent': 'GharplotApp/1.0' } });
-
-        if (!response.ok) {
-            const txt = await response.text().catch(() => '');
-            console.warn('[getCityNameFromCoords] Non-OK response', response.status, txt.slice ? txt.slice(0, 200) : txt);
-            return 'Unknown Location';
-        }
-
-        const contentType = (response.headers.get('content-type') || '').toLowerCase();
-        let data = null;
-
-        if (contentType.includes('application/json')) {
-            data = await response.json();
-        } else {
-            const text = await response.text().catch(() => '');
-            const trimmed = (text || '').trim();
-            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-                try {
-                    data = JSON.parse(trimmed);
-                } catch (err) {
-                    console.warn('[getCityNameFromCoords] Failed to parse JSON, content:', trimmed.slice(0, 200));
-                    data = null;
-                }
-            } else {
-                console.warn('[getCityNameFromCoords] Non-JSON response from geocoding service:', trimmed.slice(0, 200));
-                data = null;
-            }
-        }
-
-        if (!data) return 'Unknown Location';
-
-        const address = data.address || {};
-        const cityName = address.city || address.town || address.village || address.county || address.state || 'Unknown Location';
-        const streetName = address.road || address.neighbourhood || '';
-        return streetName ? `${streetName}, ${cityName}` : cityName;
-    } catch (error) {
-        console.error('Reverse geocoding error:', error);
-        return 'Unknown Location';
-    }
-};
+// Location geocoding functionality removed
 
 const Homescreen = ({ navigation }) => {
     // Debug function to check login status (for testing)
@@ -183,378 +292,176 @@ const Homescreen = ({ navigation }) => {
 
     // State Initialization
     const [favorites, setFavorites] = useState([]);
-    const [avatar, setAvatar] = useState(null);
-    const [avatarVersion, setAvatarVersion] = useState(Date.now());
+    const [loadingSaveProperty, setLoadingSaveProperty] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+    const bannerScrollRef = useRef(null);
 
-    // Featured Properties States
+    // API Data States
     const [featuredProperties, setFeaturedProperties] = useState([]);
-    const [isFeaturedLoading, setIsFeaturedLoading] = useState(true);
-    const [featuredError, setFeaturedError] = useState(null);
-
-    // Nearby Properties States
-    const [nearbyProperties, setNearbyProperties] = useState([]);
-    const [isNearbyLoading, setIsNearbyLoading] = useState(true);
-    const [nearbyError, setNearbyError] = useState(null);
+    const [residentialProperties, setResidentialProperties] = useState([]);
+    const [commercialProperties, setCommercialProperties] = useState([]);
+    const [isLoadingProperties, setIsLoadingProperties] = useState(false);
 
     // UI States
     const [hasUnreadMessages, setHasUnreadMessages] = useState(true);
     const [notificationCount, setNotificationCount] = useState(0);
 
-    // Location States - INDEPENDENT from signup
-    const [userLocation, setUserLocation] = useState({ latitude: 28.7041, longitude: 77.1025 }); // Default: Delhi
-    const [cityName, setCityName] = useState('Delhi, India');
-    const [isLocating, setIsLocating] = useState(false);
-    const [manualLocationInput, setManualLocationInput] = useState(''); // Manual input field
-    const [selectedManualLocation, setSelectedManualLocation] = useState(''); // Actually selected location
-    
-    // Nearby API response additional data
-    const [nearbyDistance, setNearbyDistance] = useState('');
-    const [nearbyCount, setNearbyCount] = useState(0);
-
-    // Add state for distance filter
-    const [searchDistance, setSearchDistance] = useState(20); // Default distance in km
-    const [tempDistance, setTempDistance] = useState('20'); // Temporary input value
-
-    // Remove dependency on signup - manual location management
-    const [isEditingLocation, setIsEditingLocation] = useState(false);
-    
-    // Add ref to track mount and prevent double loading
-    const isInitialMount = useRef(true);
-    const hasLoadedData = useRef(false);
-    const userLoginSession = useRef(Date.now()); // Track login session
-
-    // Fetch User Location with City Name - Using locationService
-    const fetchUserLocation = async () => {
-        console.log('🔍 fetchUserLocation called');
-        
-        // Safety check - prevent multiple simultaneous calls
-        if (isLocating) {
-            console.log('⚠️ Location fetch already in progress, skipping...');
-            return;
-        }
-        
-        setIsLocating(true);
-        
-        try {
-            console.log('📡 Calling getCurrentLocation...');
-            
-            // Validate getCurrentLocation exists
-            if (typeof getCurrentLocation !== 'function') {
-                console.error('❌ getCurrentLocation function is not available!');
-                Alert.alert('Error', 'Location service not available. Please restart the app.');
-                setIsLocating(false);
-                return;
-            }
-            
-            // Use the new location service with full error wrapping
-            const result = await getCurrentLocation({
-                showAlert: true,
-                timeout: 15000,
-                maximumAge: 10000,
-                enableHighAccuracy: true,
-            }).catch(err => {
-                console.error('❌ getCurrentLocation threw error:', err);
-                throw err;
-            });
-
-            if (!result || typeof result.latitude !== 'number' || typeof result.longitude !== 'number') {
-                console.error('❌ Invalid location result:', result);
-                Alert.alert('Error', 'Failed to get valid location coordinates.');
-                setIsLocating(false);
-                return;
-            }
-
-            const { latitude, longitude } = result;
-            console.log('✅ Location fetched successfully:', { latitude, longitude });
-
-            // Update state with new location
-            setUserLocation({ latitude, longitude });
-            
-            // Save location to AsyncStorage
-            try {
-                await AsyncStorage.setItem('userLocation', JSON.stringify({ latitude, longitude }));
-                console.log('✅ Location saved to AsyncStorage');
-            } catch (saveError) {
-                console.warn('⚠️ Failed to save location:', saveError);
-                // Continue even if save fails
-            }
-
-            // Get city name from coordinates
-            try {
-                const city = await getCityNameFromCoords(latitude, longitude);
-                setCityName(city);
-                console.log('✅ City name fetched:', city);
-            } catch (cityError) {
-                console.warn('⚠️ Failed to get city name:', cityError);
-                setCityName('Unknown Location');
-            }
-            
-            // Load nearby properties with new location
-            try {
-                await loadNearbyProperties(latitude, longitude);
-                console.log('✅ Nearby properties loaded');
-            } catch (propertiesError) {
-                console.warn('⚠️ Failed to load nearby properties:', propertiesError);
-            }
-            
-            setIsLocating(false);
-            console.log('✅ fetchUserLocation completed successfully');
-            
-        } catch (error) {
-            // Comprehensive error logging
-            console.error('❌ fetchUserLocation CAUGHT ERROR:');
-            console.error('Error type:', error?.constructor?.name);
-            console.error('Error message:', error?.message);
-            console.error('Error code:', error?.code);
-            console.error('Full error:', JSON.stringify(error, null, 2));
-            
-            if (error?.stack) {
-                console.error('Stack trace:', error.stack);
-            }
-            
-            setIsLocating(false);
-            
-            // Don't show alert if locationService already showed one
-            if (!error?.message?.includes('permission') && !error?.message?.includes('GPS')) {
-                Alert.alert(
-                    'Location Error',
-                    'Failed to get your location. Please check your GPS settings and try again.',
-                    [{ text: 'OK' }]
-                );
-            }
-        }
-    };
-
-    // Load All Properties - NOW USES NEW API ENDPOINT FOR ALL PROPERTIES
-    const loadNearbyProperties = async (lat, lng) => {
-        setIsNearbyLoading(true);
-        setNearbyError(null);
-        try {
-            console.log(`🌐 Loading ALL properties from new API endpoint (no limit)`);
-
-            // Use the new getAllProperties API to load ALL properties without limit
-            const allProperties = await getAllProperties(); // Get ALL properties from API (no limit)
-            
-            // Ensure we have a valid array
-            const validProperties = Array.isArray(allProperties) ? allProperties : [];
-            
-            setNearbyProperties(validProperties);
-            setNearbyDistance(`All Properties`); 
-            setNearbyCount(validProperties.length);
-            
-            console.log(`✅ Loaded ${validProperties.length} properties from ALL properties API`);
-        } catch (e) {
-            console.error("All Properties Error:", e);
-            setNearbyError("Could not load properties. Tap to retry.");
-            // Set empty array on error to prevent undefined issues
-            setNearbyProperties([]);
-            setNearbyCount(0);
-        } finally {
-            setIsNearbyLoading(false);
-        }
-    };
-
-    // Load Saved Location - MANUAL ONLY (No Auto-fetch)
-    useEffect(() => {
-        const loadSavedLocation = async () => {
-            try {
-                const savedLocation = await AsyncStorage.getItem('userLocation');
-                if (savedLocation) {
-                    let latitude = null;
-                    let longitude = null;
-                    try {
-                        const parsed = JSON.parse(savedLocation);
-                        latitude = parsed.latitude;
-                        longitude = parsed.longitude;
-                    } catch (err) {
-                        console.warn('[loadSavedLocation] savedLocation not JSON, attempting numeric fallback:', savedLocation.slice ? savedLocation.slice(0,200) : savedLocation);
-                        const matches = (savedLocation || '').match(/-?\d+(?:\.\d+)?/g) || [];
-                        if (matches.length >= 2) {
-                            latitude = Number(matches[0]);
-                            longitude = Number(matches[1]);
-                        }
-                    }
-
-                    if (latitude != null && longitude != null) {
-                        setUserLocation({ latitude, longitude });
-                        const city = await getCityNameFromCoords(latitude, longitude);
-                        setCityName(city);
-
-                        // Load nearby properties based on saved location (only if not initial mount)
-                        if (!isInitialMount.current) {
-                            loadNearbyProperties(latitude, longitude);
-                        }
-                    } else {
-                        console.log('📍 No valid saved location. Using default Delhi location.');
-                        // Use default Delhi coordinates (only if not initial mount)
-                        if (!isInitialMount.current) {
-                            loadNearbyProperties(28.7041, 77.1025);
-                        }
-                    }
-                } else {
-                    console.log('📍 No saved location. Using default Delhi location.');
-                    // Use default Delhi coordinates (only if not initial mount)
-                    if (!isInitialMount.current) {
-                        loadNearbyProperties(28.7041, 77.1025);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ Error loading saved location:', error);
-                console.log('📍 Using default Delhi location.');
-                // Use default Delhi coordinates on error (only if not initial mount)
-                if (!isInitialMount.current) {
-                    loadNearbyProperties(28.7041, 77.1025);
-                }
-            }
-        };
-
-        loadSavedLocation();
-    }, []);
-
-    // Load Favorites
-    const loadFavorites = async () => {
-        try {
-            const savedIds = await getSavedPropertiesIds();
-            setFavorites(savedIds);
-        } catch (e) {
-            console.error("Failed to load saved properties:", e);
-        }
-    };
-
-    // Load Featured Properties (Recent) - ANTI-BLINK VERSION
-    const loadFeaturedProperties = async () => {
-        try {
-            setFeaturedError(null);
-            console.log('🏠 Loading featured properties (anti-blink version)');
-            
-            const properties = await getRecentProperties(8); // Get 8 recent properties for featured
-            const validProperties = Array.isArray(properties) ? properties : [];
-            
-            setFeaturedProperties(validProperties);
-            console.log(`✅ Featured loaded: ${validProperties.length} properties`);
-        } catch (e) {
-            console.error("Featured Properties Error:", e);
-            setFeaturedError("Could not load recent properties. Tap to retry.");
-            setFeaturedProperties([]); // Set empty array on error
-        } finally {
-            setIsFeaturedLoading(false);
-        }
-    };
-
-    // Load Properties - ONLY for manual refresh (pull to refresh)
+    // Load properties from API
     const loadProperties = useCallback(async () => {
-        console.log('🔄 Manual refresh triggered');
-        if (!isRefreshing) {
-            setIsFeaturedLoading(true);
-            setIsNearbyLoading(true);
-        }
-
-        await Promise.all([
-            loadFeaturedProperties(),
-            loadNearbyProperties(), // No parameters needed since it loads recent properties
-            loadFavorites(),
-        ]);
-
-        setIsRefreshing(false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // No dependencies - always use current state values
-
-    const onRefresh = useCallback(() => {
-        setIsRefreshing(true);
-        loadProperties();
-    }, [loadProperties]);
-
-    // Initial data load - OPTIMIZED for second-time login prevention + Independent location
-    useEffect(() => {
-        const initialLoad = async () => {
-            console.log('🚀 Initial load started - Session:', userLoginSession.current);
+        setIsLoadingProperties(true);
+        
+        try {
+            console.log('🔄 Loading properties from API...');
             
-            // Prevent double loading on second login
-            if (hasLoadedData.current) {
-                console.log('⏭️ Data already loaded, skipping...');
-                return;
-            }
+            // Debug API issues
+            await debugPropertyAPIs();
             
-            setIsFeaturedLoading(true);
-            setIsNearbyLoading(true);
+            // Check authentication status
+            await checkAuthStatus();
             
-            // Load all data in parallel
-            await Promise.all([
-                loadFeaturedProperties(),
-                loadFavorites(),
-                loadUserAvatar(), // Load avatar here to prevent focus reload
+            // Load all property types in parallel
+            const [recentResponse, residentialResponse, commercialResponse] = await Promise.allSettled([
+                getRecentProperties(),  // Public API - should always work
+                getResidentialProperties(), // Requires auth
+                getCommercialProperties()   // Requires auth
             ]);
             
-            // Load saved location settings (independent from user profile)
-            try {
-                const savedLocation = await AsyncStorage.getItem('userLocation');
-                const savedLocationName = await AsyncStorage.getItem('selectedLocationName');
-                
-                let lat = 28.7041; // Default Delhi
-                let lng = 77.1025;
-                let locationName = 'Delhi, India';
-                
-                if (savedLocation) {
-                    try {
-                        const parsed = JSON.parse(savedLocation);
-                        if (parsed.latitude && parsed.longitude) {
-                            lat = parsed.latitude;
-                            lng = parsed.longitude;
-                            setUserLocation({ latitude: lat, longitude: lng });
-                            console.log('📍 Using saved coordinates:', lat, lng);
-                        }
-                    } catch (e) {
-                        console.log('📍 Using default Delhi coordinates');
-                    }
-                }
-                
-                if (savedLocationName) {
-                    locationName = savedLocationName;
-                    setSelectedManualLocation(savedLocationName);
-                    setCityName(savedLocationName);
-                    console.log('📍 Using saved location name:', savedLocationName);
+            console.log('📊 API Response Status:', {
+                recent: recentResponse.status,
+                residential: residentialResponse.status, 
+                commercial: commercialResponse.status
+            });
+            
+            // Handle featured/recent properties (always try this first)
+            if (recentResponse.status === 'fulfilled') {
+                if (recentResponse.value.success) {
+                    const recentData = recentResponse.value.data || recentResponse.value.properties || [];
+                    console.log('📦 Recent data received:', recentData.length, 'properties');
+                    console.log('🔍 Sample property:', recentData[0] || 'None');
+                    setFeaturedProperties(Array.isArray(recentData) ? recentData : []);
+                    console.log('✅ Featured properties loaded:', recentData.length);
                 } else {
-                    setCityName(locationName);
+                    console.warn('⚠️ Recent API returned success=false:', recentResponse.value.message);
+                    setFeaturedProperties(DUMMY_PROPERTIES);
                 }
-                
-                // Load recent properties (no location dependency needed)
-                await loadNearbyProperties();
-                
-            } catch (error) {
-                console.error('Error loading saved settings:', error);
-                // Fallback - still load recent properties
-                await loadNearbyProperties();
+            } else {
+                console.error('❌ Recent API call failed completely:', recentResponse.reason);
+                setFeaturedProperties(DUMMY_PROPERTIES);
             }
             
-            // Mark initial mount as complete and data as loaded
-            isInitialMount.current = false;
-            hasLoadedData.current = true;
-            console.log('✅ Initial load complete - Recent properties system ready');
-        };
-        
-        initialLoad();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Empty dependency array - only run once on mount
-
-    // REMOVED location change effect since we're now showing recent properties instead of location-based
-
-    // Load user avatar - OPTIMIZED to prevent second login reload
-    const loadUserAvatar = useCallback(async () => {
-        try {
-            const data = await getCurrentUserProfile();
-            const avatarUrl = (Array.isArray(data.photosAndVideo) && data.photosAndVideo.length > 0)
-                ? data.photosAndVideo[0]
-                : (data.avatar || null);
-            setAvatar(avatarUrl);
-            setAvatarVersion(Date.now());
-        } catch (e) {
-            console.warn('Failed to load user avatar:', e);
+            // Handle residential properties (requires authentication)
+            if (residentialResponse.status === 'fulfilled') {
+                if (residentialResponse.value.success) {
+                    const residentialData = residentialResponse.value.data || residentialResponse.value.properties || [];
+                    console.log('📦 Residential data received:', residentialData.length, 'properties');
+                    const filteredResidential = residentialData.filter(p => p.propertyType === 'Residential');
+                    setResidentialProperties(Array.isArray(filteredResidential) ? filteredResidential : []);
+                    console.log('✅ Residential properties loaded:', filteredResidential.length);
+                } else {
+                    console.warn('⚠️ Residential API failed:', residentialResponse.value.message);
+                    // If auth failed, use recent properties filtered by type
+                    const fallbackResidential = featuredProperties.filter(p => p.propertyType === 'Residential');
+                    setResidentialProperties(fallbackResidential.length > 0 ? fallbackResidential : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
+                }
+            } else {
+                console.error('❌ Residential API call failed:', residentialResponse.reason);
+                const fallbackResidential = featuredProperties.filter(p => p.propertyType === 'Residential');
+                setResidentialProperties(fallbackResidential.length > 0 ? fallbackResidential : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
+            }
+            
+            // Handle commercial properties (requires authentication)
+            if (commercialResponse.status === 'fulfilled') {
+                if (commercialResponse.value.success) {
+                    const commercialData = commercialResponse.value.data || commercialResponse.value.properties || [];
+                    console.log('📦 Commercial data received:', commercialData.length, 'properties');
+                    const filteredCommercial = commercialData.filter(p => p.propertyType === 'Commercial');
+                    setCommercialProperties(Array.isArray(filteredCommercial) ? filteredCommercial : []);
+                    console.log('✅ Commercial properties loaded:', filteredCommercial.length);
+                } else {
+                    console.warn('⚠️ Commercial API failed:', commercialResponse.value.message);
+                    // If auth failed, use recent properties filtered by type
+                    const fallbackCommercial = featuredProperties.filter(p => p.propertyType === 'Commercial');
+                    setCommercialProperties(fallbackCommercial.length > 0 ? fallbackCommercial : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
+                }
+            } else {
+                console.error('❌ Commercial API call failed:', commercialResponse.reason);
+                const fallbackCommercial = featuredProperties.filter(p => p.propertyType === 'Commercial');
+                setCommercialProperties(fallbackCommercial.length > 0 ? fallbackCommercial : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
+            }
+            
+        } catch (error) {
+            console.error('❌ Error loading properties:', error);
+            // Fallback to dummy data on error
+            setFeaturedProperties(DUMMY_PROPERTIES);
+            setResidentialProperties(DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
+            setCommercialProperties(DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
+        } finally {
+            setIsLoadingProperties(false);
+            
+            // Final summary
+            console.log('📊 Final property counts:', {
+                featured: featuredProperties.length,
+                residential: residentialProperties.length,
+                commercial: commercialProperties.length
+            });
         }
     }, []);
 
-    // Listen for saved property updates
+    const onRefresh = useCallback(async () => {
+        setIsRefreshing(true);
+        await loadProperties();
+        setIsRefreshing(false);
+    }, []); // Empty dependency array to prevent function recreation
+
+    // Load properties on component mount
+    useEffect(() => {
+        loadProperties();
+        loadSavedProperties();
+    }, []); // Empty dependency array to run only once on mount
+
+    // Listen for navigation focus to refresh data AND handle refresh params
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            console.log('Home screen focused - checking for refresh...');
+            
+            // Check for refresh param
+            const params = navigation.getState()?.routes?.find(route => route.name === 'Home')?.params;
+            if (params?.refresh) {
+                console.log('Forced refresh requested from params');
+                loadProperties();
+                loadSavedProperties();
+                // Clear the refresh param to avoid infinite refresh
+                navigation.setParams({ refresh: false });
+            } else {
+                console.log('Normal focus refresh');
+                loadProperties();
+                loadSavedProperties();
+            }
+        });
+
+        return unsubscribe;
+    }, [navigation]); // Only depend on navigation, not the functions
+
+    // Load saved properties on mount
+    const loadSavedProperties = useCallback(async () => {
+        try {
+            const response = await propertyService.getSavedProperties();
+            if (response.success && response.savedProperties && Array.isArray(response.savedProperties)) {
+                const savedIds = response.savedProperties
+                    .filter(p => p !== null && p !== undefined) // Filter out null/undefined values
+                    .map(p => p._id || p.id)
+                    .filter(Boolean);
+                setFavorites(savedIds);
+                console.log('✅ Loaded saved properties:', savedIds.length);
+            }
+        } catch (error) {
+            console.error('Error loading saved properties:', error);
+        }
+    }, []);
+
+    // Listen for saved property updates (simplified for dummy data)
     useEffect(() => {
         const listener = DeviceEventEmitter.addListener('savedListUpdated', (event) => {
             if (event.action === 'removed') {
@@ -565,6 +472,22 @@ const Homescreen = ({ navigation }) => {
         });
 
         return () => listener.remove();
+    }, []);
+
+    // Auto-scroll banner effect
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentBannerIndex(prevIndex => {
+                const nextIndex = (prevIndex + 1) % BANNER_IMAGES.length;
+                bannerScrollRef.current?.scrollToIndex({
+                    index: nextIndex,
+                    animated: true,
+                });
+                return nextIndex;
+            });
+        }, 3000); // Change banner every 3 seconds
+
+        return () => clearInterval(interval);
     }, []);
 
     // Listen for notification updates
@@ -589,30 +512,43 @@ const Homescreen = ({ navigation }) => {
         return () => {
             notificationAddedListener.remove();
             notificationCountUpdatedListener.remove();
-            focusListener(); // In React Navigation v6+, this is a function, not an object with remove()
+            focusListener(); // This should be focusListener.remove() if it exists
         };
     }, [navigation]);
 
-    // REMOVED useFocusEffect - This was causing second-time login blinking!
-    // All data loads happen only once on mount now
-    // User avatar and favorites are loaded in initial load, no need to reload on focus
-
-    // Component Logic
-    const toggleFavorite = async (id) => {
-        const isCurrentlySaved = favorites.includes(id);
-        setFavorites((prev) => (isCurrentlySaved ? prev.filter((f) => f !== id) : [...prev, id]));
+    // Component Logic - Toggle property save/unsave
+    const toggleFavorite = async (propertyId) => {
+        if (loadingSaveProperty === propertyId) return; // Prevent multiple clicks
+        
+        const isCurrentlySaved = favorites.includes(propertyId);
+        setLoadingSaveProperty(propertyId);
+        
         try {
+            let response;
             if (isCurrentlySaved) {
-                await removeSavedProperty(id);
-                DeviceEventEmitter.emit('savedListUpdated', { propertyId: id, action: 'removed' });
+                // Remove from saved
+                response = await propertyService.removeSavedProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => prev.filter((f) => f !== propertyId));
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'removed' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to remove property from saved list');
+                }
             } else {
-                await toggleSaveProperty(id);
-                DeviceEventEmitter.emit('savedListUpdated', { propertyId: id, action: 'added' });
+                // Save property
+                response = await propertyService.saveProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => [...prev, propertyId]);
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'added' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to save property');
+                }
             }
-        } catch (e) {
-            console.error('Failed to toggle save', e);
-            Alert.alert('Error', isCurrentlySaved ? 'Could not remove saved property.' : 'Could not save property.');
-            setFavorites((prev) => (isCurrentlySaved ? [...prev, id] : prev.filter((f) => f !== id)));
+        } catch (error) {
+            console.error('Toggle favorite error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setLoadingSaveProperty(null);
         }
     };
 
@@ -621,7 +557,7 @@ const Homescreen = ({ navigation }) => {
         <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{title}</Text>
             {showSeeAll && (
-                <TouchableOpacity onPress={onSeeAllPress}>
+                <TouchableOpacity onPress={onSeeAllPress} activeOpacity={0.8}>
                     <Text style={styles.seeAllText}>See all</Text>
                 </TouchableOpacity>
             )}
@@ -632,33 +568,50 @@ const Homescreen = ({ navigation }) => {
         navigation.navigate(screenName);
     };
 
-    const openProperty = async (item) => {
-        try {
-            const pid = item?._id || item?.id || item?.propertyId || null;
-            if (!pid) {
-                navigation.navigate('PropertyDetailsScreen', { property: item });
-                return;
-            }
-
-            const flag = await AsyncStorage.getItem(`inquirySubmitted:${pid}`);
-            if (flag) {
-                navigation.navigate('PropertyDetailsScreen', { property: item });
-            } else {
-                navigation.navigate('PropertyInquiryFormScreen', { property: item });
-            }
-        } catch (e) {
-            navigation.navigate('PropertyInquiryFormScreen', { property: item });
-        }
-    };
-
-    // For Recent Estates section - always open inquiry form
-    const openPropertyForInquiry = (item) => {
-        navigation.navigate('PropertyInquiryFormScreen', { property: item });
+    const openProperty = (item) => {
+        navigation.navigate('PropertyDetailsScreen', { property: item });
     };
 
     const handleChatPress = () => {
         setHasUnreadMessages(false);
         navigation.navigate('ChatListScreen');
+    };
+
+    // Property action button handlers
+    const handlePhoneCall = (property) => {
+        const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
+        const phoneUrl = `tel:${phoneNumber}`;
+        
+        // Use React Native Linking to open phone dialer
+        import('react-native').then(({ Linking }) => {
+            Linking.openURL(phoneUrl).catch((err) => {
+                console.error('Error opening phone dialer:', err);
+                Alert.alert('Error', 'Could not open phone dialer');
+            });
+        });
+    };
+
+    const handleWhatsApp = (property) => {
+        const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
+        const message = encodeURIComponent(`Hi, I'm interested in your property: ${property.description || property.title || 'Property'}`);
+        const whatsappUrl = `whatsapp://send?phone=+91${phoneNumber}&text=${message}`;
+        
+        import('react-native').then(({ Linking }) => {
+            Linking.openURL(whatsappUrl).catch((err) => {
+                console.error('Error opening WhatsApp:', err);
+                Alert.alert('Error', 'WhatsApp is not installed or could not be opened');
+            });
+        });
+    };
+
+    const handlePropertyChat = (property) => {
+        // Navigate to chat with property owner
+        navigation.navigate('ChatDetailScreen', { 
+            propertyId: property._id || property.id,
+            ownerId: property.ownerId || property.userId,
+            propertyTitle: property.description || property.title || 'Property',
+            ownerName: property.ownerName || 'Property Owner'
+        });
     };
 
     const handleNotificationPress = () => {
@@ -716,7 +669,7 @@ const Homescreen = ({ navigation }) => {
                         text: 'Fix FCM Issues',
                         onPress: async () => {
                             Alert.alert('Fixing FCM', 'Attempting to fix common FCM issues...');
-                            const { quickFixFCMIssues } = require('../utils/fcmTestService');
+                            const { quickFixFCMIssues } = await import('../utils/fcmTestService');
                             const fixResult = await quickFixFCMIssues();
                             await loadNotificationCount();
                             
@@ -810,7 +763,7 @@ const Homescreen = ({ navigation }) => {
 
     const handleSearchSubmit = () => {
         if (searchQuery.trim()) {
-            navigation.navigate('ServicesScreen', { query: searchQuery.trim() });
+            navigation.navigate('Services', { query: searchQuery.trim() });
             Keyboard.dismiss();
         }
     };
@@ -819,23 +772,10 @@ const Homescreen = ({ navigation }) => {
         Alert.alert('Voice Search', 'Voice search feature coming soon!');
     };
 
-    // Function to handle distance change
-    const handleDistanceChange = (distance) => {
-        setSearchDistance(distance);
-        if (userLocation) {
-            loadNearbyProperties(userLocation.latitude, userLocation.longitude);
-        }
-    };
+    // Distance-based filtering removed
 
-    // Memoize featured properties - ULTIMATE ANTI-BLINK VERSION
+    // Process featured properties for display
     const processedFeaturedProperties = useMemo(() => {
-        if (!featuredProperties || featuredProperties.length === 0) {
-            console.log('🚫 No featured properties to process');
-            return [];
-        }
-        
-        console.log('🖼️ Processing featured properties (STABLE):', featuredProperties.length);
-        
         return featuredProperties.map((item, index) => {
             const firstImage = getFirstImageUrl(item.photosAndVideo);
             const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
@@ -843,26 +783,20 @@ const Homescreen = ({ navigation }) => {
             return {
                 ...item,
                 processedImageUrl: imageUrl,
-                stableKey: `featured_${item._id || index}` // Add stable key
+                stableKey: `featured_${item._id || index}`
             };
         });
-    }, [featuredProperties]); // Simple dependency to prevent over-optimization
+    }, [featuredProperties]);
+
+    // Limit featured properties to display
+    const displayedFeaturedProperties = useMemo(() => {
+        return processedFeaturedProperties.slice(0, 15);
+    }, [processedFeaturedProperties]);
 
     // Render Featured Content
     const renderFeaturedContent = () => {
-        if (isFeaturedLoading) {
-            return <ActivityIndicator size="large" color={theme.COLORS.primary} style={styles.loaderStyle} />;
-        }
-        if (featuredError) {
-            return (
-                <TouchableOpacity onPress={loadProperties} style={styles.retryContainer}>
-                    <Text style={styles.errorText}>⚠️ {featuredError}</Text>
-                    <Text style={styles.retryText}>Tap to Retry</Text>
-                </TouchableOpacity>
-            );
-        }
-        if (processedFeaturedProperties.length === 0) {
-            return <Text style={styles.noDataText}>No recent estates found.</Text>;
+        if (displayedFeaturedProperties.length === 0) {
+            return <Text style={styles.noDataText}>No properties found.</Text>;
         }
 
         return (
@@ -871,53 +805,107 @@ const Homescreen = ({ navigation }) => {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.horizontalScrollContainer}
             >
-                {processedFeaturedProperties.map((item, index) => {
+                {displayedFeaturedProperties.map((item, index) => {
                     // Prepare media items for MediaCard
                     const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                        ? item.photosAndVideo.map(media => ({
-                            uri: formatImageUrl(media.uri || media) || media.uri || media,
-                            type: media.type || (media.uri?.includes('.mp4') || media.uri?.includes('.mov') || media.uri?.includes('.avi') ? 'video' : 'image')
-                        }))
+                        ? item.photosAndVideo.map(media => {
+                            const originalUri = media.uri || media;
+                            const formattedUri = formatImageUrl(originalUri);
+                            return {
+                                uri: formattedUri || originalUri,
+                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
+                            };
+                        })
                         : [{ uri: item.processedImageUrl, type: 'image' }];
 
                     return (
                         <TouchableOpacity
-                            key={item.stableKey} // Use stable key instead of _id
-                            style={styles.featuredCard}
+                            key={item.stableKey}
+                            style={styles.featuredHouseCard}
                             onPress={() => openProperty(item)}
                             activeOpacity={0.9}
                         >
-                            <View style={styles.featuredMediaContainer}>
+                            {/* Property Image with MediaCard */}
+                            <View style={styles.featuredHouseImageContainer}>
                                 <MediaCard
                                     mediaItems={mediaItems}
                                     fallbackImage={FALLBACK_IMAGE_URI}
-                                    imageStyle={styles.featuredMediaImage}
-                                    showControls={true}
+                                    imageStyle={styles.featuredHouseImage}
+                                    showControls={false}
                                     autoPlay={false}
-                                    style={styles.featuredMediaCard}
+                                    style={styles.featuredHouseMediaCard}
                                 />
-                                <LinearGradient 
-                                    colors={["transparent", theme.COLORS.overlay]} 
-                                    style={styles.featuredOverlay} 
-                                />
+                                
+                                {/* Favorite Icon - Top Left */}
                                 <TouchableOpacity 
                                     onPress={() => toggleFavorite(item._id)} 
-                                    style={styles.favoriteIconContainer}
+                                    style={styles.featuredHouseFavoriteIcon}
+                                    activeOpacity={0.7}
+                                    disabled={loadingSaveProperty === item._id}
                                 >
-                                    <Icon
-                                        name={favorites.includes(item._id) ? "heart" : "heart-outline"}
-                                        size={22}
-                                        color={favorites.includes(item._id) ? theme.COLORS.accent : theme.COLORS.white}
-                                    />
+                                    {loadingSaveProperty === item._id ? (
+                                        <ActivityIndicator size="small" color="#EF4444" />
+                                    ) : (
+                                        <Icon
+                                            name={favorites.includes(item._id) ? "heart" : "heart-outline"}
+                                            size={20}
+                                            color={favorites.includes(item._id) ? "#EF4444" : "#64748B"}
+                                        />
+                                    )}
                                 </TouchableOpacity>
-                                <View style={styles.featuredInfo}>
-                                    <Text style={styles.featuredTitle} numberOfLines={1}>
-                                        {item.description || 'Property'}
+
+                                {/* Property Type Badge - Bottom Left */}
+                                <View style={styles.propertyTypeBadge}>
+                                    <Text style={styles.propertyTypeText}>
+                                        {item.purpose || 'Apartment'}
                                     </Text>
-                                    <Text style={styles.featuredLocation}>
-                                        {item.propertyLocation || 'Unknown Location'}
+                                </View>
+                            </View>
+
+                            {/* Property Details - Right Side */}
+                            <View style={styles.featuredHouseDetails}>
+                                {/* Title */}
+                                <Text style={styles.featuredHouseTitle} numberOfLines={2}>
+                                    {item.description || 'Sky Dandelions Apartment'}
+                                </Text>
+
+                                {/* Location */}
+                                <View style={styles.featuredHouseLocation}>
+                                    <Icon name="location-outline" size={12} color="#64748B" />
+                                    <Text style={styles.featuredHouseLocationText} numberOfLines={1}>
+                                        {item.propertyLocation || 'Jakarta, Indonesia'}
                                     </Text>
-                                    <Text style={styles.featuredPrice}>{formatPrice(item.price)}</Text>
+                                </View>
+
+                                {/* Price */}
+                                <Text style={styles.featuredHousePrice}>
+                                    {formatPrice(item.price)}
+                                    <Text style={styles.featuredHousePriceUnit}>/month</Text>
+                                </Text>
+                                
+                                {/* Action Buttons */}
+                                <View style={styles.propertyActionButtons}>
+                                    <TouchableOpacity 
+                                        style={styles.actionButton}
+                                        onPress={() => handlePhoneCall(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="call" size={16} color="#FFFFFF" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                                        onPress={() => handleWhatsApp(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="logo-whatsapp" size={16} color="#FFFFFF" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                                        onPress={() => handlePropertyChat(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="chatbubble-outline" size={16} color="#FFFFFF" />
+                                    </TouchableOpacity>
                                 </View>
                             </View>
                         </TouchableOpacity>
@@ -927,283 +915,330 @@ const Homescreen = ({ navigation }) => {
         );
     };
 
-    // Memoize nearby properties - ULTIMATE ANTI-BLINK VERSION  
-    const processedNearbyProperties = useMemo(() => {
-        if (!nearbyProperties || nearbyProperties.length === 0) {
-            console.log('🚫 No nearby properties to process');
-            return [];
-        }
-        
-        console.log('🏡 Processing nearby properties (STABLE):', nearbyProperties.length);
-        
-        return nearbyProperties.map((item, index) => {
+    // Process properties by category
+    const processedProperties = useMemo(() => {
+        const residential = residentialProperties.map((item, index) => {
             const firstImage = getFirstImageUrl(item.photosAndVideo);
             const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
             
             return {
                 ...item,
                 processedImageUrl: imageUrl,
-                stableKey: `nearby_${item._id || index}` // Add stable key
+                stableKey: `residential_${item._id || index}`
             };
         });
-    }, [nearbyProperties]); // Simple dependency
+        
+        const commercial = commercialProperties.map((item, index) => {
+            const firstImage = getFirstImageUrl(item.photosAndVideo);
+            const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
+            
+            return {
+                ...item,
+                processedImageUrl: imageUrl,
+                stableKey: `commercial_${item._id || index}`
+            };
+        });
+        
+        return { residential, commercial };
+    }, [residentialProperties, commercialProperties]);
 
-    // Render Nearby Content
-    // Render Recent Properties Content (formerly nearby)
-    const renderNearbyContent = () => {
+    // Limit properties for home screen display
+    const displayedResidentialProperties = useMemo(() => {
+        return processedProperties.residential.slice(0, 20);
+    }, [processedProperties]);
+
+    const displayedCommercialProperties = useMemo(() => {
+        return processedProperties.commercial.slice(0, 20);
+    }, [processedProperties]);
+
+    // Render Residential Properties (Horizontal List)
+    const renderResidentialContent = () => {
+        if (displayedResidentialProperties.length === 0) {
+            return <Text style={styles.noDataText}>No residential properties found.</Text>;
+        }
+
+        return (
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScrollContainer}
+            >
+                {displayedResidentialProperties.map((item, index) => {
+                    const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
+                        ? item.photosAndVideo.map(media => {
+                            const originalUri = media.uri || media;
+                            const formattedUri = formatImageUrl(originalUri);
+                            return {
+                                uri: formattedUri || originalUri,
+                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
+                            };
+                        })
+                        : [{ uri: item.processedImageUrl, type: 'image' }];
+
+                    return (
+                        <TouchableOpacity
+                            key={item.stableKey}
+                            style={styles.residentialCard}
+                            onPress={() => openProperty(item)}
+                            activeOpacity={0.9}
+                        >
+                            {/* Property Image */}
+                            <View style={styles.residentialImageContainer}>
+                                <MediaCard
+                                    mediaItems={mediaItems}
+                                    fallbackImage={FALLBACK_IMAGE_URI}
+                                    imageStyle={styles.residentialImage}
+                                    showControls={false}
+                                    autoPlay={false}
+                                    style={styles.residentialMediaCard}
+                                />
+                            </View>
+
+                            {/* Property Details */}
+                            <View style={styles.residentialDetails}>
+                                {/* Title */}
+                                <Text style={styles.residentialTitle} numberOfLines={1}>
+                                    {item.description || 'Property Name'}
+                                </Text>
+
+                                {/* Location */}
+                                <View style={styles.residentialLocation}>
+                                    <Icon name="location-outline" size={13} color="#64748B" />
+                                    <Text style={styles.residentialLocationText} numberOfLines={1}>
+                                        {item.propertyLocation || 'Unknown Location'}
+                                    </Text>
+                                </View>
+
+                                {/* Price */}
+                                <Text style={styles.residentialPrice}>
+                                    {formatPrice(item.price)}
+                                </Text>
+                                
+                                {/* Action Buttons */}
+                                <View style={styles.propertyActionButtons}>
+                                    <TouchableOpacity 
+                                        style={styles.actionButton}
+                                        onPress={() => handlePhoneCall(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="call" size={14} color="#FFFFFF" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                                        onPress={() => handleWhatsApp(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                                        onPress={() => handlePropertyChat(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })}
+            </ScrollView>
+        );
+    };
+
+    // Render Commercial Properties
+    const renderCommercialContent = () => {
+        if (displayedCommercialProperties.length === 0) {
+            return <Text style={styles.noDataText}>No commercial properties found.</Text>;
+        }
+        
         return (
             <View>
-                {/* Recent Properties Listing - No location filters needed */}
-                {isNearbyLoading ? (
-                    <ActivityIndicator size="large" color={theme.COLORS.primary} style={styles.loaderStyle} />
-                ) : nearbyError ? (
-                    <TouchableOpacity onPress={() => loadNearbyProperties()} style={styles.retryContainer}>
-                        <Text style={[styles.errorText, { color: theme.COLORS.greyMedium }]}>⚠️ {nearbyError}</Text>
-                        <Text style={styles.retryText}>Tap to Retry</Text>
-                    </TouchableOpacity>
-                ) : processedNearbyProperties.length === 0 ? (
-                    <Text style={styles.noDataText}>
-                        No recent properties found.
-                    </Text>
-                ) : (
-                    <View style={styles.nearbyGrid}>
-                        {processedNearbyProperties.map((item, index) => {
+                <View style={styles.nearbyGrid}>
+                        {displayedCommercialProperties.map((item, index) => {
                             // Prepare media items for MediaCard
                             const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                                ? item.photosAndVideo.map(media => ({
-                                    uri: formatImageUrl(media.uri || media) || media.uri || media,
-                                    type: media.type || (media.uri?.includes('.mp4') || media.uri?.includes('.mov') || media.uri?.includes('.avi') ? 'video' : 'image')
-                                }))
+                                ? item.photosAndVideo.map(media => {
+                                    const originalUri = media.uri || media;
+                                    const formattedUri = formatImageUrl(originalUri);
+                                    return {
+                                        uri: formattedUri || originalUri,
+                                        type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
+                                    };
+                                })
                                 : [{ uri: item.processedImageUrl, type: 'image' }];
 
                             return (
                                 <TouchableOpacity
                                     key={item.stableKey} // Use stable key instead of _id
                                     style={styles.nearbyCard}
-                                    onPress={() => openPropertyForInquiry(item)}
+                                    onPress={() => openProperty(item)}
                                     activeOpacity={0.9}
                                 >
-                                    <MediaCard
-                                        mediaItems={mediaItems}
-                                        fallbackImage={FALLBACK_IMAGE_URI}
-                                        imageStyle={styles.nearbyImage}
-                                        showControls={true}
-                                        autoPlay={false}
-                                        style={styles.nearbyMediaCard}
-                                    />
+                                    <View style={styles.nearbyMediaContainer}>
+                                        <MediaCard
+                                            mediaItems={mediaItems}
+                                            fallbackImage={FALLBACK_IMAGE_URI}
+                                            imageStyle={styles.nearbyImage}
+                                            showControls={true}
+                                            autoPlay={false}
+                                            style={styles.nearbyMediaCard}
+                                        />
+                                        <TouchableOpacity 
+                                            onPress={() => toggleFavorite(item._id)} 
+                                            style={styles.nearbyFavoriteIcon}
+                                            activeOpacity={0.7}
+                                            disabled={loadingSaveProperty === item._id}
+                                        >
+                                            {loadingSaveProperty === item._id ? (
+                                                <ActivityIndicator size="small" color="#EF4444" />
+                                            ) : (
+                                                <Icon
+                                                    name={favorites.includes(item._id) ? "heart" : "heart-outline"}
+                                                    size={24}
+                                                    color={favorites.includes(item._id) ? "#EF4444" : "#6B7280"}
+                                                />
+                                            )}
+                                        </TouchableOpacity>
+                                    </View>
                                     <View style={styles.nearbyInfo}>
                                         <Text style={styles.nearbyTitle} numberOfLines={1}>
                                             {item.description || 'Estate'}
                                         </Text>
                                         <View style={styles.locationRow}>
-                                            <Icon name="location-outline" size={14} color={theme.COLORS.greyMedium} />
+                                            <Icon name="location-outline" size={12} color="#64748B" />
                                             <Text style={styles.nearbyLocation} numberOfLines={1}>
                                                 {item.propertyLocation || 'Unknown'}
                                             </Text>
                                         </View>
                                         <Text style={styles.nearbyPrice}>{formatPrice(item.price)}</Text>
+                                        
+                                        {/* Action Buttons */}
+                                        <View style={styles.propertyActionButtons}>
+                                            <TouchableOpacity 
+                                                style={styles.actionButton}
+                                                onPress={() => handlePhoneCall(item)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Icon name="call" size={14} color="#FFFFFF" />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                                                onPress={() => handleWhatsApp(item)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity 
+                                                style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                                                onPress={() => handlePropertyChat(item)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
+                                            </TouchableOpacity>
+                                        </View>
                                     </View>
                                 </TouchableOpacity>
                             );
                         })}
                     </View>
-                )}
-            </View>
+                </View>
         );
     };
 
-    // Function to fetch coordinates from a manually entered location
-    const getCoordsFromLocation = async (location) => {
-        try {
-            const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}`,
-                {
-                    headers: { 'User-Agent': 'GharplotApp/1.0' }
-                }
-            );
-            const data = await response.json();
-            if (data.length > 0) {
-                const { lat, lon } = data[0];
-                return { latitude: parseFloat(lat), longitude: parseFloat(lon) };
-            }
-            return null;
-        } catch (error) {
-            console.error('Geocoding error:', error);
-            return null;
-        }
-    };
+    // Manual location selection functionality removed
 
-    // Quick location suggestions for popular cities
-    const popularLocations = [
-        'Delhi', 'Mumbai', 'Bangalore', 'Pune', 'Hyderabad', 
-        'Chennai', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Lucknow'
-    ];
-
-    const handleQuickLocationSelect = async (locationName) => {
-        setManualLocationInput(locationName);
-        setIsLocating(true);
-        
-        try {
-            const coords = await getCoordsFromLocation(locationName);
-            if (coords) {
-                setUserLocation(coords);
-                setCityName(locationName);
-                setSelectedManualLocation(locationName);
-                
-                await AsyncStorage.setItem('userLocation', JSON.stringify(coords));
-                await AsyncStorage.setItem('selectedLocationName', locationName);
-                
-                await loadNearbyProperties(coords.latitude, coords.longitude);
-                setManualLocationInput('');
-                
-                console.log('✅ Quick location selected:', locationName);
-            }
-        } catch (error) {
-            console.error('Error selecting quick location:', error);
-        } finally {
-            setIsLocating(false);
-        }
-    };
-
-    // Handle manual location save - with improved UX
-    // Handle manual location save - COMPLETELY INDEPENDENT from signup/user profile
-    const handleSaveManualLocation = async () => {
-        const locationInput = manualLocationInput.trim();
-        
-        if (!locationInput) {
-            Alert.alert('Invalid Input', 'Please enter a valid location name or address.');
-            return;
-        }
-
-        // Show loading state
-        setIsLocating(true);
-        
-        try {
-            console.log('🔍 Searching for location:', locationInput);
-            const coords = await getCoordsFromLocation(locationInput);
-            
-            if (coords) {
-                // Update location state with new coordinates
-                setUserLocation(coords);
-                setCityName(locationInput);
-                setSelectedManualLocation(locationInput);
-
-                // Save to AsyncStorage for persistence
-                await AsyncStorage.setItem('userLocation', JSON.stringify(coords));
-                await AsyncStorage.setItem('selectedLocationName', locationInput);
-                console.log('✅ Manual location saved:', locationInput, coords);
-
-                // Load nearby properties based on new coordinates
-                await loadNearbyProperties(coords.latitude, coords.longitude);
-
-                // Clear input and exit editing mode
-                setManualLocationInput('');
-                setIsEditingLocation(false);
-                
-                Alert.alert('Success', `🎯 Location set to: ${locationInput}\n\nNow showing properties near this location!`);
-            } else {
-                Alert.alert(
-                    'Location Not Found', 
-                    `Could not find "${locationInput}". Please try:\n• Different spelling\n• City name only\n• Full address with city`
-                );
-            }
-        } catch (error) {
-            console.error('❌ Error setting manual location:', error);
-            Alert.alert('Error', 'Failed to set location. Please check your internet connection and try again.');
-        } finally {
-            setIsLocating(false);
-        }
-    };
-
-    // 🚀 FINAL NUCLEAR ANTI-BLINK - Stable render key
-    const stableRenderKey = useMemo(() => 
-        `home_${featuredProperties.length}_${nearbyProperties.length}`, 
-        [featuredProperties.length, nearbyProperties.length]
-    );
+    // Stable render key
+    const stableRenderKey = useMemo(() => {
+        return 'home_dummy_data';
+    }, []);
 
     return (
         <SafeAreaView style={styles.container} key={stableRenderKey}>
-            {/* Fixed Banner Container */}
-            <View style={[styles.fixedBannerContainer, { height: BANNER_HEIGHT }]}>
-                <Image
-                    source={require("../assets/image_banner7.png")}
-                    style={[styles.bannerImage, { height: BANNER_HEIGHT }]}
-                />
-
-                {/* Header Row */}
-                <View style={styles.headerRow}>
-                    <TouchableOpacity 
-                        activeOpacity={0.85} 
-                        onPress={() => navigation.navigate('ProfileScreen')}
-                    >
+            {/* Modern Header with Gradient */}
+            <LinearGradient
+                colors={['#FFFFFF', '#FFFFFF', '#FFFFFF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.modernHeader}
+            >
+                {/* Top Row */}
+                <View style={styles.headerTopRow}>
+                    <View style={styles.logoContainer}>
                         <Image 
-                            style={styles.logo} 
-                            source={require("../assets/Blue_logo.png")} 
+                            source={require('../assets/Kirayedar_logo.png')}
+                            style={styles.headerLogoImage}
+                            resizeMode="contain"
                         />
-                    </TouchableOpacity>
+                    </View>
 
-                    <View style={styles.headerRightContainer}>
-                        <TouchableOpacity 
-                            style={styles.postPropertyButton} 
-                            onPress={() => handleQuickAction('AddSell')}
-                        >
-                            <Text style={styles.postPropertyText}>Post property</Text>
-                            <View style={styles.freeBadge}>
-                                <Text style={styles.freeText}>FREE</Text>
-                            </View>
-                        </TouchableOpacity>
+                    <View style={styles.headerSpacer}>
+                    </View>
 
-                        <TouchableOpacity
-                            style={styles.notificationIconContainer}
-                            onPress={handleNotificationPress}
-                            onLongPress={handleAddTestNotifications}
-                            activeOpacity={0.8}
-                        >
-                            <LinearGradient
-                                colors={["#6fb1ff", "#2f86f6"]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                                style={styles.notificationGradient}
-                            >
-                                <View style={styles.notificationIconInner}>
-                                    <Icon 
-                                        name="notifications-outline" 
-                                        size={20} 
-                                        color={theme.COLORS.white} 
-                                    />
-                                </View>
-                            </LinearGradient>
-
+                    <TouchableOpacity
+                        style={styles.notificationButtonModern}
+                        onPress={handleNotificationPress}
+                        onLongPress={handleAddTestNotifications}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.notificationIconModern}>
+                            <Icon 
+                                name="notifications-outline" 
+                                size={20} 
+                                color="#1A1A1A" 
+                            />
                             {notificationCount > 0 && (
-                                <View style={styles.notificationBadgeHeader}>
-                                    <Text style={styles.notificationBadgeText}>
+                                <View style={styles.notificationBadgeModern}>
+                                    <Text style={styles.notificationBadgeTextModern}>
                                         {notificationCount > 9 ? '9+' : notificationCount}
                                     </Text>
                                 </View>
                             )}
-                        </TouchableOpacity>
-                    </View>
+                        </View>
+                    </TouchableOpacity>
                 </View>
-            </View>
+            </LinearGradient>
 
-            {/* Fixed Search Bar */}
-            <View style={[styles.fixedSearchBarContainer, { top: BANNER_HEIGHT - OVERLAP_AMOUNT }]}>
-                <View style={[styles.searchBar, { height: SEARCH_BAR_HEIGHT }]}>
-                    <TouchableOpacity onLongPress={checkLoginStatus} activeOpacity={0.7}>
-                        <Icon name="search" size={20} color={theme.COLORS.greyMedium} />
-                    </TouchableOpacity>
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder="Search by services or category"
-                        placeholderTextColor={theme.COLORS.greyMedium}
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        onSubmitEditing={handleSearchSubmit}
-                        returnKeyType="search"
-                    />
-                    <TouchableOpacity onPress={handleVoiceSearch}>
-                        <Icon name="mic" size={20} color={theme.COLORS.greyMedium} />
-                    </TouchableOpacity>
+            {/* Modern Banner with Indicators */}
+            <View style={styles.bannerContainerModern}>
+                <FlatList
+                    ref={bannerScrollRef}
+                    data={BANNER_IMAGES}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    keyExtractor={(item) => item.id}
+                    onScrollToIndexFailed={(info) => {
+                        const wait = new Promise(resolve => setTimeout(resolve, 500));
+                        wait.then(() => {
+                            bannerScrollRef.current?.scrollToIndex({ index: info.index, animated: true });
+                        });
+                    }}
+                    renderItem={({ item }) => (
+                        <View style={styles.bannerSlideModern}>
+                            <Image
+                                source={item.source}
+                                style={styles.bannerImageModern}
+                            />
+                            <LinearGradient
+                                colors={['transparent', 'rgba(0,0,0,0.4)']}
+                                style={styles.bannerOverlay}
+                            />
+                        </View>
+                    )}
+                />
+                
+                {/* Banner Indicators */}
+                <View style={styles.bannerIndicators}>
+                    {BANNER_IMAGES.map((_, index) => (
+                        <View
+                            key={index}
+                            style={[
+                                styles.bannerDot,
+                                currentBannerIndex === index && styles.bannerDotActive
+                            ]}
+                        />
+                    ))}
                 </View>
             </View>
 
@@ -1214,8 +1249,8 @@ const Homescreen = ({ navigation }) => {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
                 <ScrollView
-                    contentContainerStyle={{ paddingBottom: 100 }}
-                    style={[styles.scrollableContent, { marginTop: FIXED_HEADER_HEIGHT }]}
+                    contentContainerStyle={{ paddingBottom: 60 }}
+                    style={styles.scrollableContent}
                     showsVerticalScrollIndicator={false}
                     refreshControl={
                         <RefreshControl
@@ -1226,64 +1261,59 @@ const Homescreen = ({ navigation }) => {
                     }
                     keyboardShouldPersistTaps="handled"
                 >
-                    {/* Quick Actions */}
-                    <View style={styles.quickActionsContainer}>
-                        {startedItems.map((item) => (
-                            <TouchableOpacity
-                                key={item.id}
-                                style={styles.iconCard}
-                                activeOpacity={0.8}
-                                onPress={() => handleQuickAction(item.screen)}
-                            >
-                                <LinearGradient
-                                    colors={["#9cc8eb", "#5da9f6"]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={styles.iconCircle}
+                    {/* Modern Get Started Section */}
+                    <View style={styles.getStartedSectionModern}>
+                        <Text style={styles.getStartedTitleModern}>Get Started</Text>
+                        <View style={styles.quickActionsRowModern}>
+                            {startedItems.map((item, index) => (
+                                <TouchableOpacity
+                                    key={item.id}
+                                    style={styles.actionButtonModern}
+                                    activeOpacity={0.6}
+                                    onPress={() => handleQuickAction(item.screen)}
                                 >
-                                    <View style={styles.iconInnerRing}>
-                                        <Icon 
-                                            name={item.icon} 
-                                            size={width * 0.07} 
-                                            color={theme.COLORS.white} 
-                                        />
+                                    <View style={styles.materialCard}>
+                                        <View style={[styles.floatingIconContainer, { backgroundColor: item.color }]}>
+                                            <Icon 
+                                                name={item.icon} 
+                                                size={20} 
+                                                color="#FFFFFF"
+                                            />
+                                        </View>
+                                        <View style={styles.cardContent}>
+                                            <Text style={styles.actionButtonTextModern}>{item.label}</Text>
+                                        </View>
                                     </View>
-                                </LinearGradient>
-                                <Text style={styles.iconLabel}>{item.label}</Text>
-                            </TouchableOpacity>
-                        ))}
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </View>
 
                     {/* Featured Houses */}
                     {renderSectionHeader(
-                        "Explore Recent Estates",
+                        "Featured Properties",
                         true,
                         () => navigation.navigate('AllPropertiesScreen', { category: 'Featured' })
                     )}
                     {renderFeaturedContent()}
 
-                    {/* All Properties (Second Section) */}
+                    {/* Residential Properties */}
                     {renderSectionHeader(
-                        `All Available Properties (${nearbyProperties.length} properties)`,
+                        "Residential",
                         true,
-                        () => navigation.navigate('AllPropertiesScreen', { category: 'All' })
+                        () => navigation.navigate('AllPropertiesScreen', { category: 'Residential' })
                     )}
-                    {nearbyDistance && nearbyProperties.length > 0 && (
-                        <Text style={styles.nearbyInfoText}>
-                            {nearbyDistance} - Complete property listing
-                        </Text>
-                    )}
+                    {renderResidentialContent()}
 
-                    {renderNearbyContent()}
+                    {/* Commercial Properties */}
+                    {renderSectionHeader(
+                        "Commercial",
+                        true,
+                        () => navigation.navigate('AllPropertiesScreen', { category: 'Commercial' })
+                    )}
+                    {renderCommercialContent()}
                 </ScrollView>
             </KeyboardAvoidingView>
-
-            {/* Floating Chat Button */}
-            <ChatButton
-                onPress={handleChatPress}
-                theme={theme}
-                hasUnreadMessages={hasUnreadMessages}
-            />
         </SafeAreaView>
     );
 };
@@ -1293,146 +1323,281 @@ export default Homescreen;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.COLORS.background,
-        paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
+        backgroundColor: '#f8fafc',
     },
-    fixedBannerContainer: {
-        position: 'absolute',
-        top: 0,
-        width: "100%",
-        zIndex: 1,
+    
+    // Modern Header Styles
+    modernHeader: {
+        paddingTop: Platform.OS === 'ios' ? 3 : StatusBar.currentHeight + 3,
+        paddingHorizontal: 16,
+        paddingBottom: 3,
+        borderBottomLeftRadius: 20,
+        borderBottomRightRadius: 20,
+        elevation: 8,
+        shadowColor: '#FDB022',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
     },
-    fixedSearchBarContainer: {
+    
+    headerTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 2,
+    },
+    
+    profileButtonModern: {
+        width: 45,
+        height: 45,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    
+    profileImageModern: {
+        width: 35,
+        height: 35,
+        borderRadius: 17,
+    },
+    
+    headerCenter: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    
+    greetingText: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.9)',
+        fontWeight: '500',
+    },
+    
+    appNameText: {
+        fontSize: 20,
+        color: '#fff',
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    
+    notificationButtonModern: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.4)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    
+    notificationIconModern: {
+        position: 'relative',
+    },
+    
+    notificationBadgeModern: {
         position: 'absolute',
+        top: -8,
+        right: -8,
+        backgroundColor: '#ef4444',
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    
+    notificationBadgeTextModern: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    
+    logoContainer: {
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        flex: 0,
+        marginLeft:-23,
+    },
+    
+    headerLogoImage: {
+        width: 150,
+        height: 50,
+    },
+    
+    headerSpacer: {
+        flex: 1,
+    },
+    
+    searchBarModern: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8fafc',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1,
+    },
+    
+    searchIcon: {
+        marginRight: 8,
+    },
+    
+    searchInputModern: {
+        flex: 1,
+        fontSize: 16,
+        color: '#374151',
+        fontWeight: '500',
+    },
+    
+    filterButton: {
+        padding: 8,
+        backgroundColor: 'rgba(243, 156, 18, 0.1)',
+        borderRadius: 8,
+        marginLeft: 10,
+    },
+    
+    headerContainer: {
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 1 : 1,
+        paddingBottom: 1,
+        backgroundColor: '#FFFFFF',
+        height: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 40 : 40,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 3,
+        zIndex: 3,
+    },
+    profilePlaceholder: {
+        width: 36,
+        height: 36,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 0,
+        borderRadius: 18,
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: '#FDB022',
+    },
+    profileImage: {
         width: '100%',
-        zIndex: 2,
-        paddingHorizontal: theme.SPACING.l,
+        height: '100%',
+    },
+    headerLogo: {
+        width: width * 0.3,
+        height: 38,
+        resizeMode: 'contain',
+        marginBottom: 0,
+    },
+    bannerContainer: {
+        width: "100%",
+        height: height * 0.28,
+        backgroundColor: '#F8FAFC',
+    },
+    bannerSlide: {
+        width: width,
+        height: height * 0.28,
     },
     bannerImage: {
         width: "100%",
-        borderBottomLeftRadius: 0,
-        borderBottomRightRadius: 0,
-    },
-    headerRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        position: "absolute",
-        top: Platform.OS === 'ios' ? 36 : (StatusBar.currentHeight ? Math.max(2, StatusBar.currentHeight - 10) : 4),
-        left: theme.SPACING.l,
-        right: theme.SPACING.l,
-        zIndex: 3,
-    },
-    logo: {
-        width: width * 0.46,
-        height: height * 0.12,
-        resizeMode: 'contain',
-        maxWidth: width * 0.75,
-        flexShrink: 1,
-        marginLeft: -2,
-        transform: [{ translateX: -20 }, { translateY: -30 }],
-    },
-    headerRightContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    postPropertyButton: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: theme.SPACING.s,
-        paddingHorizontal: theme.SPACING.m,
-        borderRadius: theme.RADIUS.m,
-        justifyContent: 'center',
-        minWidth: 110,
-        transform: [{ translateX: -25 }, { translateY: -23 }],
-    },
-    postPropertyText: {
-        color: theme.COLORS.primary,
-        fontWeight: "bold",
-        fontSize: theme.FONT_SIZES.body,
-    },
-    freeBadge: {
-        backgroundColor: theme.COLORS.secondary,
-        borderRadius: theme.RADIUS.s,
-        paddingHorizontal: theme.SPACING.xs,
-        marginLeft: theme.SPACING.xs,
-    },
-    freeText: {
-        color: theme.COLORS.white,
-        fontWeight: "bold",
-        fontSize: 10,
+        height: "100%",
+        resizeMode: 'cover',
     },
     notificationIconContainer: {
-        width: 46,
-        height: 46,
-        borderRadius: 24,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         justifyContent: "center",
         alignItems: "center",
         backgroundColor: 'transparent',
-        marginLeft: theme.SPACING.s,
         overflow: 'visible',
-        transform: [{ translateX: -34 }, { translateY: -22 }],
+        marginBottom: 0,
     },
     notificationGradient: {
         width: '100%',
         height: '100%',
-        borderRadius: 24,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 4,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.12,
+        padding: 3,
+        shadowColor: "#FDB022",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
         shadowRadius: 8,
-        elevation: 7,
-        borderWidth: 0.5,
-        borderColor: 'rgba(255,255,255,0.15)',
+        elevation: 6,
     },
     notificationIconInner: {
         width: '100%',
         height: '100%',
-        borderRadius: 24,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
     },
     notificationBadgeHeader: {
         position: 'absolute',
         top: -6,
         right: -6,
-        backgroundColor: theme.COLORS.notification,
-        borderRadius: 10,
-        minWidth: 18,
-        height: 18,
+        backgroundColor: '#EF4444',
+        borderRadius: 12,
+        minWidth: 20,
+        height: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 3,
+        paddingHorizontal: 4,
         zIndex: 6,
+        shadowColor: "#EF4444",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 6,
+        elevation: 8,
+        borderWidth: 2.5,
+        borderColor: '#FFFFFF',
     },
     notificationBadgeText: {
-        color: theme.COLORS.white,
+        color: '#FFFFFF',
         fontSize: 10,
-        fontWeight: '700',
+        fontWeight: '900',
+        letterSpacing: -0.3,
     },
     searchBar: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: theme.COLORS.white,
-        borderRadius: theme.RADIUS.m,
-        paddingHorizontal: theme.SPACING.m,
-        borderWidth: 1,
-        borderColor: theme.COLORS.greyLight,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 5,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderRadius: 20,
+        paddingHorizontal: 18,
+        borderWidth: 2,
+        borderColor: 'rgba(30, 144, 255, 0.15)',
+        shadowColor: "#FDB022",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+        elevation: 12,
     },
     searchInput: {
         flex: 1,
-        paddingHorizontal: theme.SPACING.s,
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyDark,
-        paddingVertical: Platform.OS === 'ios' ? theme.SPACING.s : 0,
+        paddingHorizontal: 12,
+        fontSize: 15,
+        color: '#1F2937',
+        fontWeight: '600',
+        paddingVertical: Platform.OS === 'ios' ? 12 : 0,
     },
     scrollableContent: {
         flex: 1
@@ -1442,78 +1607,165 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: theme.SPACING.l,
-        marginTop: theme.SPACING.l,
-        marginBottom: theme.SPACING.m,
+        marginTop: 32,
+        marginBottom: 18,
     },
     sectionTitle: {
-        fontSize: theme.FONT_SIZES.h3,
-        fontWeight: "700",
-        color: theme.COLORS.black,
+        fontSize: 22,
+        fontWeight: "800",
+        color: '#1F2937',
+        letterSpacing: -0.6,
+        flex: 1,
     },
     seeAllText: {
-        color: theme.COLORS.primary,
-        fontWeight: '600',
-        fontSize: theme.FONT_SIZES.body,
+        color: '#FDB022',
+        fontWeight: '700',
+        fontSize: 15,
+        letterSpacing: -0.3,
     },
     nearbyInfoText: {
-        fontSize: theme.FONT_SIZES.small,
-        color: theme.COLORS.greyMedium,
+        fontSize: 13,
+        color: '#475569',
         marginHorizontal: theme.SPACING.l,
-        marginTop: -theme.SPACING.s,
-        marginBottom: theme.SPACING.s,
-        fontStyle: 'italic',
+        marginTop: -4,
+        marginBottom: 16,
+        fontWeight: '600',
+        backgroundColor: 'rgba(30, 144, 255, 0.05)',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: '#FDB022',
+        shadowColor: "#FDB022",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
     },
-    quickActionsContainer: {
-        flexDirection: "row",
-        justifyContent: "space-around",
-        paddingHorizontal: theme.SPACING.l,
-        marginTop: theme.SPACING.xl,
-        transform: [{ translateY: -12 }],
+    
+    // Modern Get Started Styles
+    getStartedSectionModern: {
+        paddingHorizontal: 20,
+        marginTop: 25,
+        marginBottom: 20,
     },
-    iconCard: {
-        alignItems: "center",
-        width: width * 0.26,
+    
+    getStartedTitleModern: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#1f2937',
+        marginBottom: 20,
+        letterSpacing: -0.5,
     },
-    iconCircle: {
-        width: width * 0.18,
-        height: width * 0.18,
-        borderRadius: theme.RADIUS.m,
-        justifyContent: "center",
-        alignItems: "center",
-        padding: width * 0.02,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 5,
-        elevation: 6,
+    
+    quickActionsRowModern: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 12,
     },
-    iconInnerRing: {
-        width: '86%',
-        height: '86%',
-        borderRadius: theme.RADIUS.m * 0.8,
+    
+    actionButtonModern: {
+        flex: 1,
+        height: 95,
+        marginHorizontal: 4,
+    },
+    
+    materialCard: {
+        flex: 1,
+        backgroundColor: '#ffff',
+        borderRadius: 20,
+        position: 'relative',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 20,
+        
+        overflow: 'visible',
+        marginTop: 12,
+    },
+    
+    floatingIconContainer: {
+        position: 'absolute',
+        top: -12,
+        left: 12,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 8,
+        zIndex: 10,
     },
-    iconLabel: {
-        fontSize: theme.FONT_SIZES.body,
-        fontWeight: "600",
-        textAlign: "center",
-        color: theme.COLORS.greyDark,
-        marginTop: theme.SPACING.s,
+    
+    cardContent: {
+        flex: 1,
+        paddingTop: 24,
+        paddingHorizontal: 12,
+        paddingBottom: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+    },
+    
+    actionButtonTextModern: {
+        fontSize: 11,
+        fontWeight: '700',
+        textAlign: 'center',
+        lineHeight: 14,
+        color: '#374151',
+        letterSpacing: 0.3,
+        textTransform: 'uppercase',
+        marginTop: 4,
+    },
+    
+    actionButton: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 18,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        borderWidth: 1.5,
+        borderColor: '#F3F4F6',
+    },
+    
+    iconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
+    },
+    
+    actionButtonLabel: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: '#374151',
+        letterSpacing: -0.1,
+        textAlign: 'center',
+        lineHeight: 16,
+        marginTop: 2,
     },
     horizontalScrollContainer: {
         paddingHorizontal: theme.SPACING.l,
-        paddingBottom: theme.SPACING.l,
+        paddingBottom: 24,
+        paddingTop: 4,
     },
     featuredCard: {
         width: width * 0.75,
-        height: height * 0.25,
-        marginRight: theme.SPACING.m,
-        borderRadius: theme.RADIUS.l,
+        height: height * 0.28,
+        marginRight: 16,
+        borderRadius: 20,
         overflow: 'hidden',
+        backgroundColor: '#FFFFFF',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 5,
     },
     featuredImage: {
         width: '100%',
@@ -1522,109 +1774,157 @@ const styles = StyleSheet.create({
     },
     featuredOverlay: {
         ...StyleSheet.absoluteFillObject,
-        borderRadius: theme.RADIUS.l,
+        borderRadius: 20,
     },
     favoriteIconContainer: {
         position: 'absolute',
-        top: theme.SPACING.m,
-        right: theme.SPACING.m,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        padding: theme.SPACING.xs,
-        borderRadius: theme.RADIUS.full,
+        top: 12,
+        right: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        padding: 8,
+        borderRadius: 20,
         zIndex: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 3,
     },
     featuredInfo: {
-        padding: theme.SPACING.m,
+        padding: 16,
+        paddingBottom: 20,
     },
     featuredTitle: {
-        fontSize: theme.FONT_SIZES.h4,
+        fontSize: 16,
         fontWeight: '700',
-        color: theme.COLORS.white,
+        color: '#FFFFFF',
+        marginBottom: 6,
+        letterSpacing: -0.5,
+        textShadowColor: 'rgba(0, 0, 0, 0.5)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 4,
     },
     featuredLocation: {
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyLight,
-        marginBottom: theme.SPACING.xs,
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.9)',
+        marginBottom: 8,
+        fontWeight: '600',
+        textShadowColor: 'rgba(0, 0, 0, 0.4)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3,
     },
     featuredPrice: {
-        fontSize: theme.FONT_SIZES.h3,
-        fontWeight: 'bold',
-        color: theme.COLORS.white,
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        letterSpacing: -0.8,
+        textShadowColor: 'rgba(0, 0, 0, 0.5)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 4,
     },
     nearbyGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
         paddingHorizontal: theme.SPACING.l,
-        marginBottom: theme.SPACING.l,
+        marginBottom: 10,
+        marginTop: 4,
     },
     nearbyCard: {
-        width: (width - theme.SPACING.l * 2 - theme.SPACING.m) / 2,
-        marginBottom: theme.SPACING.m,
-        borderRadius: theme.RADIUS.m,
-        backgroundColor: theme.COLORS.white,
+        width: (width - theme.SPACING.l * 2 - 12) / 2,
+        marginBottom: 16,
+        borderRadius: 18,
+        backgroundColor: '#FFFFFF',
         overflow: 'hidden',
         shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+        elevation: 5,
+        borderWidth: 1,
+        borderColor: '#F9FAFB',
+    },
+    nearbyMediaContainer: {
+        position: 'relative',
+        width: '100%',
+    },
+    nearbyFavoriteIcon: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        padding: 6,
+        borderRadius: 20,
+        zIndex: 5,
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
         elevation: 3,
     },
     nearbyImage: {
         width: '100%',
-        height: 100,
-        borderTopLeftRadius: theme.RADIUS.m,
-        borderTopRightRadius: theme.RADIUS.m,
+        height: 120,
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
         resizeMode: 'cover',
+        backgroundColor: '#E5E7EB',
     },
     nearbyInfo: {
-        padding: theme.SPACING.s,
+        padding: 12,
+        paddingBottom: 14,
+        backgroundColor: '#FFFFFF',
     },
     nearbyTitle: {
-        fontSize: theme.FONT_SIZES.body,
+        fontSize: 14,
         fontWeight: '700',
-        color: theme.COLORS.black,
-        marginBottom: theme.SPACING.xs,
+        color: '#0F172A',
+        marginBottom: 6,
+        letterSpacing: -0.3,
+        lineHeight: 18,
     },
     locationRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: theme.SPACING.s,
+        marginBottom: 8,
     },
     nearbyLocation: {
-        fontSize: theme.FONT_SIZES.caption,
-        color: theme.COLORS.greyMedium,
-        marginLeft: 2,
+        fontSize: 11,
+        color: '#64748B',
+        marginLeft: 4,
+        flex: 1,
+        fontWeight: '500',
+        lineHeight: 14,
     },
     priceRatingRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: theme.SPACING.xs,
+        marginTop: 4,
     },
     nearbyPrice: {
-        fontSize: theme.FONT_SIZES.h4,
-        fontWeight: 'bold',
-        color: theme.COLORS.primary,
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#FDB022',
+        letterSpacing: -0.5,
     },
     pricePerMonth: {
-        fontSize: theme.FONT_SIZES.caption,
-        fontWeight: 'normal',
-        color: theme.COLORS.greyMedium,
+        fontSize: 11,
+        fontWeight: '600',
+        color: '#64748B',
     },
     ratingContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.COLORS.lightBackground,
-        borderRadius: 4,
+        backgroundColor: 'rgba(251, 191, 36, 0.15)',
+        borderRadius: 6,
         paddingHorizontal: 6,
-        paddingVertical: 2,
+        paddingVertical: 3,
     },
     ratingText: {
-        fontSize: theme.FONT_SIZES.caption,
-        fontWeight: '600',
-        color: theme.COLORS.greyDark,
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#F59E0B',
         marginLeft: 3,
     },
     loaderStyle: {
@@ -1634,276 +1934,593 @@ const styles = StyleSheet.create({
         padding: theme.SPACING.xl,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(239, 68, 68, 0.05)',
+        margin: theme.SPACING.l,
+        borderRadius: 16,
+        borderWidth: 2,
+        borderColor: 'rgba(239, 68, 68, 0.2)',
     },
     errorText: {
-        fontSize: theme.FONT_SIZES.h4,
-        color: theme.COLORS.notification,
-        fontWeight: '500',
+        fontSize: 16,
+        color: '#EF4444',
+        fontWeight: '800',
         textAlign: 'center',
-        marginBottom: theme.SPACING.xs,
+        marginBottom: 8,
     },
     retryText: {
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyMedium,
+        fontSize: 14,
+        color: '#FDB022',
+        fontWeight: '700',
         textDecorationLine: 'underline',
     },
     noDataText: {
         textAlign: 'center',
         padding: theme.SPACING.xl,
-        color: theme.COLORS.greyMedium,
-        fontSize: theme.FONT_SIZES.body,
+        color: '#64748B',
+        fontSize: 15,
+        fontWeight: '600',
     },
     floatingChatButton: {
         position: 'absolute',
-        bottom: 80,
-        right: theme.SPACING.m,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        bottom: 85,
+        right: 20,
+        width: 66,
+        height: 66,
+        borderRadius: 33,
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
+        shadowColor: "#FDB022",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 20,
         elevation: 15,
     },
     chatButtonInnerGlass: {
         width: '100%',
         height: '100%',
-        borderRadius: 30,
+        borderRadius: 33,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.4)',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255, 255, 255, 0.6)',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 3,
+        borderColor: '#FFE8CC',
         overflow: 'hidden',
     },
     notificationBadgeGlass: {
         position: 'absolute',
-        top: 0,
-        right: 0,
-        width: 15,
-        height: 15,
-        borderRadius: 7.5,
-        backgroundColor: theme.COLORS.notification,
-        borderWidth: 2,
-        borderColor: theme.COLORS.white,
+        top: -2,
+        right: -2,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: '#EF4444',
+        borderWidth: 3,
+        borderColor: '#FFFFFF',
+        shadowColor: "#EF4444",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 6,
+        elevation: 8,
     },
     locationFilterContainer: {
-        padding: theme.SPACING.m,
+        padding: 18,
         marginHorizontal: theme.SPACING.l,
-        marginBottom: theme.SPACING.m,
-        borderRadius: theme.RADIUS.m,
-        backgroundColor: theme.COLORS.white,
-        borderWidth: 1,
-        borderColor: theme.COLORS.greyLight,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-        elevation: 3,
-    },
-    locationRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: theme.SPACING.s,
+        marginBottom: 20,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderWidth: 2,
+        borderColor: 'rgba(30, 144, 255, 0.15)',
+        shadowColor: '#FDB022',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
     },
     locationText: {
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyDark,
-        fontWeight: '600',
-        marginLeft: 8,
+        fontSize: 15,
+        color: '#0F172A',
+        fontWeight: '800',
+        marginLeft: 10,
         flex: 1,
+        letterSpacing: -0.3,
     },
     locationButtonsRow: {
         flexDirection: 'row',
-        gap: 10,
-        marginBottom: theme.SPACING.s,
+        gap: 12,
+        marginBottom: 12,
     },
     locationButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: theme.COLORS.primary,
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-        borderRadius: theme.RADIUS.s,
+        backgroundColor: '#FDB022',
+        paddingVertical: 12,
+        paddingHorizontal: 18,
+        borderRadius: 14,
         flex: 1,
-        gap: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 2,
+        gap: 8,
+        shadowColor: '#FDB022',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 8,
     },
     editLocationButton: {
-        backgroundColor: theme.COLORS.white,
-        borderWidth: 1.5,
-        borderColor: theme.COLORS.primary,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderWidth: 2,
+        borderColor: '#FDB022',
     },
     locationButtonText: {
-        color: theme.COLORS.white,
-        fontWeight: '700',
-        fontSize: theme.FONT_SIZES.caption,
+        color: '#FFFFFF',
+        fontWeight: '800',
+        fontSize: 13,
+        letterSpacing: -0.3,
     },
     editLocationText: {
-        color: theme.COLORS.primary,
-        fontWeight: '700',
-        fontSize: theme.FONT_SIZES.body,
-        textDecorationLine: 'underline',
+        color: '#FDB022',
+        fontWeight: '800',
+        fontSize: 14,
+        letterSpacing: -0.3,
     },
     distanceFilterRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginTop: theme.SPACING.s,
+        marginTop: 12,
+        backgroundColor: 'rgba(30, 144, 255, 0.05)',
+        padding: 12,
+        borderRadius: 12,
     },
     distanceText: {
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyDark,
-        fontWeight: '600',
+        fontSize: 14,
+        color: '#0F172A',
+        fontWeight: '700',
     },
     distanceInput: {
-        width: 60,
-        height: 40,
-        borderWidth: 1,
-        borderColor: theme.COLORS.greyLight,
-        borderRadius: theme.RADIUS.s,
+        width: 65,
+        height: 44,
+        borderWidth: 2,
+        borderColor: '#FDB022',
+        borderRadius: 12,
         textAlign: 'center',
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyDark,
-        backgroundColor: theme.COLORS.lightBackground,
-        marginHorizontal: theme.SPACING.s,
-    },
-    applyButton: {
-        paddingVertical: theme.SPACING.xs,
-        paddingHorizontal: theme.SPACING.m,
-        backgroundColor: theme.COLORS.primary,
-        borderRadius: theme.RADIUS.s,
-        shadowColor: '#000',
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#0F172A',
+        backgroundColor: '#FFFFFF',
+        marginHorizontal: 10,
+        shadowColor: '#FDB022',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
+        shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 2,
     },
+    applyButton: {
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        backgroundColor: '#10B981',
+        borderRadius: 12,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
     applyButtonText: {
-        color: theme.COLORS.white,
-        fontWeight: '700',
-        fontSize: theme.FONT_SIZES.body,
+        color: '#FFFFFF',
+        fontWeight: '800',
+        fontSize: 14,
+        letterSpacing: -0.3,
     },
     manualLocationContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: theme.SPACING.m,
-        gap: 8,
+        marginBottom: 16,
+        gap: 10,
     },
     manualLocationInput: {
         flex: 1,
-        height: 46,
-        borderWidth: 1.5,
-        borderColor: theme.COLORS.primary,
-        borderRadius: theme.RADIUS.s,
-        paddingHorizontal: theme.SPACING.m,
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyDark,
-        backgroundColor: theme.COLORS.white,
-        fontWeight: '500',
+        height: 50,
+        borderWidth: 2,
+        borderColor: '#FDB022',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        fontSize: 15,
+        color: '#0F172A',
+        backgroundColor: '#FFFFFF',
+        fontWeight: '700',
+        shadowColor: '#FDB022',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
     },
     saveButton: {
-        width: 46,
-        height: 46,
+        width: 50,
+        height: 50,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: theme.COLORS.secondary,
-        borderRadius: theme.RADIUS.s,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 2,
+        backgroundColor: '#10B981',
+        borderRadius: 16,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
     },
     saveButtonText: {
-        color: theme.COLORS.white,
-        fontWeight: '700',
-        fontSize: theme.FONT_SIZES.body,
+        color: '#FFFFFF',
+        fontWeight: '800',
+        fontSize: 15,
     },
     disabledButton: {
         opacity: 0.5,
     },
     distanceUnitText: {
-        fontSize: theme.FONT_SIZES.body,
-        color: theme.COLORS.greyDark,
-        fontWeight: '600',
-        marginRight: theme.SPACING.s,
+        fontSize: 14,
+        color: '#0F172A',
+        fontWeight: '700',
+        marginRight: 8,
     },
-    // New styles for independent location selection
     selectedLocationContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.COLORS.lightBackground,
-        borderRadius: theme.RADIUS.s,
-        paddingHorizontal: theme.SPACING.m,
-        paddingVertical: theme.SPACING.s,
-        marginBottom: theme.SPACING.s,
-        borderWidth: 1,
-        borderColor: theme.COLORS.secondary,
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        marginBottom: 12,
+        borderWidth: 2,
+        borderColor: 'rgba(16, 185, 129, 0.3)',
     },
     selectedLocationText: {
         flex: 1,
-        fontSize: theme.FONT_SIZES.caption,
-        color: theme.COLORS.greyDark,
-        fontWeight: '600',
-        marginLeft: 6,
+        fontSize: 13,
+        color: '#059669',
+        fontWeight: '800',
+        marginLeft: 8,
+        letterSpacing: -0.3,
     },
     clearLocationButton: {
-        padding: 4,
+        padding: 6,
     },
-    // Quick location buttons styles
     quickLocationsContainer: {
-        marginBottom: theme.SPACING.m,
+        marginBottom: 16,
     },
     quickLocationsTitle: {
-        fontSize: theme.FONT_SIZES.caption,
-        color: theme.COLORS.greyDark,
-        fontWeight: '600',
-        marginBottom: theme.SPACING.s,
+        fontSize: 13,
+        color: '#475569',
+        fontWeight: '700',
+        marginBottom: 10,
+        letterSpacing: -0.2,
     },
     quickLocationsScroll: {
         paddingRight: theme.SPACING.l,
     },
     quickLocationButton: {
-        backgroundColor: theme.COLORS.lightBackground,
-        borderRadius: theme.RADIUS.s,
-        paddingHorizontal: theme.SPACING.m,
-        paddingVertical: theme.SPACING.s,
-        marginRight: theme.SPACING.s,
-        borderWidth: 1,
-        borderColor: theme.COLORS.primary,
+        backgroundColor: 'rgba(30, 144, 255, 0.08)',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        marginRight: 10,
+        borderWidth: 2,
+        borderColor: 'rgba(30, 144, 255, 0.2)',
+        shadowColor: '#FDB022',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
     },
     quickLocationText: {
-        fontSize: theme.FONT_SIZES.caption,
-        color: theme.COLORS.primary,
-        fontWeight: '600',
+        fontSize: 13,
+        color: '#FDB022',
+        fontWeight: '800',
+        letterSpacing: -0.3,
     },
-    // MediaCard related styles
     featuredMediaContainer: {
         position: 'relative',
-        borderRadius: theme.RADIUS.l,
+        borderRadius: 28,
         overflow: 'hidden',
+        height: '100%',
     },
     featuredMediaCard: {
-        borderRadius: theme.RADIUS.l,
+        borderRadius: 28,
+        height: '100%',
     },
     featuredMediaImage: {
         width: '100%',
-        height: 180,
-        borderRadius: theme.RADIUS.l,
+        height: '100%',
+        borderRadius: 28,
     },
     nearbyMediaCard: {
-        borderTopLeftRadius: theme.RADIUS.m,
-        borderTopRightRadius: theme.RADIUS.m,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+    },
+    // Featured Houses Card Styles (Enhanced Horizontal Layout)
+    featuredHouseCard: {
+        flexDirection: 'row',
+        width: width * 0.88,
+        height: 180,
+        marginRight: 18,
+        borderRadius: 22,
+        backgroundColor: '#FFFFFF',
+        overflow: 'hidden',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
+        elevation: 10,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    featuredHouseImageContainer: {
+        position: 'relative',
+        width: '46%',
+        height: '100%',
+        backgroundColor: '#F1F5F9',
+    },
+    featuredHouseMediaCard: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 0,
+    },
+    featuredHouseImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+    featuredHouseFavoriteIcon: {
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.98)',
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+        elevation: 5,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    propertyTypeBadge: {
+        position: 'absolute',
+        bottom: 12,
+        left: 12,
+        backgroundColor: '#FDB022',
+        paddingHorizontal: 16,
+        paddingVertical: 7,
+        borderRadius: 10,
+        shadowColor: "#FDB022",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 6,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+    },
+    propertyTypeText: {
+        color: '#FFFFFF',
+        fontSize: 11,
+        fontWeight: '800',
+        letterSpacing: 0.3,
+        textTransform: 'capitalize',
+    },
+    featuredHouseDetails: {
+        flex: 1,
+        padding: 14,
+        paddingLeft: 16,
+        paddingRight: 14,
+        justifyContent: 'flex-start',
+        backgroundColor: '#FFFFFF',
+    },
+    featuredHouseTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginBottom: 5,
+        letterSpacing: -0.4,
+        lineHeight: 20,
+    },
+    featuredHouseRating: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 5,
+        backgroundColor: 'rgba(251, 191, 36, 0.1)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        alignSelf: 'flex-start',
+    },
+    featuredHouseRatingText: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginLeft: 5,
+    },
+    featuredHouseLocation: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingVertical: 2,
+    },
+    featuredHouseLocationText: {
+        fontSize: 12,
+        color: '#64748B',
+        marginLeft: 5,
+        flex: 1,
+        fontWeight: '600',
+        letterSpacing: -0.1,
+    },
+    featuredHousePrice: {
+        fontSize: 22,
+        fontWeight: '900',
+        color: '#FDB022',
+        letterSpacing: -0.8,
+    },
+    featuredHousePriceUnit: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#64748B',
+        letterSpacing: -0.2,
+    },
+    // Residential Card Styles (Horizontal List)
+    residentialCard: {
+        width: width * 0.76,
+        marginRight: 16,
+        borderRadius: 18,
+        backgroundColor: '#FFFFFF',
+        overflow: 'hidden',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+        elevation: 6,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    residentialImageContainer: {
+        width: '100%',
+        height: 140,
+        backgroundColor: '#F1F5F9',
+    },
+    residentialMediaCard: {
+        width: '100%',
+        height: '100%',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+    },
+    residentialImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+    },
+    residentialDetails: {
+        padding: 14,
+        paddingTop: 12,
+    },
+    residentialTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginBottom: 6,
+        letterSpacing: -0.3,
+    },
+    residentialLocation: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    residentialLocationText: {
+        fontSize: 13,
+        color: '#64748B',
+        marginLeft: 4,
+        flex: 1,
+        fontWeight: '600',
+    },
+    residentialPriceRatingRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    residentialPrice: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: '#0F172A',
+        letterSpacing: -0.5,
+    },
+    residentialRating: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(251, 191, 36, 0.1)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    residentialRatingText: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginLeft: 4,
+    },
+    
+    // Banner Modern Styles
+    bannerContainerModern: {
+        width: width,
+        height: height * 0.25,
+        marginBottom: 10,
+        marginTop: 15,
+    },
+    
+    bannerSlideModern: {
+        width: width,
+        height: height * 0.25,
+        position: 'relative',
+    },
+    
+    bannerImageModern: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+    
+    bannerOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: '50%',
+    },
+    
+    bannerIndicators: {
+        position: 'absolute',
+        bottom: 15,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        gap: 8,
+    },
+    
+    bannerDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    
+    bannerDotActive: {
+        width: 24,
+        backgroundColor: '#FDB022',
+    },
+    
+    // Property Action Buttons Styles
+    propertyActionButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 6,
+        paddingTop: 6,
+        borderTopWidth: 1,
+        borderTopColor: '#F1F5F9',
+    },
+    
+    actionButton: {
+        backgroundColor: '#FDB022',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
     },
 });

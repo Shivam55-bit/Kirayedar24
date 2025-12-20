@@ -95,7 +95,11 @@ export const testBackendNotification = async () => {
 
     console.log('📤 Sending test notification to backend...');
 
-    const response = await fetch('http://abc.ridealmobility.com/application/notify-update', {
+    const { BASE_URL } = await import('../config/api.config');
+    if (!BASE_URL) {
+      throw new Error('BASE_URL not configured');
+    }
+    const response = await fetch(`${BASE_URL.replace('/api', '')}/application/notify-update`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -127,7 +131,7 @@ export const testFCMToken = async () => {
   console.log('🧪 Testing FCM Token...');
   
   try {
-    const { getFCMToken } = require('./fcmService');
+    const { getFCMToken } = await import('./fcmService');
     const token = await getFCMToken();
     
     if (token) {

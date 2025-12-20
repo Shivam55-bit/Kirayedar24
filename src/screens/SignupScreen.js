@@ -1,900 +1,646 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  SafeAreaView,
   ScrollView,
+  Dimensions,
   StatusBar,
-  Animated,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
-  Modal,
-  FlatList,
+  ActivityIndicator,
 } from "react-native";
+import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as authApi from "../services/authApi";
-import { storeUserCredentials } from '../utils/authManager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authService } from "../services/authApi";
+
+const { width } = Dimensions.get("window");
 
 const SignupScreen = ({ navigation, route }) => {
-  // Get phone number from route params if coming from OTP screen
-  const phoneNumber = route?.params?.phoneNumber || "";
+  const { phoneNumber, fromOtp } = route.params || {};
+  const isCompleteRegistration = fromOtp && phoneNumber;
   
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastType, setToastType] = useState("success");
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(1995);
-  const [selectedMonth, setSelectedMonth] = useState(1);
-  const [selectedDay, setSelectedDay] = useState(1);
   const [form, setForm] = useState({
     fullName: "",
     email: "",
-    phone: phoneNumber, // Auto-fill phone number
-    dob: "", // Date of Birth in YYYY-MM-DD format
+    phone: phoneNumber || "",
+    password: isCompleteRegistration ? "" : "",
+    state: "",
+    city: "",
+    street: "",
+    pinCode: "",
+    userType: "", // "owner" or "tenant"
   });
+  const [selectedRole, setSelectedRole] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
 
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(40)).current;
-  const toastAnim = useRef(new Animated.Value(-100)).current;
-  const animationStarted = useRef(false); // Prevent animation from running multiple times
-
-  useEffect(() => {
-    // Only run animation once when component mounts
-    if (!animationStarted.current) {
-      animationStarted.current = true;
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          friction: 6,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, []); // Empty dependency array - run only once
-
-  // Toast notification function
   const showToast = (message, type = "success") => {
-    setToastMessage(message);
-    setToastType(type);
-    setToastVisible(true);
-
-    Animated.sequence([
-      Animated.timing(toastAnim, {
-        toValue: 50,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.delay(3000),
-      Animated.timing(toastAnim, {
-        toValue: -100,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setToastVisible(false);
-    });
+    Alert.alert(type === "success" ? "Success" : "Error", message);
   };
 
-  const handleNext = () => {
-    const isValid = validateForm();
-    if (!isValid) return;
-    
-    handleSignup();
-  };
-
-  const handlePrevious = () => {
-    navigation.goBack();
-  };
-
-  // Generate year, month, day arrays
-  const years = Array.from({ length: 76 }, (_, i) => 2025 - i); // 1950 to 2025
-  const months = [
-    { value: 1, label: 'January' },
-    { value: 2, label: 'February' },
-    { value: 3, label: 'March' },
-    { value: 4, label: 'April' },
-    { value: 5, label: 'May' },
-    { value: 6, label: 'June' },
-    { value: 7, label: 'July' },
-    { value: 8, label: 'August' },
-    { value: 9, label: 'September' },
-    { value: 10, label: 'October' },
-    { value: 11, label: 'November' },
-    { value: 12, label: 'December' },
-  ];
-  
-  // Get days in selected month
-  const getDaysInMonth = (year, month) => {
-    return new Date(year, month, 0).getDate();
-  };
-  
-  const days = Array.from({ length: getDaysInMonth(selectedYear, selectedMonth) }, (_, i) => i + 1);
-
-  // Date picker handlers
-  const openDatePicker = () => {
-    setShowDatePicker(true);
-  };
-
-  const closeDatePicker = () => {
-    setShowDatePicker(false);
-  };
-
-  const confirmDate = () => {
-    const year = selectedYear;
-    const month = String(selectedMonth).padStart(2, '0');
-    const day = String(selectedDay).padStart(2, '0');
-    const formattedDate = `${year}-${month}-${day}`;
-    
-    setForm({ ...form, dob: formattedDate });
-    closeDatePicker();
-  };
-
-  const getLocationFromAddress = async (address, city, state) => {
-    try {
-      const fullAddress = `${address}, ${city}, ${state}, India`;
-      console.log('Getting coordinates for address:', fullAddress);
+  const Dropdown = ({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder }) => (
+    <View style={[styles.dropdownContainer, isOpen && { zIndex: 1000 }]}>
+      <View style={styles.inputBox}>
+        <Icon name="location" size={20} color="#f39c12" />
+        <TouchableOpacity
+          style={styles.dropdownButton}
+          onPress={() => setIsOpen(!isOpen)}
+        >
+          <Text style={[styles.dropdownButtonText, !selectedValue && styles.placeholderText]}>
+            {selectedValue || placeholder}
+          </Text>
+          <Icon name={isOpen ? "chevron-up" : "chevron-down"} size={20} color="#666" />
+        </TouchableOpacity>
+      </View>
       
-      // Using free Nominatim geocoding service (OpenStreetMap)
-      const encodedAddress = encodeURIComponent(fullAddress);
-      const geocodeUrl = `https://nominatim.openstreetmap.org/search?q=${encodedAddress}&format=json&limit=1&countrycodes=in`;
-      
-      const response = await fetch(geocodeUrl, {
-        headers: {
-          'User-Agent': 'GharPlotApp/1.0' // Required by Nominatim
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.length > 0) {
-          const { lat, lon } = data[0];
-          
-          const locationData = {
-            latitude: parseFloat(lat), 
-            longitude: parseFloat(lon),
-            address: fullAddress,
-            city: city,
-            state: state
-          };
-          
-          await AsyncStorage.setItem("userLocation", JSON.stringify(locationData));
-          
-          console.log('Location saved from address:', locationData);
-          return locationData;
-        }
-      }
-      
-      // Fallback: Use city-based coordinates for major Indian cities
-      const cityCoordinates = {
-        'delhi': { latitude: 28.6139, longitude: 77.2090 },
-        'mumbai': { latitude: 19.0760, longitude: 72.8777 },
-        'bangalore': { latitude: 12.9716, longitude: 77.5946 },
-        'chennai': { latitude: 13.0827, longitude: 80.2707 },
-        'kolkata': { latitude: 22.5726, longitude: 88.3639 },
-        'hyderabad': { latitude: 17.3850, longitude: 78.4867 },
-        'pune': { latitude: 18.5204, longitude: 73.8567 },
-        'ahmedabad': { latitude: 23.0225, longitude: 72.5714 },
-        'jaipur': { latitude: 26.9124, longitude: 75.7873 },
-        'lucknow': { latitude: 26.8467, longitude: 80.9462 }
-      };
-      
-      const cityKey = city.toLowerCase().trim();
-      const cityLocation = cityCoordinates[cityKey] || cityCoordinates['delhi'];
-      
-      const locationData = {
-        ...cityLocation,
-        address: fullAddress,
-        city: city,
-        state: state
-      };
-      
-      await AsyncStorage.setItem("userLocation", JSON.stringify(locationData));
-      
-      console.log('Using city-based location for:', city, locationData);
-      return locationData;
-      
-    } catch (error) {
-      console.error('Error getting location from address:', error);
-      
-      // Final fallback: Delhi coordinates
-      const defaultLocation = {
-        latitude: 28.6139, 
-        longitude: 77.2090,
-        address: `${address}, ${city}, ${state}`,
-        city: city,
-        state: state
-      };
-      
-      await AsyncStorage.setItem("userLocation", JSON.stringify(defaultLocation));
-      
-      return defaultLocation;
-    }
-  };
-
-  // Add email validation
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  // Add phone validation  
-  const validatePhone = (phone) => {
-    const phoneRegex = /^[6-9]\d{9}$/; // Indian phone number format
-    return phoneRegex.test(phone);
-  };
-
-  // Check if email already exists (simple version - you can implement this endpoint later)
-  const checkEmailExists = async (email) => {
-    try {
-      // For now, just return false to skip email checking
-      // You can implement this API endpoint later: /auth/check-email
-      return false;
-    } catch (error) {
-      console.log('Email check failed:', error);
-      return false; // If check fails, continue with signup
-    }
-  };
-
-  // Add validation for the form
-  const validateForm = () => {
-    if (!form.fullName.trim()) {
-      showToast("Please enter your full name.", "error");
-      return false;
-    }
-    if (!form.email.trim()) {
-      showToast("Please enter your email address.", "error");
-      return false;
-    }
-    if (!validateEmail(form.email)) {
-      showToast("Please enter a valid email address.", "error");
-      return false;
-    }
-    
-    if (!form.phone.trim()) {
-      showToast("Please enter your phone number.", "error");
-      return false;
-    }
-    if (!validatePhone(form.phone)) {
-      showToast("Please enter a valid 10-digit phone number.", "error");
-      return false;
-    }
-    
-    if (!form.dob.trim()) {
-      showToast("Please enter your date of birth.", "error");
-      return false;
-    }
-    
-    // Validate date format (YYYY-MM-DD)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(form.dob)) {
-      showToast("Please enter date in YYYY-MM-DD format (e.g., 1995-08-14).", "error");
-      return false;
-    }
-    
-    return true;
-  };
+      {isOpen && (
+        <View style={styles.dropdownList}>
+          <ScrollView 
+            style={styles.dropdownScroll} 
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            persistentScrollbar={true}
+            bounces={false}
+            scrollEventThrottle={16}
+          >
+            {options.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={styles.dropdownItem}
+                onPress={() => {
+                  onSelect(option);
+                  setIsOpen(false);
+                }}
+              >
+                <Text style={styles.dropdownItemText}>{option}</Text>
+                {selectedValue === option && (
+                  <Icon name="checkmark" size={18} color="#f39c12" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
 
   const handleSignup = async () => {
-    if (!validateForm()) return;
+    // Validation based on signup type
+    if (isCompleteRegistration) {
+      // Complete registration validation (no password needed)
+      if (!form.fullName || !form.email || !form.userType) {
+        showToast("Please fill your name, email and select account type.", "error");
+        return;
+      }
+    } else {
+      // Regular signup validation
+      if (!form.fullName || !form.email || !form.phone || !form.password || 
+          !form.state || !form.city || !form.street || !form.pinCode || !form.userType) {
+        showToast("Please fill all required fields and select account type.", "error");
+        return;
+      }
+    }
 
     setIsLoading(true);
-    
+
     try {
-      console.log('Starting registration completion...');
-
-      // Prepare user data for complete-registration API
-      const userData = {
-        fullName: form.fullName.trim(),
-        email: form.email.trim().toLowerCase(),
-        phone: form.phone.trim(),
-        dob: form.dob.trim(), // YYYY-MM-DD format
-      };
-
-      console.log('Completing registration with data:', { ...userData });
-
-      // Call the complete registration API (this will UPDATE the existing user created during OTP)
-      const result = await authApi.completeRegistration(userData);
-      
-      console.log('Registration completed:', result);
-      
-      if (result.token || result.success) {
-        // Store credentials for persistent login
-        if (result.token && result.user && result.user.id) {
-          await storeUserCredentials(result.token, result.user.id);
-        }
+      if (isCompleteRegistration) {
+        // Complete registration for OTP verified user
+        const userData = {
+          fullName: form.fullName.trim(),
+          email: form.email.trim(),
+          phone: phoneNumber,
+          state: form.state.trim(),
+          city: form.city.trim(),
+          street: form.street.trim(),
+          pinCode: form.pinCode.trim(),
+          role: form.userType
+        };
         
-        // Show success toast
-        showToast("Profile completed successfully! 🎉", "success");
+        const response = await authService.completeRegistration(userData);
         
-        // Navigate directly to Home screen after 1.5 seconds
-        setTimeout(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Home' }],
-          });
-        }, 1500);
-        
-      } else {
-        throw new Error(result.message || 'Registration failed');
-      }
-
-    } catch (error) {
-      console.error("Registration error:", error);
-      
-      let errorMessage = "Failed to complete registration. Please try again.";
-      
-      // Handle specific error messages
-      if (error.message) {
-        if (error.message.includes('email already exists') || 
-            error.message.includes('User with this email already exists') ||
-            error.message.includes('already registered') ||
-            error.message.includes('Phone number already')) {
-          // If user already exists, that's actually OK - but we need to get credentials
-          // The credentials should have been stored during OTP verification
-          showToast("Welcome! Logging you in... 🎉", "success");
+        if (response.success) {
+          showToast("Registration completed successfully!", "success");
           setTimeout(() => {
+            // Navigate to Home - DynamicHomeScreen will handle role-based rendering
             navigation.reset({
               index: 0,
-              routes: [{ name: 'Home' }],
+              routes: [{ name: "Home" }]
             });
           }, 1500);
-          return;
-        } else if (error.message.includes('validation')) {
-          errorMessage = "Please check your details and try again.";
-        } else if (error.message.includes('network') || error.message.includes('timeout')) {
-          errorMessage = "Network error. Please check your internet connection.";
         } else {
-          errorMessage = error.message;
+          showToast(response.message || "Registration failed", "error");
+        }
+      } else {
+        // Regular signup
+        const userData = {
+          fullName: form.fullName.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          state: form.state.trim(),
+          city: form.city.trim(),
+          street: form.street.trim(),
+          pinCode: form.pinCode.trim(),
+          password: form.password,
+          role: form.userType
+        };
+        
+        const response = await authService.signup(userData);
+        
+        console.log('🔍 Signup response received:', response);
+        
+        if (response.success) {
+          // Store user role for login navigation
+          await AsyncStorage.setItem('userRole', form.userType);
+          
+          showToast("Account created successfully! Please login.", "success");
+          setTimeout(() => {
+            navigation.navigate("LoginScreen", {
+              email: form.email.trim(),
+              fromSignup: true,
+              userRole: form.userType
+            });
+          }, 1500);
+        } else {
+          const errorMessage = response.message || response.error || "Signup failed - please try again";
+          console.error('❌ Signup failed with message:', errorMessage);
+          showToast(errorMessage, "error");
         }
       }
-      
-      showToast(errorMessage, "error");
+    } catch (error) {
+      showToast(error.message || "Something went wrong", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const renderInput = (
-    icon,
-    placeholder,
-    key,
-    secure = false,
-    keyboard = "default"
-  ) => {
-    const isPasswordField = key === 'password';
-    const isConfirmPasswordField = key === 'confirmPassword';
-    const shouldShowPassword = isPasswordField ? showPassword : (isConfirmPasswordField ? showConfirmPassword : false);
-    const isPhoneField = key === 'phone';
-    const isPhoneFromOTP = isPhoneField && phoneNumber; // Phone came from OTP screen
-    const isDOBField = key === 'dob';
-    
-    // Special rendering for DOB field with date picker
-    if (isDOBField) {
-      return (
-        <TouchableOpacity
-          style={styles.inputContainer}
-          onPress={openDatePicker}
-          activeOpacity={0.7}
-        >
-          <Icon name={icon} size={20} color="#1E90FF" style={styles.inputIcon} />
-          <Text style={[styles.input, !form.dob && styles.placeholderText]}>
-            {form.dob || placeholder}
-          </Text>
-          <Icon name="chevron-down-outline" size={20} color="#999" />
-        </TouchableOpacity>
-      );
-    }
-    
-    return (
-      <View style={[
-        styles.inputContainer,
-        isPhoneFromOTP && styles.disabledInput,
-      ]}>
-        <Icon name={icon} size={20} color="#1E90FF" style={styles.inputIcon} />
-        <TextInput
-          style={styles.input}
-          placeholder={placeholder}
-          placeholderTextColor="#999"
-          keyboardType={keyboard}
-          secureTextEntry={secure && !shouldShowPassword}
-          value={form[key]}
-          onChangeText={(text) => setForm({ ...form, [key]: text })}
-          autoCapitalize={key === 'email' ? 'none' : 'sentences'}
-          editable={!isPhoneFromOTP}
-        />
-        {isPhoneFromOTP && (
-          <Icon name="checkmark-circle" size={20} color="#4CAF50" />
-        )}
-        {secure && (
-          <TouchableOpacity 
-            onPress={() => {
-              if (isPasswordField) {
-                setShowPassword(!showPassword);
-              } else if (isConfirmPasswordField) {
-                setShowConfirmPassword(!showConfirmPassword);
-              }
-            }}
-          >
-            <Icon
-              name={shouldShowPassword ? "eye-off-outline" : "eye-outline"}
-              size={20}
-              color="#999"
-            />
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-
-  const renderStep = useMemo(() => {
-    // Single step registration with 4 fields
-    return (
-      <>
-        {renderInput("person-outline", "Full Name", "fullName")}
-        {renderInput(
-          "mail-outline",
-          "Email Address",
-          "email",
-          false,
-          "email-address"
-        )}
-        {renderInput(
-          "call-outline",
-          "Phone Number",
-          "phone",
-          false,
-          "phone-pad"
-        )}
-        {renderInput(
-          "calendar-outline",
-          "Date of Birth (YYYY-MM-DD)",
-          "dob",
-          false,
-          "default"
-        )}
-      </>
-    );
-  }, [form, showPassword, showConfirmPassword, phoneNumber]);
-
   return (
-    <View style={styles.container}>
-      <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
-
-      {/* Toast Notification */}
-      {toastVisible && (
-        <Animated.View
-          style={[
-            styles.toastContainer,
-            {
-              backgroundColor: toastType === "success" ? "#4CAF50" : "#F44336",
-              transform: [{ translateY: toastAnim }],
-            },
-          ]}
+    <SafeAreaView style={styles.container}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+      
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header Gradient */}
+        <LinearGradient
+          colors={["#f9d976", "#f39c12"]}
+          style={styles.headerContainer}
         >
-          <Icon
-            name={toastType === "success" ? "checkmark-circle" : "close-circle"}
-            size={24}
-            color="#fff"
-            style={styles.toastIcon}
+          <Text style={styles.appTitle}>
+            {isCompleteRegistration ? "Complete Profile" : "Create Account"}
+          </Text>
+          <Text style={styles.subtitle}>
+            {isCompleteRegistration ? "Complete your profile to get started" : "Join and explore premium properties"}
+          </Text>
+        </LinearGradient>
+
+      {/* White Card */}
+      <View style={styles.card}>
+        
+        {/* Form Fields */}
+        <Text style={styles.label}>Enter your details to get started</Text>
+
+        {/* Name Field */}
+        <View style={styles.inputBox}>
+          <Icon name="person" size={20} color="#f39c12" />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your full name"
+            placeholderTextColor="#9ca3af"
+            value={form.fullName}
+            onChangeText={(text) => setForm({ ...form, fullName: text })}
           />
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
+        </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-      >
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1 }}
-        >
-          <Animated.View
+        {/* Email Field */}
+        <View style={styles.inputBox}>
+          <Icon name="mail" size={20} color="#f39c12" />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your email"
+            placeholderTextColor="#9ca3af"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={form.email}
+            onChangeText={(text) => setForm({ ...form, email: text })}
+          />
+        </View>
+
+        {/* User Type Selection */}
+        <Text style={styles.roleHeading}>Account Type *</Text>
+        <View style={styles.roleRow}>
+          <TouchableOpacity
             style={[
-              styles.container,
-              { opacity: fadeAnim, transform: [{ translateY }] },
+              styles.roleBtn,
+              form.userType === "Owner" && styles.roleBtnActive,
             ]}
+            onPress={() => setForm({ ...form, userType: "Owner" })}
           >
-            {/* Signup Card */}
-            <View style={styles.card}>
-              <Text style={styles.title}>Complete Registration ✨</Text>
-              <Text style={styles.subtitle}>Fill in your details to get started</Text>
+            <Icon 
+              name="home" 
+              size={20} 
+              color={form.userType === "Owner" ? "#fff" : "#f39c12"} 
+            />
+            <Text
+              style={[
+                styles.roleText,
+                form.userType === "Owner" && styles.roleTextActive,
+              ]}
+            >
+              Property Owner
+            </Text>
+          </TouchableOpacity>
 
-              {renderStep}
+          <TouchableOpacity
+            style={[
+              styles.roleBtn,
+              form.userType === "Tenant" && styles.roleBtnActive,
+            ]}
+            onPress={() => setForm({ ...form, userType: "Tenant" })}
+          >
+            <Icon 
+              name="search" 
+              size={20} 
+              color={form.userType === "Tenant" ? "#fff" : "#f39c12"} 
+            />
+            <Text
+              style={[
+                styles.roleText,
+                form.userType === "Tenant" && styles.roleTextActive,
+              ]}
+            >
+              Looking for Rent
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-              {/* Submit Button */}
-              <TouchableOpacity 
-                onPress={handleNext} 
-                activeOpacity={0.85}
-                disabled={isLoading}
-                style={[
-                  styles.nextButton,
-                  styles.fullWidthButton,
-                  isLoading && { opacity: 0.6 }
-                ]}
-              >
-                <Text style={styles.nextText}>
-                  {isLoading ? "Creating Account..." : "Complete Registration"}
-                </Text>
-                <Icon name="checkmark-circle" size={18} color="#fff" />
-              </TouchableOpacity>
+        {/* Phone Field */}
+        {!isCompleteRegistration && (
+          <View style={styles.inputBox}>
+            <Icon name="call" size={20} color="#f39c12" />
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your phone number"
+              placeholderTextColor="#9ca3af"
+              keyboardType="phone-pad"
+              value={form.phone}
+              onChangeText={(text) => setForm({ ...form, phone: text })}
+            />
+          </View>
+        )}
 
-              {/* Redirect */}
-              <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}>
-                <Text style={styles.signupText}>
-                  Already have an account?{" "}
-                  <Text style={styles.signupBold}>Login</Text>
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        {/* State Field */}
+        <Dropdown
+          options={["Delhi", "Maharashtra", "Karnataka", "Gujarat", "Rajasthan", "Uttar Pradesh", "Punjab", "Haryana", "Tamil Nadu", "West Bengal", "Other"]}
+          selectedValue={form.state}
+          onSelect={(value) => setForm({ ...form, state: value })}
+          isOpen={stateDropdownOpen}
+          setIsOpen={(val) => {
+            setStateDropdownOpen(val);
+            if (val) setCityDropdownOpen(false);
+          }}
+          placeholder="Select your state"
+        />
 
-      {/* Custom Date Picker Modal */}
-      <Modal
-        visible={showDatePicker}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={closeDatePicker}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.datePickerContainer}>
-            <View style={styles.datePickerHeader}>
-              <Text style={styles.datePickerTitle}>Select Date of Birth</Text>
-              <TouchableOpacity onPress={closeDatePicker}>
-                <Icon name="close-circle" size={28} color="#999" />
-              </TouchableOpacity>
-            </View>
+        {/* City Field */}
+        <Dropdown
+          options={["Mumbai", "Delhi", "Bangalore", "Pune", "Ahmedabad", "Jaipur", "Chandigarh", "Hyderabad", "Chennai", "Kolkata", "Other"]}
+          selectedValue={form.city}
+          onSelect={(value) => setForm({ ...form, city: value })}
+          isOpen={cityDropdownOpen}
+          setIsOpen={(val) => {
+            setCityDropdownOpen(val);
+            if (val) setStateDropdownOpen(false);
+          }}
+          placeholder="Select your city"
+        />
 
-            <View style={styles.datePickerBody}>
-              {/* Day Picker */}
-              <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>Day</Text>
-                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
-                  {days.map((day) => (
-                    <TouchableOpacity
-                      key={day}
-                      style={[
-                        styles.pickerItem,
-                        selectedDay === day && styles.pickerItemSelected,
-                      ]}
-                      onPress={() => setSelectedDay(day)}
-                    >
-                      <Text
-                        style={[
-                          styles.pickerItemText,
-                          selectedDay === day && styles.pickerItemTextSelected,
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+        {/* Street Field */}
+        <View style={styles.inputBox}>
+          <Icon name="home" size={20} color="#f39c12" />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your street address"
+            placeholderTextColor="#9ca3af"
+            value={form.street}
+            onChangeText={(text) => setForm({ ...form, street: text })}
+          />
+        </View>
 
-              {/* Month Picker */}
-              <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>Month</Text>
-                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
-                  {months.map((month) => (
-                    <TouchableOpacity
-                      key={month.value}
-                      style={[
-                        styles.pickerItem,
-                        selectedMonth === month.value && styles.pickerItemSelected,
-                      ]}
-                      onPress={() => setSelectedMonth(month.value)}
-                    >
-                      <Text
-                        style={[
-                          styles.pickerItemText,
-                          selectedMonth === month.value && styles.pickerItemTextSelected,
-                        ]}
-                      >
-                        {month.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+        {/* Pin Code Field */}
+        <View style={styles.inputBox}>
+          <Icon name="pin" size={20} color="#f39c12" />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your pin code"
+            placeholderTextColor="#9ca3af"
+            keyboardType="numeric"
+            maxLength={6}
+            value={form.pinCode}
+            onChangeText={(text) => setForm({ ...form, pinCode: text })}
+          />
+        </View>
 
-              {/* Year Picker */}
-              <View style={styles.pickerColumn}>
-                <Text style={styles.pickerLabel}>Year</Text>
-                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
-                  {years.map((year) => (
-                    <TouchableOpacity
-                      key={year}
-                      style={[
-                        styles.pickerItem,
-                        selectedYear === year && styles.pickerItemSelected,
-                      ]}
-                      onPress={() => setSelectedYear(year)}
-                    >
-                      <Text
-                        style={[
-                          styles.pickerItemText,
-                          selectedYear === year && styles.pickerItemTextSelected,
-                        ]}
-                      >
-                        {year}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </View>
-
-            <TouchableOpacity style={styles.confirmButton} onPress={confirmDate}>
-              <Text style={styles.confirmButtonText}>Confirm</Text>
+        {/* Password */}
+        {!isCompleteRegistration && (
+          <View style={styles.inputBox}>
+            <Icon name="lock-closed" size={20} color="#f39c12" />
+            <TextInput
+              style={styles.input}
+              placeholder="Enter password"
+              placeholderTextColor="#9ca3af"
+              secureTextEntry={!showPassword}
+              value={form.password}
+              onChangeText={(text) => setForm({ ...form, password: text })}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <Icon name={showPassword ? "eye" : "eye-off"} size={22} color="#999" />
             </TouchableOpacity>
           </View>
+        )}
+
+        {/* Signup Button */}
+        <LinearGradient
+          colors={["#f39c12", "#d35400"]}
+          style={styles.signupBtn}
+        >
+          <TouchableOpacity onPress={handleSignup} disabled={isLoading}>
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.signupText}>
+                {isCompleteRegistration ? "Complete Profile" : "Create Account"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </LinearGradient>
+
+        <TouchableOpacity
+          style={styles.centerLink}
+          onPress={() => navigation.navigate("LoginScreen")}
+        >
+          <Text style={styles.link}>Already have an account? Login</Text>
+        </TouchableOpacity>
+
+        {/* Divider */}
+        <View style={styles.divider}>
+          <View style={styles.line} />
+          <Text style={styles.or}>OR</Text>
+          <View style={styles.line} />
         </View>
-      </Modal>
-    </View>
+
+        {/* Google */}
+        <TouchableOpacity style={styles.googleBtn}>
+          <Icon name="logo-google" size={22} color="#DB4437" />
+          <Text style={styles.googleText}>Continue with Google</Text>
+        </TouchableOpacity>
+      </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
+export default SignupScreen;
+
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: "#fff" },
+  
+  scrollView: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    paddingVertical: 40,
   },
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: 24,
-    marginHorizontal: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: "#f0f0f0",
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
-  title: {
-    fontSize: 28,
+
+  headerContainer: {
+    width: "100%",
+    paddingTop: 50,
+    paddingBottom: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    elevation: 6,
+  },
+
+  appTitle: {
+    fontSize: 30,
+    color: "#fff",
     fontWeight: "800",
-    color: "#1a1a1a",
-    marginBottom: 8,
-    letterSpacing: 0.3,
+    letterSpacing: 1,
   },
-  subtitle: { 
-    fontSize: 14, 
-    color: "#1E90FF", 
-    marginBottom: 24,
-    fontWeight: "600",
+  subtitle: {
+    fontSize: 15,
+    color: "#fff",
+    marginTop: 6,
+    opacity: 0.9,
   },
-  inputContainer: {
+
+  card: {
+    flex: 1,
+    backgroundColor: "#fff",
+    marginTop: -30,
+    marginHorizontal: 20,
+    borderRadius: 25,
+    padding: 25,
+    elevation: 8,
+    shadowColor: "#f39c12",
+  },
+
+  label: {
+    fontSize: 16,
+    marginBottom: 20,
+    color: "#555",
+    fontWeight: "500",
+  },
+
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fafafa",
-    borderRadius: 14,
-    marginBottom: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    borderWidth: 1.5,
-    borderColor: "#e0e0e0",
-    height: 56,
-  },
-  focused: {
-    borderColor: "#1E90FF",
-    backgroundColor: "#ffffff",
-    shadowColor: "#1E90FF",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#eee",
+    marginBottom: 18,
     elevation: 2,
   },
-  disabledInput: {
-    backgroundColor: "#e8f5e9",
-    borderColor: "#4CAF50",
-  },
-  inputIcon: { 
-    marginRight: 12,
-  },
-  input: { 
-    flex: 1, 
-    color: "#1a1a1a", 
+
+  input: {
+    flex: 1,
+    marginLeft: 12,
     fontSize: 16,
-    fontWeight: "500",
+    color: "#333",
   },
-  placeholderText: {
-    color: "#999",
+
+  roleHeading: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 15,
+    marginTop: 5,
   },
-  buttonRow: {
+
+  roleRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
-    marginBottom: 16,
-    gap: 12,
+    gap: 15,
+    marginBottom: 25,
   },
-  button: {
+
+  roleBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    backgroundColor: "#fafafa",
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#eee",
+    elevation: 2,
+  },
+
+  roleBtnActive: {
+    backgroundColor: "#f39c12",
+    borderColor: "#f39c12",
+    elevation: 4,
+  },
+
+  roleText: {
+    marginTop: 6,
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
+  },
+
+  roleTextActive: {
+    color: "#fff",
+  },
+
+  signupBtn: {
+    marginTop: 20,
+    paddingVertical: 16,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 5,
+  },
+
+  signupText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+
+  centerLink: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+
+  link: {
+    color: "#f39c12",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  divider: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderWidth: 1.5,
-    borderColor: "#e0e0e0",
+    marginVertical: 25,
   },
-  backButton: {
+
+  line: {
     flex: 1,
+    height: 1,
+    backgroundColor: "#ddd",
   },
-  backText: { 
-    color: "#666", 
-    fontWeight: "600", 
-    marginLeft: 8,
-    fontSize: 15,
+
+  or: {
+    marginHorizontal: 10,
+    color: "#888",
+    fontSize: 14,
   },
-  nextButton: {
+
+  googleBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1E90FF",
-    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#ddd",
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    shadowColor: "#1E90FF",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
+    borderRadius: 12,
   },
-  fullWidthButton: {
-    marginTop: 20,
-    marginBottom: 16,
-  },
-  nextText: { 
-    color: "#fff", 
-    fontSize: 16, 
-    fontWeight: "700", 
-    marginRight: 8,
-    letterSpacing: 0.5,
-  },
-  signupText: { 
-    textAlign: "center", 
-    color: "#666", 
-    fontSize: 15,
-    fontWeight: "500",
-    marginTop: 8,
-  },
-  signupBold: { 
-    color: "#1E90FF", 
-    fontWeight: "700",
-  },
-  
-  // Toast Notification Styles
-  toastContainer: {
-    position: "absolute",
-    top: 0,
-    left: 20,
-    right: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-    zIndex: 9999,
-  },
-  toastIcon: {
-    marginRight: 12,
-  },
-  toastText: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 15,
+
+  googleText: {
+    marginLeft: 10,
+    fontSize: 16,
     fontWeight: "600",
-    lineHeight: 20,
+    color: "#333",
   },
-  
-  // Date Picker Modal Styles
-  modalOverlay: {
+
+  // Dropdown styles
+  dropdownContainer: {
+    marginBottom: 16,
+    position: "relative",
+    zIndex: 1,
+  },
+  dropdownButton: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  datePickerContainer: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 20,
-    maxHeight: '70%',
-  },
-  datePickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  datePickerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  datePickerBody: {
-    flexDirection: 'row',
-    padding: 20,
-    gap: 10,
-  },
-  pickerColumn: {
+  dropdownButtonText: {
+    fontSize: 15,
+    color: "#333",
     flex: 1,
   },
-  pickerLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E90FF',
-    marginBottom: 12,
-    textAlign: 'center',
+  placeholderText: {
+    color: "#9ca3af",
   },
-  pickerScroll: {
+  dropdownList: {
+    position: "absolute",
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
     maxHeight: 200,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    zIndex: 1000,
+    overflow: "hidden",
   },
-  pickerItem: {
+  dropdownScroll: {
+    maxHeight: 200,
+    flexGrow: 0,
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-    marginBottom: 4,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
   },
-  pickerItemSelected: {
-    backgroundColor: '#1E90FF',
-  },
-  pickerItemText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  pickerItemTextSelected: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  confirmButton: {
-    backgroundColor: '#1E90FF',
-    marginHorizontal: 20,
-    marginTop: 10,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    shadowColor: "#1E90FF",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  confirmButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  dropdownItemText: {
+    fontSize: 15,
+    color: "#333",
   },
 });
-
-export default SignupScreen;

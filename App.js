@@ -61,7 +61,7 @@ const App = () => {
               
               // Use notification service to handle navigation
               if (navigationRef.current) {
-                const { handleNotificationAction } = require('./src/services/notificationService');
+                // const { handleNotificationAction } = require('./src/services/notificationService');
                 handleNotificationAction(notification.data || notification, navigationRef.current);
               }
             } catch (notificationError) {

@@ -18,24 +18,57 @@ import {
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getRecentProperties } from '../services/propertyService';
 
-// Import your existing API functions and utilities
-import {
-    getRecentProperties,
-    formatImageUrl, 
-    formatPrice,
-    getFirstImageUrl,
-    getSavedPropertiesIds
-} from '../services/homeApi'; 
-import { toggleSaveProperty, removeSavedProperty, getMySellProperties } from '../services/propertyapi'; 
+// Helper functions for property data formatting
+const formatImageUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    return url.replace(/\\/g, '/');
+};
+
+const formatPrice = (price) => {
+    if (!price) return '₹0';
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+    if (isNaN(numPrice)) return '₹0';
+    
+    if (numPrice >= 10000000) return `₹${(numPrice / 10000000).toFixed(1)}Cr`;
+    if (numPrice >= 100000) return `₹${(numPrice / 100000).toFixed(1)}L`;
+    if (numPrice >= 1000) return `₹${(numPrice / 1000).toFixed(1)}K`;
+    return `₹${numPrice}`;
+};
+
+const getFirstImageUrl = (photosAndVideo) => {
+    if (!photosAndVideo || !Array.isArray(photosAndVideo)) return null;
+    const firstMedia = photosAndVideo[0];
+    return firstMedia?.uri || firstMedia;
+};
+
+const getSavedPropertiesIds = async () => {
+    try {
+        const saved = await AsyncStorage.getItem('savedProperties');
+        return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+        return [];
+    }
+};
+
+const getMySellProperties = async () => {
+    try {
+        // This can be implemented later when user properties API is available
+        return [];
+    } catch (e) {
+        return [];
+    }
+}; 
 
 // --- Theme & Layout Constants (Enhanced with modern design) ---
 const { width, height } = Dimensions.get("window");
 
 const theme = {
     COLORS: {
-        primary: "#007BFF",
-        primaryDark: "#0056D2",
+        primary: "#FDB022",
+        primaryDark: "#E89E0F",
         background: "#F8F9FB",
         white: "#FFFFFF",
         black: "#1A1A1A",
@@ -193,27 +226,18 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         try {
             let propertyData = [];
             
-            // Load data based on category with enhanced logic
-            if (category === 'Featured') {
-                propertyData = await getRecentProperties(30);
-            } else if (category === 'Recent') {
-                // Load both general recent and user's own properties
-                const [recentProps, userProps] = await Promise.all([
-                    getRecentProperties(25),
-                    getMySellProperties().catch(() => [])
-                ]);
-                
-                // Combine with user properties first
-                const combined = [...(Array.isArray(userProps) ? userProps : [])];
-                (Array.isArray(recentProps) ? recentProps : []).forEach(prop => {
-                    if (!combined.find(p => p._id === prop._id)) {
-                        combined.push(prop);
-                    }
-                });
-                propertyData = combined.slice(0, 50);
+            // Load properties from API
+            const response = await getRecentProperties();
+            
+            // Handle the API response properly
+            if (response.success && response.data && Array.isArray(response.data)) {
+                propertyData = response.data;
+            } else if (Array.isArray(response)) {
+                // Fallback if response is directly an array
+                propertyData = response;
             } else {
-                // Default: load recent properties
-                propertyData = await getRecentProperties(50);
+                console.log('Unexpected API response format:', response);
+                propertyData = [];
             }
 
             // Enhanced search filtering
@@ -232,6 +256,7 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                 });
             }
             
+            console.log('Loaded properties count:', propertyData.length);
             setAllProperties(Array.isArray(propertyData) ? propertyData : []);
             
         } catch (e) {
@@ -269,13 +294,11 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         }));
     }, []);
 
-    // Initialize data and favorites
+    // Initialize data and favorites on mount
     useEffect(() => {
-        Promise.all([
-            loadAllData(),
-            loadFavorites()
-        ]);
-    }, [loadAllData, loadFavorites]);
+        loadAllData();
+        loadFavorites();
+    }, []);  // Remove dependencies to prevent infinite loops
 
     // Enhanced refresh handler
     const onRefresh = useCallback(() => {
@@ -286,31 +309,26 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         ]);
     }, [loadAllData, loadFavorites]);
 
-    // Enhanced favorite toggle with proper API integration
+    // Enhanced favorite toggle with local storage
     const toggleFavorite = useCallback(async (propertyId) => {
         const isCurrentlySaved = favorites.includes(propertyId);
         
-        // Optimistic update
-        setFavorites(prev => 
-            isCurrentlySaved 
-                ? prev.filter(id => id !== propertyId)
-                : [...prev, propertyId]
-        );
-
         try {
+            let updatedFavorites;
             if (isCurrentlySaved) {
-                await removeSavedProperty(propertyId);
+                updatedFavorites = favorites.filter(id => id !== propertyId);
             } else {
-                await toggleSaveProperty(propertyId);
+                updatedFavorites = [...favorites, propertyId];
             }
-        } catch (error) {
-            // Revert on error
-            setFavorites(prev => 
-                isCurrentlySaved 
-                    ? [...prev, propertyId]
-                    : prev.filter(id => id !== propertyId)
-            );
             
+            // Update state
+            setFavorites(updatedFavorites);
+            
+            // Save to local storage
+            await AsyncStorage.setItem('savedProperties', JSON.stringify(updatedFavorites));
+            
+        } catch (error) {
+            console.error('Error toggling favorite:', error);
             Alert.alert(
                 'Error', 
                 isCurrentlySaved 
@@ -322,116 +340,87 @@ const AllPropertiesScreen = ({ navigation, route }) => {
 
     // Enhanced property navigation
     const openProperty = useCallback(async (item) => {
-        try {
-            const pid = item?._id || item?.id || item?.propertyId;
-            if (!pid) {
-                navigation.navigate('PropertyDetailsScreen', { property: item });
-                return;
-            }
-
-            const flag = await AsyncStorage.getItem(`inquirySubmitted:${pid}`);
-            if (flag) {
-                navigation.navigate('PropertyDetailsScreen', { property: item });
-            } else {
-                navigation.navigate('PropertyInquiryFormScreen', { property: item });
-            }
-        } catch (e) {
-            navigation.navigate('PropertyInquiryFormScreen', { property: item });
-        }
+        navigation.navigate('PropertyDetailsScreen', { property: item });
     }, [navigation]);
 
-    // Enhanced property card with modern design
+    // Property card with home screen residential card layout
     const renderPropertyCard = useCallback((item, index) => {
         const firstImage = getFirstImageUrl(item.photosAndVideo);
         const imageUrl = formatImageUrl(firstImage) || 'https://placehold.co/300x200/CCCCCC/888888?text=No+Image';
         const isFavorite = favorites.includes(item._id);
         
+        // Prepare media items for MediaCard (same as home screen)
+        const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
+            ? item.photosAndVideo.map(media => {
+                const originalUri = media.uri || media;
+                const formattedUri = formatImageUrl(originalUri);
+                return {
+                    uri: formattedUri || originalUri,
+                    type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
+                };
+            })
+            : [{ uri: imageUrl, type: 'image' }];
+        
         return (
             <TouchableOpacity
                 key={item._id || index}
-                style={styles.propertyCard}
+                style={styles.residentialCard}
                 onPress={() => openProperty(item)}
                 activeOpacity={0.9}
             >
-                {/* Enhanced Image with Gradient Overlay */}
-                <View style={styles.imageContainer}>
+                {/* Property Image Container */}
+                <View style={styles.residentialImageContainer}>
                     <Image 
                         source={{ uri: imageUrl }} 
-                        style={styles.propertyImage}
+                        style={styles.residentialImage}
                         resizeMode="cover"
                     />
-                    <LinearGradient 
-                        colors={['transparent', theme.COLORS.overlay]} 
-                        style={styles.imageOverlay}
-                    />
                     
-                    {/* Modern Favorite Button */}
+                    {/* Favorite Icon */}
                     <TouchableOpacity 
                         onPress={() => toggleFavorite(item._id)} 
-                        style={styles.favoriteIconContainer}
-                        activeOpacity={0.8}
+                        style={styles.residentialFavoriteIcon}
+                        activeOpacity={0.7}
                     >
-                        <LinearGradient
-                            colors={isFavorite ? [theme.COLORS.accent, '#FF8A8A'] : ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']}
-                            style={styles.favoriteGradient}
-                        >
-                            <Icon 
-                                name={isFavorite ? "heart" : "heart-outline"} 
-                                size={18} 
-                                color={isFavorite ? theme.COLORS.white : theme.COLORS.greyDark} 
-                            />
-                        </LinearGradient>
+                        <Icon
+                            name={isFavorite ? "heart" : "heart-outline"}
+                            size={20}
+                            color={isFavorite ? "#EF4444" : "#64748B"}
+                        />
                     </TouchableOpacity>
-
-                    {/* Property Type Badge */}
-                    {item.propertyType && (
-                        <View style={styles.propertyTypeBadge}>
-                            <Text style={styles.propertyTypeText}>
-                                {item.propertyType}
-                            </Text>
-                        </View>
-                    )}
                 </View>
 
-                {/* Enhanced Info Container */}
-                <View style={styles.infoContainer}>
-                    <Text style={styles.propertyTitle} numberOfLines={1}>
-                        {item.description || item.propertyType || 'Property'}
+                {/* Property Details */}
+                <View style={styles.residentialDetails}>
+                    {/* Title */}
+                    <Text style={styles.residentialTitle} numberOfLines={1}>
+                        {item.description || 'Property Name'}
                     </Text>
-                    
-                    <View style={styles.locationRow}>
-                        <Icon name="location-outline" size={14} color={theme.COLORS.greyMedium} />
-                        <Text style={styles.propertyLocation} numberOfLines={1}>
-                            {item.propertyLocation || 'Location not specified'}
+
+                    {/* Location */}
+                    <View style={styles.residentialLocation}>
+                        <Icon name="location-outline" size={13} color="#64748B" />
+                        <Text style={styles.residentialLocationText} numberOfLines={1}>
+                            {item.propertyLocation || 'Unknown Location'}
                         </Text>
                     </View>
 
-                    {/* Enhanced Details Row */}
-                    {item.areaDetails && (
-                        <View style={styles.detailsRow}>
-                            <Icon name="resize-outline" size={12} color={theme.COLORS.greyMedium} />
-                            <Text style={styles.areaText}>{item.areaDetails} sq ft</Text>
-                        </View>
-                    )}
-
-                    <View style={styles.priceRatingRow}>
-                        <View style={styles.priceContainer}>
-                            <Text style={styles.propertyPrice}>
-                                {formatPrice(item.price)}
-                            </Text>
-                            {item.purpose && (
-                                <Text style={styles.purposeText}>
-                                    for {item.purpose}
-                                </Text>
-                            )}
-                        </View>
-                        
-                        <View style={styles.ratingContainer}>
-                            <Icon name="star" size={12} color={theme.COLORS.star} />
-                            <Text style={styles.ratingText}>
-                                {item.rating ? item.rating.toFixed(1) : '4.8'}
-                            </Text>
-                        </View>
+                    {/* Price */}
+                    <Text style={styles.residentialPrice}>
+                        {formatPrice(item.price)}
+                    </Text>
+                    
+                    {/* Action Buttons */}
+                    <View style={styles.propertyActionButtons}>
+                        <TouchableOpacity style={styles.actionButton}>
+                            <Icon name="call" size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#25D366' }]}>
+                            <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#6B7280' }]}>
+                            <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
                     </View>
                 </View>
             </TouchableOpacity>
@@ -577,8 +566,8 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                         )}
                     </View>
 
-                    {/* Properties Grid */}
-                    <View style={styles.gridContainer}>
+                    {/* Properties List */}
+                    <View style={styles.listContainer}>
                         {filteredProperties.map((item, index) => renderPropertyCard(item, index))}
                     </View>
                     
@@ -984,7 +973,13 @@ const styles = StyleSheet.create({
         fontWeight: theme.FONT_WEIGHTS.medium,
     },
 
-    // Grid Container
+    // List Container (changed from grid to vertical list)
+    listContainer: {
+        paddingHorizontal: theme.SPACING.l,
+        paddingTop: theme.SPACING.l,
+    },
+
+    // Grid Container (keeping for reference)
     gridContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -1309,6 +1304,108 @@ const styles = StyleSheet.create({
         fontSize: theme.FONT_SIZES.body,
         fontWeight: theme.FONT_WEIGHTS.bold,
         color: theme.COLORS.white,
+    },
+
+    // Residential Card Styles (from home screen)
+    residentialCard: {
+        width: '100%',
+        marginBottom: 16,
+        borderRadius: 18,
+        backgroundColor: '#FFFFFF',
+        overflow: 'hidden',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+        elevation: 6,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    residentialImageContainer: {
+        width: '100%',
+        height: 200,
+        backgroundColor: '#F1F5F9',
+        position: 'relative',
+    },
+    residentialImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+    },
+    residentialFavoriteIcon: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+        elevation: 5,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    residentialDetails: {
+        padding: 14,
+        paddingTop: 12,
+    },
+    residentialTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginBottom: 6,
+        letterSpacing: -0.3,
+    },
+    residentialLocation: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    residentialLocationText: {
+        fontSize: 13,
+        color: '#64748B',
+        marginLeft: 4,
+        flex: 1,
+        fontWeight: '600',
+    },
+    residentialPrice: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: theme.COLORS.primary,
+        letterSpacing: -0.5,
+        marginBottom: 8,
+    },
+    
+    // Property Action Buttons Styles
+    propertyActionButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 6,
+        paddingTop: 6,
+        borderTopWidth: 1,
+        borderTopColor: '#F1F5F9',
+    },
+    
+    actionButton: {
+        backgroundColor: theme.COLORS.primary,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
     },
 });
 

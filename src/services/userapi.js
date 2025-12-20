@@ -1,236 +1,186 @@
-/**
- * userapi.js
- * Handles all API interactions related to user profile data.
- * FIX: Enhanced handleResponse to construct absolute URL for the 'avatar' field,
- * ensuring the image displays correctly in the React Native <Image> component.
- */
-// NOTE: authApi is imported to access token retrieval functions
-import authApi from './authApi'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL } from '../config/api.config';
 
-// CRITICAL: Define two separate URLs:
-// 1. BASE_URL for API calls (includes /api)
-// 2. SERVER_ROOT for static assets (images, uploads)
-const API_BASE_URL = 'http://abc.ridealmobility.com/api'; 
-const SERVER_ROOT = 'http://abc.ridealmobility.com'; // Root URL for image assets
+// Helper function to make authenticated requests
+const makeAuthenticatedRequest = async (endpoint, options = {}) => {
+  if (!BASE_URL) {
+    console.error('❌ BASE_URL is not configured. Please update src/config/api.config.js');
+    return {
+      success: false,
+      message: 'API configuration missing',
+      error: 'BASE_URL not configured'
+    };
+  }
 
-// Helper function to ensure URL is absolute using the SERVER_ROOT for assets
-const makeAbsoluteUrl = (path) => {
-    if (!path) return null;
-    // 1. If it's already an absolute URL, return it
-    if (path.startsWith('http')) {
-        return path;
+  const url = `${BASE_URL}${endpoint}`;
+  
+  // Get stored token for authenticated requests
+  const token = await AsyncStorage.getItem('authToken');
+  
+  if (!token) {
+    return {
+      success: false,
+      message: 'Authentication required',
+      error: 'No auth token found'
+    };
+  }
+
+  const defaultHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers
     }
-    // 2. If it's a relative path (e.g., /uploads/image.jpg), prepend the SERVER_ROOT
-    const cleanRoot = SERVER_ROOT.replace(/\/+$/, ''); // Remove trailing slash
-    const cleanPath = path.replace(/^\/+/, '');    // Remove leading slash
-    return `${cleanRoot}/${cleanPath}`;
-};
+  };
 
-
-// Helper function to handle fetch response and check for HTTP errors
-const handleResponse = async (response) => {
-    if (!response.ok) {
-        let errorText = `HTTP error! Status: ${response.status}`;
-        try {
-            const errorBody = await response.json();
-            // Try to extract a specific error message from the response body
-            errorText = errorBody.message || errorBody.error || errorText;
-        } catch (e) {
-            // If response body is not JSON, use status text
-            errorText = `HTTP error! Status: ${response.status} (${response.statusText})`;
-        }
-        throw new Error(errorText);
-    }
-    // Check if the response is empty (e.g., PUT request returning 204 No Content)
-    if (response.status === 204 || response.headers.get('content-length') === '0') {
-        return {}; 
-    }
-    
+  try {
+    const response = await fetch(url, config);
     const data = await response.json();
     
-    // Extract the 'user' object
-    const user = data.user || data; 
-    // Helper: normalize a media entry (string path or object with url)
-    const normalizeMediaEntry = (entry) => {
-        if (!entry) return null;
-        if (typeof entry === 'string') return makeAbsoluteUrl(entry);
-        if (entry && typeof entry === 'object') {
-            // common shapes: { url: '/uploads/..' } or { uri: 'http...' }
-            if (entry.url) return makeAbsoluteUrl(entry.url);
-            if (entry.uri) return makeAbsoluteUrl(entry.uri);
-        }
-        return null;
+    return {
+      success: response.ok,
+      status: response.status,
+      data: data,
+      ...data // Spread response data for backward compatibility
     };
-
-    // Normalize avatar field to absolute URL
-    if (user.avatar) {
-        user.avatar = normalizeMediaEntry(user.avatar);
-    }
-
-    // Normalize photosAndVideo array entries to absolute URLs (if present)
-    if (Array.isArray(user.photosAndVideo) && user.photosAndVideo.length > 0) {
-        user.photosAndVideo = user.photosAndVideo.map(p => normalizeMediaEntry(p)).filter(Boolean);
-    }
-
-    // Fallback: if avatar missing, try first photo; otherwise set default avatar
-    const defaultAvatar = makeAbsoluteUrl('/uploads/1761387482206-property2.jpeg');
-    if (!user.avatar) {
-        if (Array.isArray(user.photosAndVideo) && user.photosAndVideo.length > 0 && user.photosAndVideo[0]) {
-            user.avatar = user.photosAndVideo[0];
-        } else {
-            user.avatar = defaultAvatar;
-        }
-    }
-
-    // Debug log to confirm the final avatar URL used by the frontend
-    try {
-        console.log('[userapi] resolved avatar URL:', user.avatar);
-    } catch (e) {
-        // ignore logging errors
-    }
-
-    return user; 
+  } catch (error) {
+    console.error('User API Request Error:', error);
+    return {
+      success: false,
+      message: error.message || 'Network error',
+      error: error.message
+    };
+  }
 };
 
-
-/**
- * GET: Fetches the profile data for a specific user ID. (Standard legacy route)
- * @param {string} userId - The ID of the user to fetch.
- * @returns {Promise<object>} - The user profile data.
- */
-export async function getUserProfile(userId) {
-    if (!userId) throw new Error("User ID is required for fetching profile.");
-    
-    // Get the JWT token using the helper function from authapi
-    const token = await authApi.getToken();
-    if (!token) throw new Error("Authentication token missing. Please log in.");
-
-    const url = `${API_BASE_URL}/users/${userId}`; 
-    console.log(`Fetching profile from: ${url}`);
-    
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-    });
-
-    return handleResponse(response);
-}
-
-/**
- * GET: Fetches the profile data for the currently authenticated user (New Route).
- * Endpoint: /users/user 
- * @returns {Promise<object>} - The user profile data (including counts).
- */
-export async function getCurrentUserProfile() {
-    const token = await authApi.getToken();
-    if (!token) throw new Error("Authentication token missing. Please log in.");
-
-    // This is the direct endpoint from your cURL command
-    const url = `${API_BASE_URL}/users/user`; 
-    console.log(`Fetching current user profile from: ${url}`);
-    
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-    });
-
-    return handleResponse(response);
-}
-
-
-/**
- * PUT: Updates the user profile.
- * @param {string} userId - The ID of the user to update.
- * @param {object} profileData - Data to update (e.g., { fullName, email, phone, profilePicture }).
- * @returns {Promise<object>} - The updated user profile or an empty object on success.
- */
-/**
- * PUT: Updates the user profile.
- * Supports two forms:
- *  - updateUserProfile(profileData) -> calls PUT /users/edit-profile (uses authenticated user)
- *  - updateUserProfile(userId, profileData) -> calls PUT /users/edit-profile/:userId (legacy)
- *
- * The backend expects multipart/form-data and the uploaded file field named `photoAndVideo`.
- * Accepts a single file (profileData.profilePicture) or an array (profileData.photoAndVideo).
- */
-export async function updateUserProfile(userIdOrProfileData, maybeProfileData) {
-    // Backwards-compatible signature handling
-    let userId = null;
-    let profileData = null;
-    if (maybeProfileData === undefined) {
-        // Called with (profileData)
-        profileData = userIdOrProfileData || {};
-    } else {
-        // Called with (userId, profileData)
-        userId = userIdOrProfileData;
-        profileData = maybeProfileData || {};
+// Get user profile by ID
+export const getUserProfile = async (userId) => {
+  if (!userId) {
+    // Try to get user ID from storage if not provided
+    try {
+      userId = await AsyncStorage.getItem('userId');
+    } catch (error) {
+      console.error('Failed to get userId from storage:', error);
     }
+  }
 
-    const token = await authApi.getToken();
-    if (!token) throw new Error("Authentication token missing. Please log in.");
-
-    const url = userId ? `${API_BASE_URL}/users/edit-profile/${userId}` : `${API_BASE_URL}/users/edit-profile`;
-    console.log(`Updating profile at: ${url}`);
-
-    // Create the FormData object for multipart/form-data
-    const formData = new FormData();
-
-    // 1. Append text fields
-    if (profileData.fullName) formData.append('fullName', profileData.fullName);
-    if (profileData.email) formData.append('email', profileData.email);
-    if (profileData.phone) formData.append('phone', profileData.phone);
-
-    // 2. Append files using the field name expected by the backend: 'photoAndVideo'
-    // Support multiple files (array) or a single file object
-    const appendFile = (file, idx) => {
-        if (!file) return;
-        // Accept either an object with { uri, type, fileName } or a plain uri string
-        if (typeof file === 'string') {
-            // try to guess filename
-            const guessedName = file.split('/').pop() || `photo_${Date.now()}.jpg`;
-            formData.append('photoAndVideo', {
-                uri: file,
-                type: 'image/jpeg',
-                name: guessedName,
-            });
-        } else if (file && typeof file === 'object') {
-            formData.append('photoAndVideo', {
-                uri: file.uri,
-                type: file.type || file.mimeType || 'image/jpeg',
-                name: file.fileName || file.name || `photo_${idx || Date.now()}.jpg`,
-            });
-        }
+  if (!userId) {
+    return {
+      success: false,
+      message: 'User ID is required',
+      error: 'Missing user ID'
     };
+  }
 
-    if (Array.isArray(profileData.photoAndVideo) && profileData.photoAndVideo.length > 0) {
-        profileData.photoAndVideo.forEach((f, i) => appendFile(f, i));
-    } else if (profileData.profilePicture) {
-        // legacy key: profilePicture -> map to photoAndVideo
-        appendFile(profileData.profilePicture, 0);
+  return makeAuthenticatedRequest(`/auth/users/${userId}`, {
+    method: 'GET'
+  });
+};
+
+// Edit user profile
+export const editUserProfile = async (userId, profileData) => {
+  if (!userId) {
+    // Try to get user ID from storage if not provided
+    try {
+      userId = await AsyncStorage.getItem('userId');
+    } catch (error) {
+      console.error('Failed to get userId from storage:', error);
     }
+  }
 
-    // When sending FormData, DO NOT manually set 'Content-Type'.
-    const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            // IMPORTANT: Do NOT set 'Content-Type': 'multipart/form-data' manually here!
-        },
-        body: formData,
-    });
+  if (!userId) {
+    return {
+      success: false,
+      message: 'User ID is required',
+      error: 'Missing user ID'
+    };
+  }
 
-    return handleResponse(response);
-}
+  if (!profileData || typeof profileData !== 'object') {
+    return {
+      success: false,
+      message: 'Profile data is required',
+      error: 'Missing profile data'
+    };
+  }
 
-// Export functions for use in screens
+  const response = await makeAuthenticatedRequest(`/auth/edit-profile/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(profileData)
+  });
+
+  // Update stored user data if edit was successful
+  if (response.success && response.user) {
+    try {
+      await AsyncStorage.setItem('userData', JSON.stringify(response.user));
+    } catch (error) {
+      console.error('Failed to update stored user data:', error);
+    }
+  }
+
+  return response;
+};
+
+// Get current user profile (uses stored user ID)
+export const getCurrentUserProfile = async () => {
+  const userId = await AsyncStorage.getItem('userId');
+  return getUserProfile(userId);
+};
+
+// Update current user profile (uses stored user ID)
+export const updateCurrentUserProfile = async (profileData) => {
+  const userId = await AsyncStorage.getItem('userId');
+  return editUserProfile(userId, profileData);
+};
+
+// Validate profile data before sending
+export const validateProfileData = (profileData) => {
+  const errors = [];
+  
+  if (!profileData.fullName || profileData.fullName.trim().length < 2) {
+    errors.push('Full name must be at least 2 characters');
+  }
+  
+  if (!profileData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileData.email)) {
+    errors.push('Valid email is required');
+  }
+  
+  if (!profileData.phone || !/^\d{10}$/.test(profileData.phone)) {
+    errors.push('Valid 10-digit phone number is required');
+  }
+  
+  if (!profileData.state || profileData.state.trim().length < 2) {
+    errors.push('State is required');
+  }
+  
+  if (!profileData.city || profileData.city.trim().length < 2) {
+    errors.push('City is required');
+  }
+  
+  if (!profileData.pinCode || !/^\d{6}$/.test(profileData.pinCode)) {
+    errors.push('Valid 6-digit PIN code is required');
+  }
+  
+  // Password is optional for profile updates
+  if (profileData.password && profileData.password.length < 6) {
+    errors.push('Password must be at least 6 characters if provided');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors: errors
+  };
+};
+
 export default {
-    getUserProfile,
-    updateUserProfile,
-    getCurrentUserProfile, // Export the new function
+  getUserProfile,
+  editUserProfile,
+  getCurrentUserProfile,
+  updateCurrentUserProfile,
+  validateProfileData
 };

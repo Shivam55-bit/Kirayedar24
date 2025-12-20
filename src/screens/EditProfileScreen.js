@@ -1,5 +1,5 @@
 // EditProfileScreen.js
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,14 +10,126 @@ import {
   SafeAreaView,
   Image,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
+import { getCurrentUserProfile, updateCurrentUserProfile, validateProfileData } from '../services/userApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EditProfileScreen = ({ navigation }) => {
-  const [name, setName] = useState("John Doe");
-  const [email, setEmail] = useState("johndoe@gmail.com");
-  const [phone, setPhone] = useState("9876543210");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [state, setState] = useState("");
+  const [city, setCity] = useState("");
+  const [street, setStreet] = useState("");
+  const [pinCode, setPinCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState({});
   const [modalVisible, setModalVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [profilePicture, setProfilePicture] = useState(null);
+
+  // Load profile data on component mount
+  useEffect(() => {
+    loadProfileData();
+  }, []);
+
+  const loadProfileData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load user profile from API
+      const response = await getCurrentUserProfile();
+      
+      if (response.success && response.user) {
+        const userData = response.user;
+        setFullName(userData.fullName || '');
+        setEmail(userData.email || '');
+        setPhone(userData.phone || '');
+        setState(userData.state || '');
+        setCity(userData.city || '');
+        setStreet(userData.street || '');
+        setPinCode(userData.pinCode || '');
+        setPassword(''); // Never pre-fill password
+        setProfilePicture(userData.profilePicture || null);
+      } else {
+        // Fallback to AsyncStorage
+        const storedUser = await AsyncStorage.getItem('userData');
+        if (storedUser) {
+          const user = JSON.parse(storedUser);
+          setFullName(user.fullName || user.name || '');
+          setEmail(user.email || '');
+          setPhone(user.phone || '');
+          setState(user.state || '');
+          setCity(user.city || '');
+          setStreet(user.street || '');
+          setPinCode(user.pinCode || '');
+          setProfilePicture(user.profilePicture || null);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+      Alert.alert('Error', 'Failed to load profile data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    // Validate profile data using new API validation
+    const profileData = {
+      fullName: fullName.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      state: state.trim(),
+      city: city.trim(),
+      street: street.trim(),
+      pinCode: pinCode.trim(),
+      ...(password.trim() && { password: password.trim() })
+    };
+
+    const validation = validateProfileData(profileData);
+    
+    if (!validation.isValid) {
+      const fieldErrors = {};
+      validation.errors.forEach(error => {
+        if (error.includes('name')) fieldErrors.fullName = error;
+        else if (error.includes('email')) fieldErrors.email = error;
+        else if (error.includes('phone')) fieldErrors.phone = error;
+        else if (error.includes('state')) fieldErrors.state = error;
+        else if (error.includes('city')) fieldErrors.city = error;
+        else if (error.includes('PIN')) fieldErrors.pinCode = error;
+        else if (error.includes('password')) fieldErrors.password = error;
+      });
+      setErrors(fieldErrors);
+      
+      const errorMessages = validation.errors.join('\n');
+      Alert.alert('Validation Error', errorMessages);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      
+      const response = await updateCurrentUserProfile(profileData);
+      
+      if (response.success) {
+        Alert.alert('Success', 'Profile updated successfully!', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        Alert.alert('Error', response.message || 'Failed to update profile');
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -46,13 +158,13 @@ const EditProfileScreen = ({ navigation }) => {
 
         {/* Card Form */}
         <View style={styles.formCard}>
-          {/* Name */}
+          {/* Full Name */}
           <View style={styles.inputRow}>
             <Icon name="person-outline" size={20} color="#FF7A00" />
             <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
+              style={[styles.input, errors.fullName && styles.inputError]}
+              value={fullName}
+              onChangeText={setFullName}
               placeholder="Full Name"
               placeholderTextColor="#999"
             />
@@ -62,12 +174,13 @@ const EditProfileScreen = ({ navigation }) => {
           <View style={styles.inputRow}>
             <Icon name="mail-outline" size={20} color="#FF7A00" />
             <TextInput
-              style={styles.input}
+              style={[styles.input, errors.email && styles.inputError]}
               value={email}
               onChangeText={setEmail}
               placeholder="Email Address"
               keyboardType="email-address"
               placeholderTextColor="#999"
+              autoCapitalize="none"
             />
           </View>
 
@@ -75,18 +188,90 @@ const EditProfileScreen = ({ navigation }) => {
           <View style={styles.inputRow}>
             <Icon name="call-outline" size={20} color="#FF7A00" />
             <TextInput
-              style={styles.input}
+              style={[styles.input, errors.phone && styles.inputError]}
               value={phone}
               onChangeText={setPhone}
               placeholder="Phone Number"
               keyboardType="phone-pad"
               placeholderTextColor="#999"
+              maxLength={10}
+            />
+          </View>
+
+          {/* State */}
+          <View style={styles.inputRow}>
+            <Icon name="location-outline" size={20} color="#FF7A00" />
+            <TextInput
+              style={[styles.input, errors.state && styles.inputError]}
+              value={state}
+              onChangeText={setState}
+              placeholder="State"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          {/* City */}
+          <View style={styles.inputRow}>
+            <Icon name="business-outline" size={20} color="#FF7A00" />
+            <TextInput
+              style={[styles.input, errors.city && styles.inputError]}
+              value={city}
+              onChangeText={setCity}
+              placeholder="City"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          {/* Street */}
+          <View style={styles.inputRow}>
+            <Icon name="home-outline" size={20} color="#FF7A00" />
+            <TextInput
+              style={styles.input}
+              value={street}
+              onChangeText={setStreet}
+              placeholder="Street Address (optional)"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          {/* PIN Code */}
+          <View style={styles.inputRow}>
+            <Icon name="pin-outline" size={20} color="#FF7A00" />
+            <TextInput
+              style={[styles.input, errors.pinCode && styles.inputError]}
+              value={pinCode}
+              onChangeText={setPinCode}
+              placeholder="PIN Code"
+              placeholderTextColor="#999"
+              keyboardType="number-pad"
+              maxLength={6}
+            />
+          </View>
+
+          {/* Password */}
+          <View style={styles.inputRow}>
+            <Icon name="lock-closed-outline" size={20} color="#FF7A00" />
+            <TextInput
+              style={[styles.input, errors.password && styles.inputError]}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="New Password (optional)"
+              placeholderTextColor="#999"
+              secureTextEntry
             />
           </View>
 
           {/* Save Button */}
-          <TouchableOpacity style={styles.saveBtn}>
-            <Text style={styles.saveText}>Save Changes</Text>
+          <TouchableOpacity 
+            style={[styles.saveBtn, saving && { opacity: 0.7 }]} 
+            onPress={handleSaveChanges}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.saveText}>Save Changes</Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -190,6 +375,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 15,
     color: "#333",
+  },
+  inputError: {
+    borderColor: "#EF4444",
+    backgroundColor: "#FEF2F2",
   },
 
   // Save button

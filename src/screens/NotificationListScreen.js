@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { formatImageUrl } from '../services/homeApi';
+// API services removed
+// import { formatImageUrl } from '../services/homeApi';
 import { runCompleteFCMTest, showFCMTestResults, sendTestFCMNotification } from '../utils/fcmTestService';
 
 const NotificationListScreen = ({ navigation }) => {
@@ -199,12 +200,12 @@ const NotificationListScreen = ({ navigation }) => {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color="#1E90FF" />
+            <Icon name="arrow-back" size={24} color="#FDB022" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Notifications</Text>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1E90FF" />
+          <ActivityIndicator size="large" color="#FDB022" />
           <Text style={styles.loadingText}>Loading notifications...</Text>
         </View>
       </View>
@@ -215,7 +216,7 @@ const NotificationListScreen = ({ navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color="#1E90FF" />
+          <Icon name="arrow-back" size={24} color="#FDB022" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
         
@@ -378,7 +379,7 @@ const styles = StyleSheet.create({
   },
   unreadNotification: {
     borderLeftWidth: 4,
-    borderLeftColor: '#1E90FF',
+    borderLeftColor: '#FDB022',
     backgroundColor: '#f0f8ff',
   },
   iconContainer: {
@@ -406,13 +407,13 @@ const styles = StyleSheet.create({
   },
   unreadTitle: {
     fontWeight: '700',
-    color: '#1E90FF',
+    color: '#FDB022',
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#1E90FF',
+    backgroundColor: '#FDB022',
     marginLeft: 8,
   },
   message: {

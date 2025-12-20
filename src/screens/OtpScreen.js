@@ -1,22 +1,22 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
   Image,
   Alert,
   ActivityIndicator,
   Animated,
+  StatusBar,
 } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getStoredFCMToken } from "../utils/fcmService";
 import { sendFCMTokenToBackend } from "../services/api";
-import authApi from "../services/authApi";
+import { authService } from "../services/authApi";
 import { storeUserCredentials } from '../utils/authManager';
 
 const OtpScreen = ({ route, navigation }) => {
@@ -27,8 +27,22 @@ const OtpScreen = ({ route, navigation }) => {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("success");
+  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes timer
+  const [canResend, setCanResend] = useState(false);
   const inputs = useRef([]);
   const toastAnim = useRef(new Animated.Value(-100)).current;
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (timeLeft > 0) {
+      const timer = setTimeout(() => {
+        setTimeLeft(timeLeft - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else {
+      setCanResend(true);
+    }
+  }, [timeLeft]);
 
   // Toast notification function
   const showToast = (message, type = "success") => {
@@ -73,57 +87,76 @@ const OtpScreen = ({ route, navigation }) => {
   const verifyOtp = async () => {
     const enteredOtp = otp.join("");
     
-    // Validate OTP length
+    // Validate OTP format
     if (enteredOtp.length !== 4) {
-      showToast("Please enter a complete 4-digit OTP.", "error");
+      showToast("Please enter complete 4-digit OTP", "error");
       return;
     }
 
     try {
       setLoading(true);
       
-      // Call the verify phone OTP API
-      const response = await authApi.verifyPhoneOtp(phone, enteredOtp);
+      // Use authService for OTP verification and automatic login
+      const authResponse = await authService.verifyPhoneOtp(phone, enteredOtp);
       
-      console.log('OTP Verification response:', response);
+      console.log('OTP verification response:', authResponse);
       
-      // Check if user is registered (has token) or new user
-      if (response.token && response.user) {
-        // User is REGISTERED - Store credentials for persistent login
-        await storeUserCredentials(response.token, response.user.id);
-        
-        // Send FCM token to backend after successful OTP verification
-        try {
-          const fcmToken = await getStoredFCMToken();
+      if (authResponse.success) {
+        if (authResponse.token && authResponse.user) {
+          // Existing user - logged in successfully
           
-          if (fcmToken && response.user.id) {
-            await sendFCMTokenToBackend(response.user.id, fcmToken);
+          // Send FCM token to backend after successful OTP verification
+          try {
+            const fcmToken = await getStoredFCMToken();
+            
+            if (fcmToken && authResponse.user.id) {
+              await sendFCMTokenToBackend(authResponse.user.id, fcmToken);
+            }
+          } catch (fcmError) {
+            console.log('FCM token error (non-critical):', fcmError);
           }
-        } catch (fcmError) {
-          console.log('FCM token error (non-critical):', fcmError);
+          
+          setLoading(false);
+          showToast(authResponse.message || "Login successful! Welcome! 🎉", "success");
+          
+          // Get user role and navigate to appropriate home screen
+          const userRole = authResponse.user?.userType || authResponse.user?.role || 'Tenant';
+          await AsyncStorage.setItem('userRole', userRole);
+          
+          setTimeout(() => {
+            // Navigate to Home - DynamicHomeScreen will handle role-based rendering
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "Home" }]
+            });
+          }, 1500);
+        } else if (authResponse.isNewUser) {
+          // New user - needs to complete registration
+          setLoading(false);
+          showToast("OTP verified! Complete your profile 📝", "success");
+          
+          setTimeout(() => {
+            navigation.replace('SignupScreen', { 
+              phoneNumber: phone,
+              fromOtp: true 
+            });
+          }, 1500);
+        } else {
+          // OTP verified but no clear next step
+          setLoading(false);
+          showToast(authResponse.message || "OTP verified successfully", "success");
+          
+          setTimeout(() => {
+            navigation.replace('SignupScreen', { 
+              phoneNumber: phone,
+              fromOtp: true 
+            });
+          }, 1500);
         }
-        
-        setLoading(false);
-        showToast("Login successful! Welcome! 🎉", "success");
-        
-        setTimeout(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Home' }]
-          });
-        }, 1500);
-      } else if (response.success) {
-        // User is NOT REGISTERED - OTP verified but no token
-        setLoading(false);
-        showToast("OTP verified! Complete your profile 📝", "success");
-        
-        setTimeout(() => {
-          navigation.replace('SignupScreen', { phoneNumber: phone });
-        }, 1500);
       } else {
         // OTP verification failed
         setLoading(false);
-        showToast(response.message || "Invalid OTP. Please try again.", "error");
+        showToast(authResponse.message || "Invalid OTP. Please try again.", "error");
       }
       
     } catch (error) {
@@ -136,18 +169,17 @@ const OtpScreen = ({ route, navigation }) => {
   const resendOtp = async () => {
     try {
       setResending(true);
-      const response = await authApi.sendPhoneOtp(phone);
+      
+      // Use authService to resend OTP
+      const response = await authService.sendPhoneOtp(phone);
       
       if (response.success) {
         showToast(response.message || "OTP sent successfully! ✅", "success");
+        setTimeLeft(300); // Reset timer
+        setCanResend(false);
+        setOtp(["", "", "", ""]); // Clear current OTP (4 digits)
       } else {
-        // Phone not registered
-        showToast(response.message || "Phone number not registered. Please sign up first.", "error");
-        
-        // Navigate back to login after 2 seconds
-        setTimeout(() => {
-          navigation.goBack();
-        }, 2000);
+        showToast(response.message || "Failed to resend OTP", "error");
       }
       
       setResending(false);
@@ -158,12 +190,15 @@ const OtpScreen = ({ route, navigation }) => {
     }
   };
 
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <ImageBackground
-      source={require("../assets/realestate-bg.png")}
-      style={styles.background}
-      blurRadius={4}
-    >
+    <View style={styles.background}>
+      <StatusBar backgroundColor="#F8FAFB" barStyle="dark-content" />
       <View style={styles.overlay}>
         {/* Toast Notification */}
         {toastVisible && (
@@ -189,16 +224,29 @@ const OtpScreen = ({ route, navigation }) => {
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image
-            source={require("../assets/New_logo.png")}
+            source={require("../assets/Kirayedar_logo2.png")}
             style={styles.logo}
           />
-          <Text style={styles.brandName}>Gharplot</Text>
+          <Text style={styles.brandName}>Kirayedar24</Text>
         </View>
 
         {/* Card */}
         <View style={styles.card}>
           <Text style={styles.title}>Enter OTP</Text>
-          <Text style={styles.subtitle}>We sent an OTP to {phone}</Text>
+          <Text style={styles.subtitle}>We sent a 4-digit OTP to {phone}</Text>
+
+          {/* Timer */}
+          <View style={styles.timerContainer}>
+            {timeLeft > 0 ? (
+              <Text style={styles.timerText}>
+                Code expires in {formatTime(timeLeft)}
+              </Text>
+            ) : (
+              <Text style={styles.expiredText}>
+                Code has expired
+              </Text>
+            )}
+          </View>
 
           {/* OTP Boxes */}
           <View style={styles.otpContainer}>
@@ -206,7 +254,10 @@ const OtpScreen = ({ route, navigation }) => {
               <TextInput
                 key={index}
                 ref={(ref) => (inputs.current[index] = ref)}
-                style={styles.otpBox}
+                style={[
+                  styles.otpBox,
+                  digit && styles.otpBoxFilled
+                ]}
                 keyboardType="number-pad"
                 maxLength={1}
                 value={digit}
@@ -227,7 +278,7 @@ const OtpScreen = ({ route, navigation }) => {
           {/* Verify Button */}
           <TouchableOpacity onPress={verifyOtp} disabled={loading}>
             <LinearGradient
-              colors={loading ? ["#ccc", "#aaa"] : ["#1E90FF", "#5DA9F6"]}
+              colors={loading ? ["#ccc", "#aaa"] : ["#FDB022", "#FDBF4D"]}
               style={styles.loginBtn}
             >
               {loading ? (
@@ -241,110 +292,171 @@ const OtpScreen = ({ route, navigation }) => {
           {/* Resend OTP */}
           <TouchableOpacity
             onPress={resendOtp}
-            disabled={resending}
+            disabled={!canResend || resending}
+            style={styles.resendContainer}
           >
-            <Text style={styles.resendText}>
-              {resending ? "Sending..." : "Resend OTP"}
+            <Text style={[
+              styles.resendText,
+              (!canResend || resending) && styles.resendTextDisabled
+            ]}>
+              {resending ? "Sending..." : canResend ? "Resend OTP" : `Resend in ${formatTime(timeLeft)}`}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
-    </ImageBackground>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  background: { flex: 1 },
+  background: { flex: 1, backgroundColor: '#F8FAFB' },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     paddingHorizontal: 20,
   },
-  logoContainer: { alignItems: "center", marginBottom: 30 },
-  logo: { width: 110, height: 110, resizeMode: "contain" },
+  logoContainer: { 
+    alignItems: "center", 
+    marginBottom: 40,
+  },
+  logo: { 
+    width: 100, 
+    height: 100, 
+    resizeMode: "contain",
+    marginBottom: 16,
+  },
   brandName: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#fff",
-    marginTop: 5,
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#1A1A1A",
+    letterSpacing: 1,
   },
   card: {
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderRadius: 20,
-    padding: 25,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    padding: 28,
     shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 12,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E8F5F0",
   },
-  title: { fontSize: 26, fontWeight: "bold", color: "#111", marginBottom: 10 },
+  title: { 
+    fontSize: 26, 
+    fontWeight: "900", 
+    color: "#1A1A1A", 
+    marginBottom: 8,
+    letterSpacing: 0.3,
+  },
   subtitle: {
-    fontSize: 14,
-    color: "#444",
-    marginBottom: 20,
+    fontSize: 15,
+    color: "#64748B",
+    marginBottom: 28,
     textAlign: "center",
+    fontWeight: "600",
   },
   otpContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 25,
-    width: "80%",
+    marginBottom: 32,
+    width: "100%",
+    paddingHorizontal: 5,
   },
   otpBox: {
-    width: 55,
+    width: 45,
     height: 55,
-    borderWidth: 1,
-    borderColor: "#ddd",
+    borderWidth: 2,
+    borderColor: "#E8F5F0",
     borderRadius: 12,
     textAlign: "center",
     fontSize: 20,
-    backgroundColor: "#fff",
-    elevation: 3,
-    color: "#000",
+    backgroundColor: "#F8FAFB",
+    elevation: 2,
+    color: "#1A1A1A",
+    fontWeight: "800",
+    shadowColor: "#FDB022",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  otpBoxFilled: {
+    borderColor: "#FDB022",
+    backgroundColor: "#FFFFFF",
+  },
+  timerContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  timerText: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  expiredText: {
+    fontSize: 14,
+    color: "#EF4444",
+    fontWeight: "700",
   },
   loginBtn: {
-    paddingVertical: 15,
-    paddingHorizontal:15,
-    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 15,
+    borderRadius: 18,
     alignItems: "center",
     width: "100%",
-    marginBottom: 15,
+    marginBottom: 20,
+    shadowColor: "#FDB022",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  btnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  btnText: { 
+    color: "#FFFFFF", 
+    fontWeight: "800", 
+    fontSize: 17,
+    letterSpacing: 0.5,
+  },
+  resendContainer: {
+    alignItems: 'center',
+  },
   resendText: {
-  color: "#1E90FF",
-    fontSize: 14,
+    color: "#FDB022",
+    fontSize: 15,
     marginTop: 10,
     textAlign: "center",
+    fontWeight: "700",
+  },
+  resendTextDisabled: {
+    color: "#64748B",
   },
   toastContainer: {
     position: "absolute",
-    top: 40,
+    top: 50,
     left: 20,
     right: 20,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    borderRadius: 18,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowRadius: 12,
+    elevation: 12,
     zIndex: 9999,
   },
   toastIcon: {
-    marginRight: 12,
+    marginRight: 14,
   },
   toastText: {
     flex: 1,
     color: "#fff",
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     lineHeight: 20,
   },
 });

@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
-import { getAuthToken } from '../services/chatApi'; 
-
-// 🚨 IMPORTANT: Use 'http' or 'https' for the base URL 
-const SOCKET_URL = 'http://abc.ridealmobility.com'; 
+import { SOCKET_URL } from '../config/api.config';
+// API service removed
+// import { getAuthToken } from '../services/chatApi'; 
 
 /**
  * Custom hook to manage WebSocket connection and real-time chat messages.
@@ -26,6 +25,10 @@ const useChatSocket = (chatId, onNewMessage, onRawEvent) => {
     // Initialize socket connection
     const initSocket = async () => {
       try {
+        if (!SOCKET_URL) {
+          console.warn('⚠️ SOCKET_URL not configured in api.config.js');
+          return;
+        }
         console.log('🔌 Attempting socket connection to:', SOCKET_URL);
         
         const token = await getAuthToken();

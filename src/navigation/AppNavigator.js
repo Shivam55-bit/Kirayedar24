@@ -38,6 +38,7 @@ import CategoryServicesScreen from '../screens/CategoryServicesScreen';
 import SavedScreen from '../screens/SavedScreen';
 import SearchScreen from '../screens/SearchScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import ContactUsScreen from '../screens/ContactUsScreen';
 import HomeScreen from '../screens/HomeScreen';
 import HomeScreenOwner from '../screens/HomeScreenOwner';
 import OwnerPropertyScreen from '../screens/OwnerPropertyScreen';
@@ -99,6 +100,7 @@ const AppNavigator = React.forwardRef((props, ref) => {
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Help" component={HelpScreen} />
+        <Stack.Screen name="ContactUs" component={ContactUsScreen} />
         <Stack.Screen name="Saved" component={SavedScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />

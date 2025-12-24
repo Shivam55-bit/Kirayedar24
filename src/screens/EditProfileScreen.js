@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
-import { getCurrentUserProfile, updateCurrentUserProfile, validateProfileData } from '../services/userApi';
+import { getCurrentUserProfile, updateCurrentUserProfile, validateProfileData } from '../services/userapi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EditProfileScreen = ({ navigation }) => {

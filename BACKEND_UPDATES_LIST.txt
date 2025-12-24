@@ -1,0 +1,159 @@
+================================================================================
+    BACKEND API UPDATES REQUIRED - Add Property Endpoint
+================================================================================
+Date: December 23, 2025
+Priority: HIGH
+Endpoint: POST /property/add
+
+================================================================================
+🆕 NEW FIELDS TO ADD (4 Fields)
+================================================================================
+
+1. post
+   - Type: String
+   - Required: No (optional)
+   - Purpose: Post office area (for better address tracking)
+   - Example: "Sector 62 Post Office"
+
+2. spaceAvailable
+   - Type: Number
+   - Required: Yes (ONLY for Commercial properties)
+   - Purpose: Available space in sq ft for commercial properties
+   - Example: 5000
+   - Condition: propertyType === "Commercial"
+
+3. societyMaintenance
+   - Type: String
+   - Enum: ["Including in Rent", "Excluding"]
+   - Required: No (optional)
+   - Purpose: Society maintenance inclusion info
+   - Example: "Including in Rent"
+   - Condition: For Residential properties only
+
+4. societyFeatures
+   - Type: Array of Strings
+   - Required: No (optional)
+   - Purpose: Multi-select society amenities
+   - Example: ["Divided Colours", "Lift", "Guarded Gated Campus"]
+   - Condition: For Residential properties only
+
+================================================================================
+⚠️ ENUM VALUE UPDATES (4 Updates)
+================================================================================
+
+5. specificType (Residential Type)
+   - Current Enum: ["Apartment", "Villa", "Plot"]
+   - ADD NEW VALUES: ["Single", "Duplex", "Room", "Flat", "PG"]
+   - Final Enum: ["Apartment", "Villa", "Plot", "Single", "Duplex", "Room", "Flat", "PG"]
+   - Reason: Client requested new residential types
+
+6. kitchenType
+   - Current Values: "Closed" (from API example)
+   - UPDATE TO: ["Modular", "Simple"]
+   - Reason: Frontend sends these values now
+
+7. facingDirection
+   - Current: Required field, enum: ["North", "South", "East", "West"]
+   - UPDATE: Make it OPTIONAL (required: false)
+   - Reason: Client requested removal from frontend
+
+8. availableFor
+   - Current: "Family"
+   - UPDATE ENUM TO: ["Boys", "Girls", "Family", "Students", "Bachelor", "Any"]
+   - Reason: Frontend has two different use cases with these values
+
+================================================================================
+🔍 FIELD NAME CLARIFICATIONS NEEDED (2 Items)
+================================================================================
+
+9. areaSqFt vs areaDetails
+   - API Response uses: "areaSqFt"
+   - Frontend sends: "areaDetails"
+   - ACTION: Confirm which field name to use (or accept both)
+
+10. availability vs availabilityStatus
+    - API Response uses: "availabilityStatus"
+    - Frontend uses: "availability"
+    - VALUES: ["Ready to Move", "Under Construction"]
+    - ACTION: Standardize to one name (recommend: availabilityStatus)
+
+================================================================================
+🐛 FRONTEND BUG (FYI - Not Backend Issue)
+================================================================================
+
+11. Missing State Variable in Frontend
+    - Issue: availability variable used but not declared
+    - Fix: Add useState declaration in AddSellScreen.js
+    - Priority: HIGH (app will crash without this)
+
+================================================================================
+✅ WORKING FIELDS (No Changes Needed)
+================================================================================
+
+- propertyState → state ✅
+- city → city ✅
+- locality → locality ✅
+- pincode → pincode ✅
+- propertyType → propertyType ✅
+- bedrooms → bedrooms ✅
+- bathrooms → bathrooms ✅
+- balconies → balconies ✅ (Boolean converts to 1/0)
+- floorNumber → floorNumber ✅
+- totalFloors → totalFloors ✅
+- price → price ✅
+- furnishing → furnishingStatus ✅
+- parking → parking ✅
+- purpose → purpose ✅
+- availableFrom → availableFrom ✅
+- contactNumber → contactNumber ✅
+- contactPreferences → contactPreferences ✅
+- photos/videos → photos/videos ✅
+- description → description ✅
+
+================================================================================
+📋 QUICK CHECKLIST FOR BACKEND TEAM
+================================================================================
+
+Schema Updates:
+☐ Add 'post' field (String, optional)
+☐ Add 'spaceAvailable' field (Number, required for Commercial)
+☐ Add 'societyMaintenance' field (String enum, optional)
+☐ Add 'societyFeatures' field (Array, optional)
+☐ Update 'specificType' enum - add 5 new values
+☐ Update 'kitchenType' enum to ["Modular", "Simple"]
+☐ Make 'facingDirection' optional (required: false)
+☐ Update 'availableFor' enum - add 6 values total
+
+Field Name Standardization:
+☐ Clarify: areaSqFt vs areaDetails
+☐ Clarify: availability vs availabilityStatus
+
+Testing:
+☐ Test Residential with new types (Single, Duplex, Room, Flat, PG)
+☐ Test Commercial with spaceAvailable
+☐ Test Residential with societyMaintenance & societyFeatures
+☐ Test without facingDirection field
+☐ Validate all enum values work
+
+Documentation:
+☐ Update API docs with new fields
+☐ Update example request/response
+☐ Document conditional requirements
+
+================================================================================
+🎯 SUMMARY
+================================================================================
+
+Total Changes Required: 10 items
+
+- 4 NEW FIELDS to add
+- 4 ENUM UPDATES
+- 2 FIELD NAME clarifications
+
+Estimated Effort: 2-3 hours (schema updates + testing)
+
+Priority: HIGH - Must complete before frontend integration
+
+================================================================================
+END OF LIST
+================================================================================

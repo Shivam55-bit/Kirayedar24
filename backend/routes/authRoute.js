@@ -45,7 +45,8 @@ import {
   getUserById,
   loginUser,
   editProfile,
-  signup
+  signup,
+  checkUserByPhone
 } from "../controllers/authControlllers.js";
 
 const router = express.Router();
@@ -56,6 +57,7 @@ router.post("/login", loginUser);
 router.post("/google-login", googleAuth);
 // Register
 router.post("/signup", signup);
+router.post("/check-user", checkUserByPhone);
 router.get("/users", getAllUsers);
 router.get("/users/:id", getUserById);
 router.put("/edit-profile/:id", editProfile);

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Animated,
   StatusBar,
+  Modal,
 } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
@@ -18,9 +19,10 @@ import { getStoredFCMToken } from "../utils/fcmService";
 import { sendFCMTokenToBackend } from "../services/api";
 import { authService } from "../services/authApi";
 import { storeUserCredentials } from '../utils/authManager';
+import AuthFlowManager from "../utils/AuthFlowManager";
 
 const OtpScreen = ({ route, navigation }) => {
-  const { phone, mode = "phone" } = route.params;
+  const { phone, mode = "phone", fromPhoneVerification = false } = route.params;
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -29,6 +31,7 @@ const OtpScreen = ({ route, navigation }) => {
   const [toastType, setToastType] = useState("success");
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes timer
   const [canResend, setCanResend] = useState(false);
+  // Removed showRegisterModal - no longer needed
   const inputs = useRef([]);
   const toastAnim = useRef(new Animated.Value(-100)).current;
 
@@ -96,75 +99,100 @@ const OtpScreen = ({ route, navigation }) => {
     try {
       setLoading(true);
       
-      // Use authService for OTP verification and automatic login
-      const authResponse = await authService.verifyPhoneOtp(phone, enteredOtp);
+      console.log('\n=================================================');
+      console.log('🔐 OTP VERIFICATION STARTING');
+      console.log('=================================================');
+      console.log('📱 Phone:', phone);
+      console.log('🔑 OTP entered:', enteredOtp);
+      console.log('=================================================\n');
       
-      console.log('OTP verification response:', authResponse);
+      // Use authService for OTP verification
+      const otpResponse = await authService.verifyPhoneOtp(phone, enteredOtp);
       
-      if (authResponse.success) {
-        if (authResponse.token && authResponse.user) {
-          // Existing user - logged in successfully
-          
-          // Send FCM token to backend after successful OTP verification
-          try {
-            const fcmToken = await getStoredFCMToken();
-            
-            if (fcmToken && authResponse.user.id) {
-              await sendFCMTokenToBackend(authResponse.user.id, fcmToken);
-            }
-          } catch (fcmError) {
-            console.log('FCM token error (non-critical):', fcmError);
-          }
-          
+      console.log('\n=================================================');
+      console.log('📥 OTP VERIFICATION RESPONSE');
+      console.log('=================================================');
+      console.log('📦 Full response:', JSON.stringify(otpResponse, null, 2));
+      console.log('✅ Success?', otpResponse.success);
+      console.log('🔑 Has token?', !!otpResponse.token);
+      console.log('👤 Has user?', !!otpResponse.user);
+      console.log('💬 Message:', otpResponse.message);
+      console.log('=================================================\n');
+      
+      // ✅ IMPORTANT: If OTP verification successful, ALWAYS go to Home
+      // Ignore isNewUser flag - we already validated user exists in LoginScreen
+      if (otpResponse.success) {
+        console.log('✅✅✅ OTP VERIFIED ✅✅✅');
+        
+        // MUST have token and user data to proceed
+        if (!otpResponse.token || !otpResponse.user) {
+          console.error('❌ Missing token or user data in response!');
+          console.error('Token exists:', !!otpResponse.token);
+          console.error('User exists:', !!otpResponse.user);
           setLoading(false);
-          showToast(authResponse.message || "Login successful! Welcome! 🎉", "success");
-          
-          // Get user role and navigate to appropriate home screen
-          const userRole = authResponse.user?.userType || authResponse.user?.role || 'Tenant';
-          await AsyncStorage.setItem('userRole', userRole);
-          
-          setTimeout(() => {
-            // Navigate to Home - DynamicHomeScreen will handle role-based rendering
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "Home" }]
-            });
-          }, 1500);
-        } else if (authResponse.isNewUser) {
-          // New user - needs to complete registration
-          setLoading(false);
-          showToast("OTP verified! Complete your profile 📝", "success");
-          
-          setTimeout(() => {
-            navigation.replace('SignupScreen', { 
-              phoneNumber: phone,
-              fromOtp: true 
-            });
-          }, 1500);
-        } else {
-          // OTP verified but no clear next step
-          setLoading(false);
-          showToast(authResponse.message || "OTP verified successfully", "success");
-          
-          setTimeout(() => {
-            navigation.replace('SignupScreen', { 
-              phoneNumber: phone,
-              fromOtp: true 
-            });
-          }, 1500);
+          showToast("Login failed - please try again or contact support", "error");
+          return;
         }
+        
+        console.log('💾 Storing auth data');
+        console.log('📦 User data:', otpResponse.user);
+        
+        // Store auth data
+        const stored = await AuthFlowManager.storeAuthData(
+          otpResponse.token, 
+          otpResponse.user.id, 
+          otpResponse.user
+        );
+        
+        if (!stored) {
+          console.error('❌ Failed to store auth data!');
+          setLoading(false);
+          showToast("Failed to save login data - please try again", "error");
+          return;
+        }
+        
+        console.log('✅ Auth data stored successfully');
+        
+        // Handle FCM token
+        try {
+          const fcmToken = await getStoredFCMToken();
+          if (fcmToken && otpResponse.user.id) {
+            await sendFCMTokenToBackend(otpResponse.user.id, fcmToken);
+          }
+        } catch (fcmError) {
+          console.log('FCM token error (non-critical):', fcmError);
+        }
+        
+        setLoading(false);
+        
+        // Show login success popup
+        showToast("Login Successful! Welcome back! 🎉", "success");
+        
+        // Navigate to Home after short delay
+        setTimeout(() => {
+          console.log('🏠🏠🏠 NAVIGATING TO HOME 🏠🏠🏠');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Home' }]
+          });
+        }, 1500);
+        return; // Exit immediately after navigation
       } else {
         // OTP verification failed
+        console.log('❌ OTP verification failed');
         setLoading(false);
-        showToast(authResponse.message || "Invalid OTP. Please try again.", "error");
+        showToast(otpResponse.message || "Invalid OTP. Please try again.", "error");
       }
       
     } catch (error) {
-      console.error("OTP Verification Error:", error);
+      console.error("🔥 OTP Verification Error:", error);
       setLoading(false);
       showToast(error.message || "Invalid OTP. Please try again.", "error");
     }
   };
+
+  // Removed handleRegisterConfirm and handleRegisterCancel - no longer needed
+  // OTP verify always goes to Home screen
 
   const resendOtp = async () => {
     try {
@@ -304,6 +332,8 @@ const OtpScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Register Modal REMOVED - Direct navigation to Home after OTP verify */}
     </View>
   );
 };
@@ -458,6 +488,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     lineHeight: 20,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 30,
+    width: "100%",
+    maxWidth: 350,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  modalHeader: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#2C2C2C",
+    marginTop: 15,
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 15,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E5E5E5",
+    alignItems: "center",
+  },
+  modalSecondaryText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+  },
+  modalPrimaryButton: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 12,
+    backgroundColor: "#F7B100",
+    alignItems: "center",
+    elevation: 3,
+    shadowColor: "#F7B100",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  modalPrimaryText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });
 

@@ -11,7 +11,7 @@ import {
   getUserProfile, 
   editUserProfile, 
   validateProfileData 
-} from '../services/userApi';
+} from '../services/userapi';
 
 // Example 1: Get current user profile
 export const testGetCurrentProfile = async () => {

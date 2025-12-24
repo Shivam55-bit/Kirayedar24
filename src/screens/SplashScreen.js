@@ -8,6 +8,7 @@ import {
   StatusBar,
   SafeAreaView,
 } from "react-native";
+import AuthFlowManager from "../utils/AuthFlowManager";
 
 const { width, height } = Dimensions.get("window");
 
@@ -48,8 +49,22 @@ const SplashScreen = ({ navigation }) => {
       ])
     ).start();
 
-    const timer = setTimeout(() => {
-      navigation.replace("LoginScreen");
+    const timer = setTimeout(async () => {
+      try {
+        // Check if user is already logged in
+        const isLoggedIn = await AuthFlowManager.isUserAuthenticated();
+        
+        if (isLoggedIn) {
+          console.log('✅ User is logged in - Going to Home');
+          navigation.replace('Home');
+        } else {
+          console.log('❌ User not logged in - Going to Login');
+          navigation.replace('LoginScreen');
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
+        navigation.replace('LoginScreen');
+      }
     }, 2800);
 
     return () => clearTimeout(timer);

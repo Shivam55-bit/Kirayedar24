@@ -18,7 +18,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import { useFocusEffect } from '@react-navigation/native';
 // API services
-import propertyService from '../../services/propertyApi';
+import propertyService from '../../services/propertyapi';
 import { formatImageUrl } from '../../services/propertyHelpers';
 import MediaCard from '../../components/MediaCard';
 
@@ -101,25 +101,33 @@ const SellScreen = ({ navigation }) => {
         console.log('[SellScreen] Properties data:', propertiesData);
         
         // Map API data to screen format
-        const mappedProperties = propertiesData.map(property => ({
-          id: property._id || property.id,
-          purpose: property.purpose || property.purposeType || 'Sell',
-          propertyType: property.propertyType || 'Property',
-          subPropertyType: property.subPropertyType || property.residentialType || property.commercialType || 'Property',
-          location: property.propertyLocation || property.location || property.address || 'Location not specified',
-          areaDetails: property.areaDetails || property.sqft || property.area || property.size || '',
-          availabilityStatus: property.availabilityStatus || property.status || 'Available',
-          price: property.price || property.rentAmount || property.sellingPrice || 'Price not available',
-          description: property.description || property.title || 'Property description',
-          furnishing: property.furnishing || 'Not specified',
-          parking: property.parking || 'Not specified',
-          photosAndVideo: property.photosAndVideo || [],
-          image: property.image,
-          status: property.status || 'Active',
-          views: property.views || 0,
-          beds: property.bedrooms || property.beds || 'N/A',
-          baths: property.bathrooms || property.baths || 'N/A'
-        }));
+        const mappedProperties = propertiesData.map(property => {
+          // Format address object to string if it exists
+          const locationText = property.propertyLocation || property.location || 
+            (property.address && typeof property.address === 'object' 
+              ? `${property.address.locality || ''}, ${property.address.city || ''}, ${property.address.state || ''}`.replace(/^, |, $/g, '').trim()
+              : property.address) || 'Location not specified';
+          
+          return {
+            id: property._id || property.id,
+            purpose: property.purpose || property.purposeType || 'Sell',
+            propertyType: property.propertyType || 'Property',
+            subPropertyType: property.specificType || property.residentialType || property.commercialType || 'Type',
+            location: locationText,
+            areaDetails: property.areaDetails || property.sqft || property.area || property.size || '',
+            availabilityStatus: property.availabilityStatus || property.status || 'Available',
+            price: property.price || property.rentAmount || property.sellingPrice || 'Price not available',
+            description: property.description || property.title || 'Property description',
+            furnishing: property.furnishing || 'Not specified',
+            parking: property.parking || 'Not specified',
+            photosAndVideo: property.photosAndVideo || [],
+            image: property.image,
+            status: property.status || 'Active',
+            views: property.views || 0,
+            beds: property.bedrooms || property.beds || 'N/A',
+            baths: property.bathrooms || property.baths || 'N/A'
+          };
+        });
         
         setListings(mappedProperties);
         console.log('[SellScreen] Mapped properties:', mappedProperties.length);

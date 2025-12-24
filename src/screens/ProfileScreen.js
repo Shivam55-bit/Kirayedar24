@@ -20,8 +20,9 @@ import Icon from "react-native-vector-icons/Ionicons";
 import FeatherIcon from "react-native-vector-icons/Feather";
 import FontAwesomeIcon from "react-native-vector-icons/FontAwesome";
 import { useFocusEffect } from '@react-navigation/native';
-import { getCurrentUserProfile } from '../services/userApi';
+import { getCurrentUserProfile } from '../services/userapi';
 import { getUserProperties } from '../services/propertyService';
+import CustomAlert from '../components/CustomAlert';
 
 // Real API integration for profile data
 
@@ -48,6 +49,7 @@ const COLORS = {
 
 const ProfileScreen = ({ navigation }) => {
     const [name, setName] = useState('');
+    const [logoutAlert, setLogoutAlert] = useState({ visible: false });
     const [email, setEmail] = useState('');
     const [shortlistedCount, setShortlistedCount] = useState(0);
     const [myListingsCount, setMyListingsCount] = useState(0);
@@ -233,7 +235,7 @@ const ProfileScreen = ({ navigation }) => {
                     <View style={styles.actionGrid}>
                         <TouchableOpacity 
                             style={[styles.actionCard, { backgroundColor: COLORS.purple + '10' }]}
-                            onPress={() => navigation.navigate('SellScreen')}
+                            onPress={() => navigation.navigate('MyPropertyScreen')}
                         >
                             <View style={[styles.actionIcon, { backgroundColor: COLORS.purple + '20' }]}>
                                 <Icon name="home" size={24} color={COLORS.purple} />
@@ -347,6 +349,17 @@ const ProfileScreen = ({ navigation }) => {
 
                         <TouchableOpacity 
                             style={styles.menuItem}
+                            onPress={() => navigation.navigate('ContactUs')}
+                        >
+                            <View style={[styles.menuIcon, { backgroundColor: COLORS.orange + '20' }]}>
+                                <Icon name="call-outline" size={20} color={COLORS.orange} />
+                            </View>
+                            <Text style={styles.menuText}>Contact Us</Text>
+                            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.menuItem}
                             onPress={() => navigation.navigate('About')}
                         >
                             <View style={[styles.menuIcon, { backgroundColor: COLORS.purple + '20' }]}>
@@ -361,12 +374,43 @@ const ProfileScreen = ({ navigation }) => {
                 {/* Logout Button */}
                 <TouchableOpacity 
                     style={styles.logoutButton}
-                    onPress={() => navigation.navigate("LoginScreen")}
+                    onPress={() => setLogoutAlert({
+                        visible: true,
+                        title: 'Logout',
+                        message: 'Are you sure you want to logout?',
+                        icon: 'log-out-outline',
+                        iconColor: '#EF4444',
+                        buttons: [
+                            {
+                                text: 'Cancel',
+                                style: 'cancel',
+                                onPress: () => setLogoutAlert({ visible: false })
+                            },
+                            {
+                                text: 'Logout',
+                                onPress: async () => {
+                                    await AsyncStorage.multiRemove(['authToken', 'userId', 'userData', 'userRole']);
+                                    setLogoutAlert({ visible: false });
+                                    navigation.reset({ index: 0, routes: [{ name: 'LoginScreen' }] });
+                                }
+                            }
+                        ]
+                    })}
                     activeOpacity={0.8}
                 >
                     <Icon name="log-out-outline" size={20} color={COLORS.redAccent} />
                     <Text style={styles.logoutText}>Sign Out</Text>
                 </TouchableOpacity>
+                
+                <CustomAlert
+                    visible={logoutAlert.visible}
+                    title={logoutAlert.title}
+                    message={logoutAlert.message}
+                    icon={logoutAlert.icon}
+                    iconColor={logoutAlert.iconColor}
+                    buttons={logoutAlert.buttons}
+                    onClose={() => setLogoutAlert({ visible: false })}
+                />
 
                 <View style={{ height: 40 }} />
             </ScrollView>

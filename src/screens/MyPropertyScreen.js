@@ -14,7 +14,8 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/Ionicons";
-import propertyService from '../services/propertyApi';
+import { useFocusEffect } from '@react-navigation/native';
+import propertyService from '../services/propertyapi';
 import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
 
 // Get screen width for card calculations
@@ -27,23 +28,28 @@ const MyPropertyScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
 
   // Load user's posted properties from API
-  const loadMyProperties = async () => {
+  const loadMyProperties = React.useCallback(async () => {
+    console.log('📥📥📥 LOADING MY PROPERTIES - API CALL STARTING 📥📥📥');
     setLoading(true);
     try {
       const response = await propertyService.getMySellProperties();
-      console.log('[MyPropertyScreen] API Response:', response);
+      console.log('✅✅✅ API RESPONSE RECEIVED:', response.success, 'Properties count:', response.data?.length || 0);
       
       if (response.success) {
         const propertiesData = response.data || response.properties || [];
-        console.log('[MyPropertyScreen] Properties data:', propertiesData);
+        console.log('🏠🏠🏠 TOTAL PROPERTIES TO DISPLAY:', propertiesData.length);
         
         // Map API data to screen format
         const mappedProperties = propertiesData.map(property => {
-          console.log('[MyPropertyScreen] Processing property:', property._id, property.photosAndVideo);
           
-          // Better image URL processing
+          // ✅ FIXED: Backend sends photos and videos separately, not photosAndVideo
           let imageUrl = null;
-          if (property.photosAndVideo && Array.isArray(property.photosAndVideo) && property.photosAndVideo.length > 0) {
+          if (property.photos && Array.isArray(property.photos) && property.photos.length > 0) {
+            const firstImage = property.photos[0];
+            if (typeof firstImage === 'string') {
+              imageUrl = formatImageUrl(firstImage);
+            }
+          } else if (property.photosAndVideo && Array.isArray(property.photosAndVideo) && property.photosAndVideo.length > 0) {
             const firstImage = property.photosAndVideo[0];
             if (typeof firstImage === 'string') {
               imageUrl = formatImageUrl(firstImage);
@@ -56,30 +62,36 @@ const MyPropertyScreen = ({ navigation }) => {
           
           console.log('[MyPropertyScreen] Final image URL for property', property._id, ':', imageUrl);
           
+          // Format address object to string if it exists
+          const locationText = property.propertyLocation || property.location || 
+            (property.address && typeof property.address === 'object' 
+              ? `${property.address.locality || ''}, ${property.address.city || ''}, ${property.address.state || ''}`.replace(/^, |, $/g, '').trim()
+              : property.address) || 'Location not specified';
+          
           return {
             id: property._id || property.id,
-            title: property.description || property.title || 'Property',
-            location: property.propertyLocation || property.location || property.address || 'Location not specified',
+            title: property.description || property.title || `${property.specificType || 'Property'} in ${property.address?.city || 'City'}`,
+            location: locationText,
             price: formatPrice(property.price || property.rentAmount || property.sellingPrice),
-            type: property.propertyType || property.subPropertyType || 'Property',
+            type: property.specificType || property.propertyType || 'Property',
             bedrooms: property.bedrooms || property.beds || 'N/A',
             bathrooms: property.bathrooms || property.baths || 'N/A',
-            area: property.areaDetails || property.sqft || property.area || property.size || 'N/A',
+            area: `${property.areaSqFt || property.areaDetails || property.sqft || property.area || 'N/A'} sqft`,
             status: property.status || property.availabilityStatus || 'Available',
             image: imageUrl || 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image',
             purpose: property.purpose || property.purposeType || 'Rent',
-            // Store original property data for editing
-            originalData: property,
-            // Additional properties for owner management
-            views: property.views || 0,
+            furnishing: property.furnishingStatus || property.furnishing || 'Not specified',
+            parking: property.parking || 'Not specified',
+            availableFor: property.availableFor || 'Any',
+            views: property.visitCount || property.views || 0,
             createdAt: property.createdAt || new Date().toISOString(),
-            furnishing: property.furnishing || 'Not specified',
-            parking: property.parking || 'Not specified'
+            originalData: property  // ✅ Store complete original backend data
           };
         });
         
+        console.log('💾💾💾 SETTING PROPERTIES STATE WITH COUNT:', mappedProperties.length);
         setProperties(mappedProperties);
-        console.log('[MyPropertyScreen] Mapped properties:', mappedProperties.length);
+        console.log('✅✅✅ PROPERTIES STATE UPDATED SUCCESSFULLY!');
       } else {
         console.error('[MyPropertyScreen] API Error:', response.message);
         Alert.alert('Error', response.message || 'Failed to load your properties');
@@ -92,7 +104,7 @@ const MyPropertyScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Empty dependency - function won't change
 
   const loadUserData = async () => {
     try {
@@ -108,33 +120,15 @@ const MyPropertyScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadUserData();
-    loadMyProperties();
   }, []);
 
-  // Listen for navigation focus to refresh data
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      console.log('My Property screen focused - refreshing properties...');
+  // ✅ FIXED: Use useFocusEffect to reload data every time screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('🔄🔄🔄 MY PROPERTY SCREEN FOCUSED - LOADING DATA 🔄🔄🔄');
       loadMyProperties();
-    });
-
-    return unsubscribe;
-  }, [navigation]);
-
-  // Handle navigation params for forced refresh
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      const params = navigation.getState()?.routes?.find(route => route.name === 'MyPropertyScreen')?.params;
-      if (params?.refresh) {
-        console.log('Forced refresh requested for My Properties');
-        loadMyProperties();
-        // Clear the refresh param
-        navigation.setParams({ refresh: false });
-      }
-    });
-
-    return unsubscribe;
-  }, [navigation]);
+    }, [loadMyProperties])
+  );
 
   // Refresh handler
   const onRefresh = async () => {
@@ -144,7 +138,18 @@ const MyPropertyScreen = ({ navigation }) => {
   };
 
   const handlePropertyPress = (property) => {
-    navigation.navigate('PropertyDetailsScreen', { property });
+    // Pass original backend data instead of mapped property
+    console.log('🔍🔍🔍 PROPERTY PRESS DEBUG:');
+    console.log('Has originalData?', !!property.originalData);
+    console.log('Original Data Keys:', property.originalData ? Object.keys(property.originalData) : 'NONE');
+    console.log('Mapped property keys:', Object.keys(property));
+    
+    const dataToPass = property.originalData || property;
+    console.log('📤 PASSING TO DETAILS SCREEN:', dataToPass);
+    
+    navigation.navigate('PropertyDetailsScreen', { 
+      property: dataToPass
+    });
   };
 
   const handleEditProperty = (property) => {
@@ -276,7 +281,7 @@ const MyPropertyScreen = ({ navigation }) => {
 
       {/* Property Details */}
       <View style={styles.residentialDetails}>
-        {/* Title */}
+        {/* Title - Show property type and description */}
         <Text style={styles.residentialTitle} numberOfLines={1}>
           {item.title}
         </Text>
@@ -291,15 +296,33 @@ const MyPropertyScreen = ({ navigation }) => {
 
         {/* Property Details Row */}
         <View style={styles.propertyDetailsRow}>
-          <Text style={styles.detailItemNew}>
-            <Icon name="bed-outline" size={12} color="#64748B" /> {item.bedrooms}BR
-          </Text>
-          <Text style={styles.detailItemNew}>
-            <Icon name="water-outline" size={12} color="#64748B" /> {item.bathrooms}BA
-          </Text>
+          {item.bedrooms !== 'N/A' && (
+            <Text style={styles.detailItemNew}>
+              <Icon name="bed-outline" size={12} color="#64748B" /> {item.bedrooms}BR
+            </Text>
+          )}
+          {item.bathrooms !== 'N/A' && (
+            <Text style={styles.detailItemNew}>
+              <Icon name="water-outline" size={12} color="#64748B" /> {item.bathrooms}BA
+            </Text>
+          )}
           <Text style={styles.detailItemNew}>
             <Icon name="resize-outline" size={12} color="#64748B" /> {item.area}
           </Text>
+        </View>
+        
+        {/* Additional Info Row - Furnishing & Available For */}
+        <View style={styles.propertyDetailsRow}>
+          {item.furnishing && item.furnishing !== 'Not specified' && (
+            <Text style={styles.detailItemNew}>
+              <Icon name="home-outline" size={12} color="#64748B" /> {item.furnishing}
+            </Text>
+          )}
+          {item.availableFor && (
+            <Text style={styles.detailItemNew}>
+              <Icon name="people-outline" size={12} color="#64748B" /> {item.availableFor}
+            </Text>
+          )}
         </View>
 
         {/* Price */}

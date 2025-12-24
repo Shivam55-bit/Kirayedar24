@@ -16,6 +16,8 @@ import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from "../services/authApi";
+import AuthFlowManager from "../utils/AuthFlowManager";
+import CustomAlert from '../components/CustomAlert';
 
 const { width } = Dimensions.get("window");
 
@@ -26,6 +28,15 @@ const LoginScreen = ({ navigation }) => {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+    icon: 'alert-circle',
+    iconColor: '#FDB022'
+  });
+  const [otpSuccessAlert, setOtpSuccessAlert] = useState({ visible: false });
 
   const showToast = (message, type = "success") => {
     Alert.alert(type === "success" ? "Success" : "Error", message);
@@ -39,25 +50,60 @@ const LoginScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
+      console.log('🔐 Attempting email login for:', email.trim());
+      
       const response = await authService.login(email.trim(), password);
       
+      console.log('📥 Login Response:', JSON.stringify(response, null, 2));
+      console.log('✅ Has token?', !!response.token);
+      console.log('👤 Has user?', !!response.user);
+      
       if (response.success && response.token) {
-        // Get user role from response or stored value
-        const userRole = response.user?.userType || response.user?.role || await AsyncStorage.getItem('userRole') || 'Tenant';
+        console.log('💾 Storing login data...');
         
-        // Store user role for future use
-        await AsyncStorage.setItem('userRole', userRole);
+        // Use AuthFlowManager to handle login success
+        const isStored = await AuthFlowManager.handleLoginSuccess(response);
         
-        showToast("Login successful! Welcome! 🎉", "success");
-        setTimeout(() => {
-          // Navigate to Home - DynamicHomeScreen will handle role-based rendering
-          navigation.reset({
-            index: 0,
-            routes: [{ name: "Home" }],
-          });
-        }, 1500);
+        console.log('✅ Data stored?', isStored);
+        
+        if (isStored) {
+          showToast("Login successful! Welcome back! 🎉", "success");
+          setTimeout(() => {
+            console.log('🏠 Navigating to Home');
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "Home" }],
+            });
+          }, 1500);
+        } else {
+          console.error('❌ Failed to store login data');
+          showToast("Login successful but data storage failed", "error");
+        }
       } else {
-        showToast(response.message || "Invalid credentials", "error");
+        // Check if user doesn't exist
+        if (response.message && (response.message.toLowerCase().includes('not found') || response.message.toLowerCase().includes('not exist') || response.message.toLowerCase().includes('not registered'))) {
+          setAlertConfig({
+            visible: true,
+            title: 'User Not Registered',
+            message: `The email ${email.trim()} is not registered yet.\n\nWould you like to create a new account?`,
+            icon: 'lock-closed',
+            iconColor: '#FDB022',
+            buttons: [
+              {
+                text: 'Register Now',
+                onPress: () => {
+                  navigation.navigate('SignupScreen', { email: email.trim() });
+                },
+              },
+              {
+                text: 'Cancel',
+                style: 'cancel',
+              },
+            ],
+          });
+        } else {
+          showToast(response.message || "Invalid credentials", "error");
+        }
       }
     } catch (error) {
       showToast(error.message || "Login failed. Please try again.", "error");
@@ -79,18 +125,42 @@ const LoginScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
+      
+      console.log('\n=================================================');
+      console.log('📱 FRONTEND - Sending OTP to phone');
+      console.log('=================================================');
+      console.log('📱 Phone number:', phone);
+      console.log('🚀 Sending OTP...');
+      console.log('=================================================\n');
+      
+      // Send OTP directly - backend will handle validation
       const response = await authService.sendPhoneOtp(phone);
       
       if (response.success) {
-        showToast("OTP sent successfully! 📱", "success");
-        setTimeout(() => {
-          navigation.navigate('OtpScreen', { phone: phone, mode: 'phone' });
-        }, 1500);
+        setOtpSuccessAlert({
+          visible: true,
+          title: 'OTP Sent!',
+          message: `OTP has been sent to ${phone} successfully! \ud83d\udcf1`,
+          icon: 'checkmark-circle',
+          iconColor: '#10B981',
+          buttons: [{
+            text: 'OK',
+            onPress: () => {
+              setOtpSuccessAlert({ visible: false });
+              navigation.navigate('OtpScreen', { 
+                phone: phone, 
+                mode: 'phone_login',
+                fromLogin: true 
+              });
+            }
+          }]
+        });
       } else {
         showToast(response.message || "Failed to send OTP", "error");
       }
     } catch (error) {
-      showToast(error.message || "Failed to send OTP", "error");
+      console.error('❌ Error in handlePhoneLogin:', error);
+      showToast(error.message || "Failed to process request", "error");
     } finally {
       setLoading(false);
     }
@@ -244,10 +314,48 @@ const LoginScreen = ({ navigation }) => {
                 )}
               </TouchableOpacity>
             </LinearGradient>
+
+            {/* Divider with OR */}
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text style={styles.or}>OR</Text>
+              <View style={styles.line} />
+            </View>
+
+            {/* Create Profile Button */}
+            <TouchableOpacity
+              style={styles.createProfileBtn}
+              onPress={() => navigation.navigate("SignupScreen")}
+            >
+              <Icon name="person-add" size={20} color="#f39c12" />
+              <Text style={styles.createProfileText}>Create Profile</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
       </ScrollView>
+
+      {/* Custom Alert */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        icon={alertConfig.icon}
+        iconColor={alertConfig.iconColor}
+        onDismiss={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
+      
+      {/* OTP Success Alert */}
+      <CustomAlert
+        visible={otpSuccessAlert.visible}
+        title={otpSuccessAlert.title}
+        message={otpSuccessAlert.message}
+        buttons={otpSuccessAlert.buttons}
+        icon={otpSuccessAlert.icon}
+        iconColor={otpSuccessAlert.iconColor}
+        onDismiss={() => setOtpSuccessAlert({ ...otpSuccessAlert, visible: false })}
+      />
     </SafeAreaView>
   );
 };
@@ -388,9 +496,50 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  createProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#f39c12',
+    paddingVertical: 14,
+    borderRadius: 14,
+    elevation: 3,
+  },
+
+  createProfileText: {
+    color: '#f39c12',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.5,
+  },
+
   centerLink: {
     marginTop: 20,
     alignItems: "center",
+  },
+
+  notRegisteredContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    flexWrap: 'wrap',
+  },
+
+  notRegisteredText: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+  },
+
+  signupLink: {
+    fontSize: 14,
+    color: '#f39c12',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 
   divider: {

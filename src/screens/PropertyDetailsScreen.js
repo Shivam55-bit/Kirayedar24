@@ -80,6 +80,48 @@ const getAmenityIcon = (name) => {
 const PropertyDetailsScreen = ({ navigation, route }) => {
   const { property: routeProperty, itemId, user: routeUser, fromAddProperty } = route?.params || {};
   
+  console.log('🏠 PropertyDetailsScreen - Route property received:', routeProperty);
+  console.log('🏠 Property state value:', routeProperty?.state);
+  console.log('🏠 Property city value:', routeProperty?.city);
+  console.log('🏠 Property locality value:', routeProperty?.locality);
+  console.log('🏠 Property address object:', routeProperty?.address);
+  
+  // Utility to get address fields from nested address object or flat structure
+  const getAddressField = (property, field) => {
+    if (!property) return null;
+    
+    console.log(`🔍 getAddressField called for "${field}"`, {
+      hasAddressObject: !!property.address,
+      addressValue: property.address?.[field],
+      flatValue: property[field],
+      propertyLocation: property.propertyLocation
+    });
+    
+    // Try nested address object first (new backend format)
+    if (property.address && typeof property.address === 'object') {
+      const value = property.address[field];
+      if (value) {
+        console.log(`✅ Found "${field}" in address object:`, value);
+        return value;
+      }
+    }
+    
+    // Fallback to flat structure (old format)
+    if (property[field]) {
+      console.log(`✅ Found "${field}" in flat structure:`, property[field]);
+      return property[field];
+    }
+    
+    // Special mapping for locality - can also be propertyLocation in old format
+    if (field === 'locality' && property.propertyLocation) {
+      console.log(`✅ Found locality as propertyLocation:`, property.propertyLocation);
+      return property.propertyLocation;
+    }
+    
+    console.log(`❌ "${field}" not found anywhere`);
+    return null;
+  };
+  
   // All hooks must be called at the top level, before any early returns
   const [property, setProperty] = useState(routeProperty || null);
   const [loading, setLoading] = useState(!routeProperty);
@@ -131,7 +173,20 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
     
     const images = [];
     
-    if (property.photosAndVideo && property.photosAndVideo.length > 0) {
+    // Backend sends photos array
+    if (property.photos && Array.isArray(property.photos) && property.photos.length > 0) {
+      property.photos.forEach(photo => {
+        if (photo && typeof photo === 'string') {
+          const formattedUrl = formatImageUrl(photo);
+          if (formattedUrl) {
+            images.push(formattedUrl);
+          }
+        }
+      });
+    }
+    
+    // Fallback to old photosAndVideo field
+    if (images.length === 0 && property.photosAndVideo && property.photosAndVideo.length > 0) {
       property.photosAndVideo.forEach(media => {
         const imageUrl = media.uri || media;
         if (imageUrl && typeof imageUrl === 'string') {
@@ -162,18 +217,29 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   const currentImage = allImages[currentImageIndex];
 
   // Enhanced debugging with image URL testing
-  console.log('🏠 Property image debugging:', {
+  console.log('🏠 Property data debugging:', {
     propertyId: property?._id || property?.id,
+    hasPhotos: !!property?.photos,
+    photosLength: property?.photos?.length || 0,
     hasPhotosAndVideo: !!property?.photosAndVideo,
     photosAndVideoLength: property?.photosAndVideo?.length || 0,
     hasImages: !!property?.images,
     imagesLength: property?.images?.length || 0,
-    samplePhotosAndVideo: property?.photosAndVideo?.[0],
-    sampleImages: property?.images?.[0],
-    allImages: allImages,
+    samplePhoto: property?.photos?.[0],
+    allImagesCount: allImages.length,
     currentImage: currentImage,
-    formattedCurrentImage: formatImageUrl(currentImage),
-    propertyKeys: Object.keys(property || {})
+    addressStructure: property?.address,
+    city: getAddressField(property, 'city'),
+    state: getAddressField(property, 'state'),
+    locality: getAddressField(property, 'locality'),
+    areaSqFt: property?.areaSqFt,
+    specificType: property?.specificType,
+    bedrooms: property?.bedrooms,
+    bathrooms: property?.bathrooms,
+    description: property?.description,
+    title: property?.title,
+    propertyKeys: Object.keys(property || {}),
+    FULL_PROPERTY: JSON.stringify(property, null, 2)
   });
 
   // Test image URL accessibility
@@ -291,33 +357,34 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
     return 'https://via.placeholder.com/400x300/E2E8F0/64748B?text=Property+Image';
   };
 
-  const title = property.title || property.description || "Property";
+  // Improved title extraction
+  const title = property.title || property.description?.substring(0, 50) || property.propertyLocation || "Property";
   const price =
     typeof property.price === "number"
       ? formatPrice(property.price)
       : property.price || "N/A";
 
   const keyDetails = [
-    { label: property.bedrooms || property.propertyType, icon: "bed-outline" },
+    { label: property.bedrooms ? `${property.bedrooms} Bed` : (property.specificType || property.propertyType), icon: "bed-outline" },
     { 
-      label: property.bathrooms ? `${property.bathrooms} Bath` : property.status,
+      label: property.bathrooms ? `${property.bathrooms} Bath` : (property.status || 'N/A'),
       icon: "water-outline"
     },
     {
-      label: property.areaDetails
-        ? `${property.areaDetails} sq.ft`
-        : property.size,
+      label: property.areaSqFt
+        ? `${property.areaSqFt} sq.ft`
+        : (property.areaDetails ? `${property.areaDetails} sq.ft` : 'N/A'),
       icon: "resize-outline",
     },
     { 
-      label: property.floor ? `Floor ${property.floor}` : property.furnishingStatus, 
+      label: property.floorNumber ? `Floor ${property.floorNumber}` : (property.floor ? `Floor ${property.floor}` : (property.furnishingStatus || 'N/A')), 
       icon: "layers-outline" 
     },
     {
-      label: property.parking ? `${property.parking} Parking` : 'No Parking Info',
+      label: property.parking || 'Parking Info N/A',
       icon: "car-outline"
     },
-  ].filter((d) => d.label);
+  ].filter((d) => d.label && d.label !== 'N/A');
 
   // --- Static Google Map URL ---
   const latitude = property.latitude || 37.78825;
@@ -458,9 +525,10 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           
           <View style={styles.priceRow}>
             <Text style={styles.priceText}>{price}</Text>
-            {property.propertyLocation && (
+            {(property.propertyLocation || getAddressField(property, 'locality') || getAddressField(property, 'city')) && (
               <Text style={styles.locationText} numberOfLines={1}>
-                📍 {property.propertyLocation}
+                📍 {property.propertyLocation || 
+                    `${getAddressField(property, 'locality') || ''}${getAddressField(property, 'locality') && getAddressField(property, 'city') ? ', ' : ''}${getAddressField(property, 'city') || ''}`}
               </Text>
             )}
           </View>
@@ -473,13 +541,13 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
               <View style={styles.quickInfoItem}>
                 <Icon name="home-outline" size={16} color={colors.text} />
                 <Text style={styles.quickInfoText}>
-                  {property.residentialType || property.commercialType || property.propertyType}
+                  {property.specificType || property.residentialType || property.commercialType || property.propertyType || 'N/A'}
                 </Text>
               </View>
               <View style={styles.quickInfoItem}>
                 <Icon name="calendar-outline" size={16} color={colors.text} />
                 <Text style={styles.quickInfoText}>
-                  {property.createdAt ? new Date(property.createdAt).toLocaleDateString() : '2025-02-28'}
+                  {property.createdAt ? new Date(property.createdAt).toLocaleDateString() : (property.postedDate ? new Date(property.postedDate).toLocaleDateString() : 'N/A')}
                 </Text>
               </View>
             </View>
@@ -488,13 +556,13 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
               <View style={styles.quickInfoItem}>
                 <Icon name="resize-outline" size={16} color={colors.text} />
                 <Text style={styles.quickInfoText}>
-                  {property.areaDetails ? `${property.areaDetails} sqft` : '400 sqft'}
+                  {property.areaSqFt ? `${property.areaSqFt} sqft` : (property.areaDetails ? `${property.areaDetails} sqft` : 'N/A')}
                 </Text>
               </View>
               <View style={styles.quickInfoItem}>
                 <Icon name="people-outline" size={16} color={colors.text} />
                 <Text style={styles.quickInfoText}>
-                  {property.availableFor || 'Family'}
+                  {property.availableFor || (property.purpose ? `For ${property.purpose}` : 'N/A')}
                 </Text>
               </View>
             </View>
@@ -517,37 +585,138 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
 
           {/* Features Section */}
           <View style={styles.featuresSection}>
-            <Text style={styles.featuresTitle}>Features</Text>
+            <Text style={styles.featuresTitle}>Property Details</Text>
             <View style={styles.featuresGrid}>
-              <View style={styles.featureItem}>
-                <Text style={styles.featureLabel}>City</Text>
-                <Text style={styles.featureValue}>
-                  {property.city || 'Normadapuram'}
-                </Text>
-              </View>
-              <View style={styles.featureItem}>
-                <Text style={styles.featureLabel}>Area</Text>
-                <Text style={styles.featureValue}>
-                  {property.locality || 'ITI HOUSING BOARD'}
-                </Text>
-              </View>
-              <View style={styles.featureItem}>
-                <Text style={styles.featureLabel}>Floor</Text>
-                <Text style={styles.featureValue}>
-                  {property.floorNumber || '2'}
-                </Text>
-              </View>
+              {property.bedrooms && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Bedrooms</Text>
+                  <Text style={styles.featureValue}>
+                    {property.bedrooms}
+                  </Text>
+                </View>
+              )}
+              {property.bathrooms && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Bathrooms</Text>
+                  <Text style={styles.featureValue}>
+                    {property.bathrooms}
+                  </Text>
+                </View>
+              )}
               <View style={styles.featureItem}>
                 <Text style={styles.featureLabel}>Carpet Area</Text>
                 <Text style={styles.featureValue}>
-                  {property.areaDetails ? `${property.areaDetails} sqft` : '400 sqft'}
+                  {property.areaSqFt ? `${property.areaSqFt} sqft` : (property.areaDetails ? `${property.areaDetails} sqft` : 'N/A')}
                 </Text>
               </View>
+              {(property.floorNumber || property.floor) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Floor</Text>
+                  <Text style={styles.featureValue}>
+                    {property.floorNumber || property.floor}{property.totalFloors ? ` of ${property.totalFloors}` : ''}
+                  </Text>
+                </View>
+              )}
+              {(property.parking || property.parkingAvailable) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Parking</Text>
+                  <Text style={styles.featureValue}>
+                    {property.parking || property.parkingAvailable}
+                  </Text>
+                </View>
+              )}
+              {property.balconies !== undefined && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Balcony</Text>
+                  <Text style={styles.featureValue}>
+                    {property.balconies === true || property.balconies === 'true' ? 'Yes' : 'No'}
+                  </Text>
+                </View>
+              )}
+              {property.kitchenType && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Kitchen</Text>
+                  <Text style={styles.featureValue}>
+                    {property.kitchenType}
+                  </Text>
+                </View>
+              )}
+              {(property.availabilityStatus || property.availability) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Availability</Text>
+                  <Text style={styles.featureValue}>
+                    {property.availabilityStatus || property.availability}
+                  </Text>
+                </View>
+              )}
             </View>
-            <TouchableOpacity style={styles.showMoreButton}>
-              <Text style={styles.showMoreText}>Show More</Text>
-            </TouchableOpacity>
           </View>
+
+          {/* Location Section */}
+          <View style={styles.featuresSection}>
+            <Text style={styles.featuresTitle}>Location</Text>
+            <View style={styles.featuresGrid}>
+              <View style={styles.featureItem}>
+                <Text style={styles.featureLabel}>State</Text>
+                <Text style={styles.featureValue}>
+                  {getAddressField(property, 'state') || property.state || 'N/A'}
+                </Text>
+              </View>
+              <View style={styles.featureItem}>
+                <Text style={styles.featureLabel}>City</Text>
+                <Text style={styles.featureValue}>
+                  {getAddressField(property, 'city') || property.city || 'N/A'}
+                </Text>
+              </View>
+              <View style={styles.featureItem}>
+                <Text style={styles.featureLabel}>Locality</Text>
+                <Text style={styles.featureValue}>
+                  {getAddressField(property, 'locality') || property.propertyLocation || 'N/A'}
+                </Text>
+              </View>
+              {(getAddressField(property, 'post') || property.post) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Post Office</Text>
+                  <Text style={styles.featureValue}>
+                    {getAddressField(property, 'post') || property.post}
+                  </Text>
+                </View>
+              )}
+              {(getAddressField(property, 'pincode') || property.pincode) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Pincode</Text>
+                  <Text style={styles.featureValue}>
+                    {getAddressField(property, 'pincode') || property.pincode}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Society Features */}
+          {(property.societyMaintenance || (property.societyFeatures && property.societyFeatures.length > 0)) && (
+            <View style={styles.featuresSection}>
+              <Text style={styles.featuresTitle}>Society Details</Text>
+              {property.societyMaintenance && (
+                <View style={styles.societyMaintenanceRow}>
+                  <Icon name="cash-outline" size={18} color={colors.primary} />
+                  <Text style={styles.societyMaintenanceText}>
+                    Maintenance: {property.societyMaintenance}
+                  </Text>
+                </View>
+              )}
+              {property.societyFeatures && property.societyFeatures.length > 0 && (
+                <View style={styles.societyFeaturesWrap}>
+                  {property.societyFeatures.map((feature, index) => (
+                    <View key={index} style={styles.societyFeatureChip}>
+                      <Icon name="checkmark-circle" size={14} color={colors.primary} />
+                      <Text style={styles.societyFeatureText}>{feature}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Property Status and Type */}
           <View style={styles.propertyMetaRow}>
@@ -969,6 +1138,43 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "600",
   },
+  
+  // Society Features Styles
+  societyMaintenanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(251, 146, 60, 0.1)',
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  societyMaintenanceText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  societyFeaturesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  societyFeatureChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  societyFeatureText: {
+    fontSize: 13,
+    color: '#22C55E',
+    fontWeight: '600',
+  },
+  
   propertyMetaRow: { 
     flexDirection: "row", 
     flexWrap: "wrap", 

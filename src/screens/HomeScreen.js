@@ -25,7 +25,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 import { getRecentProperties, getResidentialProperties, getCommercialProperties } from '../services/propertyService';
-import propertyService from '../services/propertyApi';
+import propertyService from '../services/propertyapi';
 import { debugPropertyAPIs } from '../debug/propertyDebug';
 import { checkAuthStatus } from '../utils/quickAuth';
 import { getNotificationCount, addTestNotifications } from '../utils/notificationManager';

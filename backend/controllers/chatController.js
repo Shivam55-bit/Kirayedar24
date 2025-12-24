@@ -118,16 +118,19 @@ import admin from "firebase-admin";
 import fs from "fs";
 import { sendPushNotification } from "../utils/sendNotification.js";
 
-const serviceAccount = JSON.parse(
-  fs.readFileSync(new URL("../serviceAccountKey.json", import.meta.url))
-);
+// Temporary disable Firebase for testing
+// const serviceAccount = JSON.parse(
+//   fs.readFileSync(new URL("../serviceAccountKey.json", import.meta.url))
+// );
 
-// 🔹 Initialize Firebase Admin SDK only once
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-}
+// // 🔹 Initialize Firebase Admin SDK only once
+// if (!admin.apps.length) {
+//   admin.initializeApp({
+//     credential: admin.credential.cert(serviceAccount),
+//   });
+// }
+
+console.log("⚠️ Firebase in chat controller temporarily disabled for testing");
 
 /**
  *  Get or Create Chat

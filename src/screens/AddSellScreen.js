@@ -13,6 +13,8 @@ import {
   Dimensions,
   PermissionsAndroid,
   Platform,
+  Modal,
+  FlatList,
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
@@ -20,6 +22,7 @@ import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import DatePicker from 'react-native-date-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { addProperty } from '../services/api'; // Import the API service
+import { getAllStates, getCitiesByState, getAreasByCity, getPincodeByArea } from '../utils/locationData';
 
 // Move Dropdown component outside to prevent recreation
 const Dropdown = React.memo(({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder, icon = "location", searchText, setSearchText }) => {
@@ -30,7 +33,7 @@ const Dropdown = React.memo(({ options, selectedValue, onSelect, isOpen, setIsOp
   );
 
   return (
-    <View style={[dropdownStyles.container, isOpen && { zIndex: 1000 }]}>
+    <View style={dropdownStyles.container}>
       <Text style={dropdownStyles.label}>{placeholder.replace('Select ', '')}</Text>
       <TouchableOpacity
         style={[dropdownStyles.button, isOpen && dropdownStyles.buttonOpen]}
@@ -39,7 +42,7 @@ const Dropdown = React.memo(({ options, selectedValue, onSelect, isOpen, setIsOp
       >
         <View style={dropdownStyles.buttonContent}>
           <Icon name={icon} size={16} color="#f39c12" style={dropdownStyles.icon} />
-          <Text style={[dropdownStyles.buttonText, !selectedValue && dropdownStyles.placeholderText]}>
+          <Text style={[dropdownStyles.buttonText, !selectedValue && dropdownStyles.placeholderText]} numberOfLines={1}>
             {selectedValue || placeholder}
           </Text>
         </View>
@@ -50,64 +53,77 @@ const Dropdown = React.memo(({ options, selectedValue, onSelect, isOpen, setIsOp
         />
       </TouchableOpacity>
       
-      {isOpen && (
-        <View style={dropdownStyles.list}>
-          <View style={dropdownStyles.searchContainer}>
-            <Icon name="search" size={16} color="#999" />
-            <TextInput
-              style={dropdownStyles.searchInput}
-              placeholder={`Search ${placeholder.toLowerCase()}...`}
-              placeholderTextColor="#999"
-              value={searchText}
-              onChangeText={setSearchText}
-              autoCorrect={false}
-              autoCompleteType="off"
-            />
-          </View>
-          
-          <ScrollView 
-            style={dropdownStyles.scroll} 
-            nestedScrollEnabled={true}
-            showsVerticalScrollIndicator={true}
-            bounces={false}
-            scrollEventThrottle={16}
-            keyboardShouldPersistTaps="handled"
-          >
-            {filteredOptions.length > 0 ? (
-              filteredOptions.map((option) => (
+      <Modal
+        visible={isOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsOpen(false)}
+      >
+        <TouchableOpacity 
+          style={dropdownStyles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsOpen(false)}
+        >
+          <View style={dropdownStyles.modalContent} onStartShouldSetResponder={() => true}>
+            <View style={dropdownStyles.modalHeader}>
+              <Text style={dropdownStyles.modalTitle}>{placeholder}</Text>
+              <TouchableOpacity onPress={() => setIsOpen(false)}>
+                <Icon name="close-circle" size={28} color="#f39c12" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={dropdownStyles.searchContainer}>
+              <Icon name="search" size={18} color="#999" />
+              <TextInput
+                style={dropdownStyles.searchInput}
+                placeholder={`Search ${placeholder.toLowerCase()}...`}
+                placeholderTextColor="#999"
+                value={searchText}
+                onChangeText={setSearchText}
+                autoCorrect={false}
+                autoCompleteType="off"
+              />
+            </View>
+            
+            <FlatList
+              data={filteredOptions}
+              keyExtractor={(item, index) => `${item}-${index}`}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              ListEmptyComponent={() => (
+                <View style={dropdownStyles.noResults}>
+                  <Icon name="search" size={32} color="#ccc" />
+                  <Text style={dropdownStyles.noResultsText}>No results found</Text>
+                </View>
+              )}
+              renderItem={({ item }) => (
                 <TouchableOpacity
-                  key={option}
                   style={[
-                    dropdownStyles.item,
-                    selectedValue === option && dropdownStyles.itemSelected
+                    dropdownStyles.modalItem,
+                    selectedValue === item && dropdownStyles.modalItemSelected
                   ]}
                   onPress={() => {
-                    onSelect(option);
+                    onSelect(item);
                     setIsOpen(false);
                     setSearchText("");
                   }}
                   activeOpacity={0.7}
                 >
                   <Text style={[
-                    dropdownStyles.itemText,
-                    selectedValue === option && dropdownStyles.itemTextSelected
-                  ]}>
-                    {option}
+                    dropdownStyles.modalItemText,
+                    selectedValue === item && dropdownStyles.modalItemTextSelected
+                  ]} numberOfLines={2}>
+                    {item}
                   </Text>
-                  {selectedValue === option && (
-                    <Icon name="checkmark-circle" size={20} color="#f39c12" />
+                  {selectedValue === item && (
+                    <Icon name="checkmark-circle" size={22} color="#f39c12" />
                   )}
                 </TouchableOpacity>
-              ))
-            ) : (
-              <View style={dropdownStyles.noResults}>
-                <Icon name="search" size={24} color="#ccc" />
-                <Text style={dropdownStyles.noResultsText}>No results found</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      )}
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 });
@@ -311,36 +327,45 @@ const AddSellScreen = ({ navigation }) => {
   // All form state - keep in consistent order
   const [propertyState, setPropertyState] = useState("");
   const [city, setCity] = useState("");
-  const [locality, setLocality] = useState("");
+  const [post, setPost] = useState(""); // Post office area
+  const [locality, setLocality] = useState(""); // Manual locality/area input
   const [pincode, setPincode] = useState("");
   const [propertyType, setPropertyType] = useState("Residential");
   const [commercialType, setCommercialType] = useState("office");
-  const [residentialType, setResidentialType] = useState("Apartment");
+  const [residentialType, setResidentialType] = useState("Single");
   const [bedrooms, setBedrooms] = useState("1");
   const [bathrooms, setBathrooms] = useState("1");
-  const [balconies, setBalconies] = useState("1");
+  const [balconies, setBalconies] = useState(false); // Changed to boolean for Yes/No toggle
   const [area, setArea] = useState("");
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [floorNumber, setFloorNumber] = useState("");
   const [totalFloors, setTotalFloors] = useState("");
-  const [facingDirection, setFacingDirection] = useState("North");
   const [contactNumber, setContactNumber] = useState("");
   const [purpose, setPurpose] = useState("Sell");
   const [parking, setParking] = useState("Available");
   const [furnishing, setFurnishing] = useState("Semi-Furnished");
   const [kitchenType, setKitchenType] = useState("Simple");
-  const [availability, setAvailability] = useState("Ready to Move");
-  const [availableFor, setAvailableFor] = useState("Family");
+  const [availableFrom, setAvailableFrom] = useState(new Date()); // Date picker for available from
+  const [availableFor, setAvailableFor] = useState("Boys");
+  const [spaceAvailable, setSpaceAvailable] = useState(""); // For commercial
+  const [societyMaintenance, setSocietyMaintenance] = useState("Including in Rent"); // Society/Maintenance
+  const [societyFeatures, setSocietyFeatures] = useState([]); // Multiple selection: Gym, Lift, Guarded Gated Campus
+  const [availability, setAvailability] = useState("Ready to Move"); // Property availability status
   const [selectedMedia, setSelectedMedia] = useState([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-  const [localityDropdownOpen, setLocalityDropdownOpen] = useState(false);
+  const [postDropdownOpen, setPostDropdownOpen] = useState(false);
   const [stateSearchText, setStateSearchText] = useState("");
   const [citySearchText, setCitySearchText] = useState("");
-  const [localitySearchText, setLocalitySearchText] = useState("");
+  const [postSearchText, setPostSearchText] = useState("");
+  
+  // Available options from locationData
+  const [availableStates, setAvailableStates] = useState([]);
+  const [availableCities, setAvailableCities] = useState([]);
+  const [availablePosts, setAvailablePosts] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [contactPreference, setContactPreference] = useState("phone");
@@ -353,6 +378,65 @@ const AddSellScreen = ({ navigation }) => {
     phone: false,
     email: false,
   });
+  
+  // Payment Modal States
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
+  const [processingPayment, setProcessingPayment] = useState(false);
+
+  // Load all states on mount
+  React.useEffect(() => {
+    const states = getAllStates();
+    setAvailableStates(states);
+  }, []);
+
+  // Update cities when state changes
+  React.useEffect(() => {
+    if (propertyState) {
+      const cities = getCitiesByState(propertyState);
+      setAvailableCities(cities);
+      // Reset dependent fields when state changes
+      if (city && !cities.includes(city)) {
+        setCity("");
+        setPost("");
+        setLocality("");
+        setPincode("");
+      }
+    } else {
+      setAvailableCities([]);
+      setCity("");
+      setPost("");
+      setLocality("");
+      setPincode("");
+    }
+  }, [propertyState]);
+
+  // Update posts (areas) when city changes
+  React.useEffect(() => {
+    if (city) {
+      const posts = getAreasByCity(city);
+      setAvailablePosts(posts);
+      // Reset dependent fields when city changes
+      setPost("");
+      setLocality("");
+      setPincode("");
+    } else {
+      setAvailablePosts([]);
+      setPost("");
+      setLocality("");
+      setPincode("");
+    }
+  }, [city]);
+
+  // Auto-fill pincode when post is selected
+  React.useEffect(() => {
+    if (city && post) {
+      const pincode = getPincodeByArea(city, post);
+      if (pincode) {
+        setPincode(pincode);
+      }
+    }
+  }, [post, city]);
 
   // Debug function to test API directly
   const testAPI = async () => {
@@ -438,8 +522,12 @@ const AddSellScreen = ({ navigation }) => {
       Alert.alert('Missing Information', 'Please select City');
       return false;
     }
+    if (!post?.trim()) {
+      Alert.alert('Missing Information', 'Please select Post');
+      return false;
+    }
     if (!locality?.trim()) {
-      Alert.alert('Missing Information', 'Please select Locality/Area');
+      Alert.alert('Missing Information', 'Please enter Locality/Area');
       return false;
     }
     if (!pincode?.trim() || !/^\d{6}$/.test(pincode.trim())) {
@@ -447,7 +535,7 @@ const AddSellScreen = ({ navigation }) => {
       return false;
     }
     return true;
-  }, [propertyState, city, locality, pincode]);
+  }, [propertyState, city, post, locality, pincode]);
 
   const validateStep2 = useCallback(() => {
     if (!area?.trim() || isNaN(parseInt(area)) || parseInt(area) <= 0) {
@@ -674,19 +762,19 @@ const AddSellScreen = ({ navigation }) => {
     const requiredFields = [
       { value: propertyState, name: "State", field: "address.state" },
       { value: city, name: "City", field: "address.city" },
-      { value: locality, name: "Locality", field: "address.locality" },
+      { value: post, name: "Post", field: "address.post" },
+      { value: locality, name: "Locality/Area", field: "address.locality" },
       { value: pincode, name: "PIN Code", field: "address.pincode" },
       { value: area, name: "Area", field: "areaDetails" },
       { value: price, name: "Price", field: "price" },
       { value: contactNumber, name: "Contact Number", field: "contactNumber" },
-      { value: facingDirection, name: "Facing Direction", field: "facingDirection" },
     ];
 
     // CRITICAL: Address fields validation - Backend requires nested address object
     const addressValidation = {
       state: propertyState?.trim() || '',
       city: city?.trim() || '',
-      locality: locality?.trim() || '',
+      locality: locality?.trim() || '', // This is the manual input, not the post dropdown
       pincode: pincode?.trim() || ''
     };
 
@@ -695,11 +783,12 @@ const AddSellScreen = ({ navigation }) => {
       console.log(`  - ${key}: "${value}" (length: ${value.length})`);
     });
 
-    // Validate each address field individually
+    // Validate each address field individually (including post for UI validation)
     const addressErrors = [];
     if (!addressValidation.state) addressErrors.push('State');
     if (!addressValidation.city) addressErrors.push('City');
-    if (!addressValidation.locality) addressErrors.push('Locality');
+    if (!post?.trim()) addressErrors.push('Post'); // Validate post but don't send to backend
+    if (!addressValidation.locality) addressErrors.push('Locality/Area');
     if (!addressValidation.pincode || !/^\d{6}$/.test(addressValidation.pincode)) addressErrors.push('PIN Code (6 digits)');
 
     if (addressErrors.length > 0) {
@@ -783,8 +872,8 @@ const AddSellScreen = ({ navigation }) => {
         return;
       }
       
-      // CRITICAL: Floor validation for Apartment/Villa (Backend schema requirement)
-      if (residentialType === 'Apartment' || residentialType === 'Villa') {
+      // CRITICAL: Floor validation for Single/Duplex/Flat (Backend schema requirement)
+      if (residentialType === 'Single' || residentialType === 'Duplex' || residentialType === 'Flat') {
         const floorNum = parseInt(floorNumber);
         const totalFloorNum = parseInt(totalFloors);
         
@@ -814,13 +903,14 @@ const AddSellScreen = ({ navigation }) => {
         console.log('❌ Validation failed: Missing commercial type');
         return;
       }
-    }
-
-    // 5. AVAILABILITY ENUM VALIDATION (Backend schema enum)
-    if (!availability || !['Ready to Move', 'Under Construction'].includes(availability)) {
-      Alert.alert("Invalid Availability", "Please select availability status: 'Ready to Move' or 'Under Construction'");
-      console.log('❌ Validation failed: Invalid availability enum:', availability);
-      return;
+      
+      // Validate space available for commercial
+      const spaceNum = parseInt(spaceAvailable);
+      if (!spaceAvailable || isNaN(spaceNum) || spaceNum <= 0) {
+        Alert.alert("Invalid Space", "Please enter valid space available in sq ft");
+        console.log('❌ Validation failed: Invalid space available:', spaceAvailable);
+        return;
+      }
     }
 
     console.log('✅ All frontend validation passed successfully!');
@@ -829,15 +919,40 @@ const AddSellScreen = ({ navigation }) => {
       areaDetails: areaNum,
       price: priceNum,
       propertyType,
-      availability,
       contactNumber
     });
+    
+    // Show payment modal after validation passes
+    setShowPaymentModal(true);
+  };
+  
+  // New function to handle actual property submission after payment
+  const handlePropertySubmission = async () => {
+    console.log('🔍 DEBUG: Current state values:');
+    console.log('  propertyState:', propertyState);
+    console.log('  city:', city);
+    console.log('  locality:', locality);
+    console.log('  post:', post);
+    console.log('  pincode:', pincode);
+    
+    const addressValidation = {
+      state: propertyState?.trim() || '',
+      city: city?.trim() || '',
+      locality: locality?.trim() || '',
+      pincode: pincode?.trim() || ''
+    };
+    
+    console.log('📦 Address validation object:', addressValidation);
+    
+    const areaNum = parseInt(area);
+    const priceNum = parseInt(price);
     
     // =============================================================================
     // FORMDATA CONSTRUCTION (Exact backend schema match)
     // =============================================================================
     
     setSubmitting(true);
+    setProcessingPayment(true);
     
     try {
       const formData = new FormData();
@@ -851,47 +966,75 @@ const AddSellScreen = ({ navigation }) => {
       formData.append('state', addressValidation.state);
       formData.append('city', addressValidation.city);
       formData.append('locality', addressValidation.locality);
+      formData.append('post', post || ''); // Post office area
       formData.append('pincode', addressValidation.pincode);
       
       console.log('📦 FormData Address Fields (Flat - Backend Compatible):');
       console.log(`  ✅ state: "${addressValidation.state}"`);
       console.log(`  ✅ city: "${addressValidation.city}"`);
       console.log(`  ✅ locality: "${addressValidation.locality}"`);
+      console.log(`  ✅ post: "${post}"`);
       console.log(`  ✅ pincode: "${addressValidation.pincode}"`);
       
       // Required core fields - Backend schema requirements
-      formData.append('areaDetails', areaNum);           // Must be Number (not string)
+      formData.append('areaSqFt', areaNum);              // ✅ FIXED: Backend expects areaSqFt
       formData.append('price', priceNum);                // Must be Number (not string)
       formData.append('contactNumber', contactNumber.trim());
       formData.append('propertyType', propertyType);     // "Residential" or "Commercial"
-      formData.append('purpose', purpose);               // "Sell", "Rent/Lease", "Paying Guest"
-      formData.append('facingDirection', facingDirection); // Required enum field
+      formData.append('purpose', purpose);               // "Sell", "Rent", "Paying Guest"
       formData.append('furnishingStatus', furnishing);   // Backend expects "furnishingStatus"
       formData.append('parking', parking);               // "Available" or "Not Available"
       
-      // CRITICAL: Availability enum - Must match backend exactly
-      // Backend schema: enum: ["Ready to Move", "Under Construction"]
-      formData.append('availability', availability);
+      // Kitchen Type - Only for Residential
+      if (propertyType === 'Residential') {
+        formData.append('kitchenType', kitchenType);     // "Modular" or "Simple"
+      }
       
-      // Required propertyLocation field (backend schema) - Use validated address fields
-      const propertyLocationText = `${addressValidation.locality}, ${addressValidation.city}, ${addressValidation.state} - ${addressValidation.pincode}`;
-      formData.append('propertyLocation', propertyLocationText);
+      // ✅ FIXED: Backend expects availabilityStatus not availability
+      formData.append('availabilityStatus', availability); // "Ready to Move" or "Under Construction"
       
-      // Description field (required) - Use validated address fields
-      const propertyDescription = `${propertyType} property for ${purpose.toLowerCase()} in ${addressValidation.locality}, ${addressValidation.city}. ${propertyType === 'Residential' ? `${bedrooms} bedrooms, ${bathrooms} bathrooms. ` : ''}${furnishing}. Contact: ${contactNumber}`;
-      formData.append('description', propertyDescription);
+      // Available From Date
+      formData.append('availableFrom', availableFrom.toISOString().split('T')[0]); // YYYY-MM-DD format
+      
+      // Available For - Only for non-Sell purposes
+      if (purpose !== 'Sell') {
+        formData.append('availableFor', availableFor); // "Boys", "Girls", "Family"
+      }
+      
+      // Society/Maintenance - Only for Residential
+      if (propertyType === 'Residential') {
+        formData.append('societyMaintenance', societyMaintenance); // "Including in Rent" or "Excluding"
+        
+        // Society Features - Send as individual array items
+        if (societyFeatures.length > 0) {
+          societyFeatures.forEach(feature => {
+            formData.append('societyFeatures[]', feature);
+          });
+        }
+      }
+      
+      // Contact Preferences
+      formData.append('contactPreferences[phone]', phoneToggleEnabled.toString());
+      formData.append('contactPreferences[whatsapp]', whatsappToggleEnabled.toString());
+      formData.append('contactPreferences[chat]', chatToggleEnabled.toString());
+      
+      // Description field (optional)
+      if (description?.trim()) {
+        formData.append('description', description.trim());
+      }
       
       // Property type specific fields
       if (propertyType === 'Residential') {
-        // Residential specific fields (backend schema requirements)
-        formData.append('residentialType', residentialType);  // "Apartment", "Villa", "Plot"
+        // ✅ FIXED: Backend expects specificType not residentialType
+        formData.append('specificType', residentialType);     // "Single", "Duplex", "Room", "Flat", "PG"
         formData.append('bedrooms', parseInt(bedrooms));      // Must be Number
         formData.append('bathrooms', parseInt(bathrooms));    // Must be Number
-        formData.append('balconies', parseInt(balconies) || 0); // Must be Number
+        formData.append('balconies', balconies.toString());   // ✅ FIXED: Send as Boolean string
         
-        // CRITICAL: Floor fields - Required for non-Plot residential
-        // Backend schema: required when propertyType === "Residential" AND residentialType !== "Plot"
-        if (residentialType === 'Apartment' || residentialType === 'Villa') {
+        // ✅ CRITICAL FIX: Floor fields - Backend requires for ALL residential types (not just some)
+        // Backend schema: required if specificType !== "Plot"
+        // Since we don't have Plot option, always send floor fields
+        if (floorNumber?.trim() && totalFloors?.trim()) {
           formData.append('floorNumber', parseInt(floorNumber));   // Required Number
           formData.append('totalFloors', parseInt(totalFloors));  // Required Number
         }
@@ -900,51 +1043,66 @@ const AddSellScreen = ({ navigation }) => {
           residentialType,
           bedrooms: parseInt(bedrooms),
           bathrooms: parseInt(bathrooms),
-          balconies: parseInt(balconies) || 0,
-          floorNumber: residentialType !== 'Plot' ? parseInt(floorNumber) : 'N/A for Plot',
-          totalFloors: residentialType !== 'Plot' ? parseInt(totalFloors) : 'N/A for Plot'
+          balconies: balconies.toString(),
+          floorNumber: floorNumber ? parseInt(floorNumber) : 'Not provided',
+          totalFloors: totalFloors ? parseInt(totalFloors) : 'Not provided'
         });
         
       } else if (propertyType === 'Commercial') {
-        // Commercial specific fields
-        formData.append('commercialType', commercialType); // "office", "shop", "warehouse"
+        // ✅ FIXED: Backend expects specificType not commercialType
+        // Capitalize first letter to match backend enum: Office, Shop, Warehouse
+        const formattedCommercialType = commercialType.charAt(0).toUpperCase() + commercialType.slice(1);
+        formData.append('specificType', formattedCommercialType); // "Office", "Shop", "Warehouse"
+        formData.append('spaceAvailable', parseInt(spaceAvailable)); // Space in sq ft
         
-        console.log('🏢 Added commercial fields:', { commercialType });
+        console.log('🏢 Added commercial fields:', { 
+          commercialType,
+          spaceAvailable: parseInt(spaceAvailable)
+        });
       }
       
-      // Media files attachment
-      let mediaCount = 0;
+      // ✅ FIXED: Media files - Backend expects 'photos' and 'videos' separately
+      let photoCount = 0;
+      let videoCount = 0;
       selectedMedia.forEach((media, index) => {
         if (media.uri) {
           const fileExtension = media.type === 'photo' ? 'jpg' : 'mp4';
           const fileName = media.name || `media_${index}.${fileExtension}`;
           
-          formData.append('photosAndVideo', {
+          // Append photos and videos to separate fields
+          const fieldName = media.type === 'photo' ? 'photos' : 'videos';
+          formData.append(fieldName, {
             uri: media.uri,
             type: media.type === 'photo' ? 'image/jpeg' : 'video/mp4',
             name: fileName
           });
-          mediaCount++;
+          
+          if (media.type === 'photo') photoCount++;
+          else videoCount++;
         }
       });
+      
+      const mediaCount = photoCount + videoCount;
       
       // Final payload verification log
       console.log('🔍 FINAL PAYLOAD VERIFICATION:');
       console.log('═══════════════════════════════════════');
-      console.log('✓ Address Structure (Nested Object):');
-      console.log(`  - address[state]: "${propertyState.trim()}"`);
-      console.log(`  - address[city]: "${city.trim()}"`);
-      console.log(`  - address[locality]: "${locality.trim()}"`);
-      console.log(`  - address[pincode]: "${pincode.trim()}"`);
-      console.log('✓ Required Numbers (Validated):');
-      console.log(`  - areaDetails: ${areaNum} (${typeof areaNum})`);
+      console.log('✓ Address Fields:');
+      console.log(`  - state: "${addressValidation.state}"`);
+      console.log(`  - city: "${addressValidation.city}"`);
+      console.log(`  - locality: "${addressValidation.locality}"`);
+      console.log(`  - post: "${post}"`);
+      console.log(`  - pincode: "${addressValidation.pincode}"`);
+      console.log('✓ Property Details:');
+      console.log(`  - propertyType: "${propertyType}"`);
+      console.log(`  - specificType: "${propertyType === 'Residential' ? residentialType : commercialType}"`);
+      console.log(`  - areaSqFt: ${areaNum} (${typeof areaNum})`);
       console.log(`  - price: ${priceNum} (${typeof priceNum})`);
-      console.log('✓ Availability Enum (Schema Match):');
-      console.log(`  - availability: "${availability}" (Valid: ${['Ready to Move', 'Under Construction'].includes(availability)})`);
-      console.log('✓ Property Location:');
-      console.log(`  - propertyLocation: "${propertyLocationText}"`);
+      console.log('✓ Availability:');
+      console.log(`  - availabilityStatus: "${availability}" (Valid: ${['Ready to Move', 'Under Construction'].includes(availability)})`);
+      console.log(`  - availableFrom: "${availableFrom.toISOString().split('T')[0]}"`);
       console.log('✓ Media Files:');
-      console.log(`  - photosAndVideo count: ${mediaCount}`);
+      console.log(`  - photos: ${photoCount}, videos: ${videoCount} (total: ${mediaCount})`);
       console.log('═══════════════════════════════════════');
 
       // =============================================================================
@@ -958,20 +1116,18 @@ const AddSellScreen = ({ navigation }) => {
         console.log('✅ Property submitted successfully!');
         console.log('📄 Property data:', result.property);
         
+        // Close payment modal
+        setShowPaymentModal(false);
+        setProcessingPayment(false);
+        
         Alert.alert(
           "Success", 
-          result.message || "Property added successfully!", 
+          "Property added successfully and is pending verification!", 
           [
             {
               text: "View My Properties", 
               onPress: () => {
                 navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() });
-              }
-            },
-            {
-              text: "Go Home", 
-              onPress: () => {
-                navigation.navigate('Home', { refresh: true, timestamp: Date.now() });
               }
             }
           ]
@@ -1071,14 +1227,7 @@ const AddSellScreen = ({ navigation }) => {
         {currentStep === 1 && (
           <SectionCard title="Property Address" icon="location-outline">
             <Dropdown
-              options={[
-                "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-                "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
-                "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
-                "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan",
-                "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh",
-                "Uttarakhand", "West Bengal", "Other"
-              ]}
+              options={availableStates}
               selectedValue={propertyState}
               onSelect={setPropertyState}
               isOpen={stateDropdownOpen}
@@ -1086,7 +1235,7 @@ const AddSellScreen = ({ navigation }) => {
                 setStateDropdownOpen(val);
                 if (val) {
                   setCityDropdownOpen(false);
-                  setLocalityDropdownOpen(false);
+                  setPostDropdownOpen(false);
                 }
               }}
               placeholder="Select State"
@@ -1095,14 +1244,7 @@ const AddSellScreen = ({ navigation }) => {
               setSearchText={setStateSearchText}
             />
             <Dropdown
-              options={[
-                "Ahmedabad", "Bangalore", "Bhopal", "Chandigarh", "Chennai", "Coimbatore",
-                "Delhi", "Faridabad", "Ghaziabad", "Gurgaon", "Hyderabad", "Indore",
-                "Jaipur", "Kanpur", "Kochi", "Kolkata", "Lucknow", "Ludhiana",
-                "Mumbai", "Nagpur", "Nashik", "Noida", "Patna", "Pune", "Rajkot",
-                "Surat", "Thane", "Thiruvananthapuram", "Vadodara", "Varanasi", "Vijayawada",
-                "Visakhapatnam", "Other"
-              ]}
+              options={availableCities}
               selectedValue={city}
               onSelect={setCity}
               isOpen={cityDropdownOpen}
@@ -1110,44 +1252,44 @@ const AddSellScreen = ({ navigation }) => {
                 setCityDropdownOpen(val);
                 if (val) {
                   setStateDropdownOpen(false);
-                  setLocalityDropdownOpen(false);
+                  setPostDropdownOpen(false);
                 }
               }}
-              placeholder="Select City"
+              placeholder={propertyState ? "Select City/District" : "Select state first"}
               icon="business"
               searchText={citySearchText}
               setSearchText={setCitySearchText}
             />
             <Dropdown
-              options={[
-                "Sector 1", "Sector 2", "Sector 3", "Sector 4", "Sector 5", "Sector 6", "Sector 7", "Sector 8", "Sector 9", "Sector 10",
-                "Model Town", "Civil Lines", "Sadar Bazaar", "Gandhi Nagar", "Lajpat Nagar", "Kamla Nagar", "Mall Road", "Industrial Area",
-                "Railway Road", "GT Road", "Shaheed Bhagat Singh Nagar", "Urban Estate", "Phase 1", "Phase 2", "Phase 3", "Phase 4",
-                "New Colony", "Old City", "Market Area", "Residential Area", "Commercial Area", "IT Park", "Business District",
-                "Green Park", "Rose Garden", "City Center", "Downtown", "Uptown", "Suburb Area", "Metro Station Area", "Other"
-              ]}
-              selectedValue={locality}
-              onSelect={setLocality}
-              isOpen={localityDropdownOpen}
+              options={availablePosts.map(post => post.name)}
+              selectedValue={post}
+              onSelect={setPost}
+              isOpen={postDropdownOpen}
               setIsOpen={(val) => {
-                setLocalityDropdownOpen(val);
+                setPostDropdownOpen(val);
                 if (val) {
                   setStateDropdownOpen(false);
                   setCityDropdownOpen(false);
                 }
               }}
-              placeholder="Select Locality/Area"
-              icon="location-outline"
-              searchText={localitySearchText}
-              setSearchText={setLocalitySearchText}
+              placeholder={city ? "Select Post" : "Select city first"}
+              icon="mail"
+              searchText={postSearchText}
+              setSearchText={setPostSearchText}
             />
             <InputField
               label="PIN Code*"
-              placeholder="Enter 6-digit PIN code"
+              placeholder="Auto-filled (or enter manually)"
               keyboardType="numeric"
               maxLength={6}
               value={pincode}
               onChangeText={setPincode}
+            />
+            <InputField
+              label="Locality/Area*"
+              placeholder="Enter locality or area name"
+              value={locality}
+              onChangeText={setLocality}
             />
           </SectionCard>
         )}
@@ -1171,6 +1313,14 @@ const AddSellScreen = ({ navigation }) => {
                     selectedValue={commercialType}
                     onSelect={setCommercialType}
                   />
+                  
+                  <InputField
+                    label="Space Available (sq ft)*"
+                    placeholder="Enter space available"
+                    keyboardType="numeric"
+                    value={spaceAvailable}
+                    onChangeText={setSpaceAvailable}
+                  />
                 </>
               )}
 
@@ -1178,7 +1328,7 @@ const AddSellScreen = ({ navigation }) => {
                 <>
                   <Text style={styles.fieldLabel}>Residential Type</Text>
                   <OptionSelector
-                    options={["Apartment", "Villa", "Plot"]}
+                    options={["Single", "Duplex", "Room", "Flat", "PG"]}
                     selectedValue={residentialType}
                     onSelect={setResidentialType}
                   />
@@ -1197,32 +1347,40 @@ const AddSellScreen = ({ navigation }) => {
                     onSelect={setBathrooms}
                   />
 
-                  <Text style={styles.fieldLabel}>Balconies</Text>
-                  <OptionSelector
-                    options={["0", "1", "2", "3", "4+"]}
-                    selectedValue={balconies}
-                    onSelect={setBalconies}
+                  {/* Balconies Toggle */}
+                  <View style={styles.toggleFieldContainer}>
+                    <Text style={styles.fieldLabel}>Balconies</Text>
+                    <View style={styles.toggleSwitch}>
+                      <Text style={styles.toggleText}>{balconies ? "Yes" : "No"}</Text>
+                      <TouchableOpacity
+                        style={[styles.toggleButton, balconies && styles.toggleButtonActive]}
+                        onPress={() => setBalconies(!balconies)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[
+                          styles.toggleThumb,
+                          balconies && styles.toggleThumbActive
+                        ]} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Floor fields - Always show for all residential types (backend requirement) */}
+                  <InputField
+                    label="Floor Number*"
+                    placeholder="Enter floor number"
+                    keyboardType="numeric"
+                    value={floorNumber}
+                    onChangeText={setFloorNumber}
                   />
 
-                  {residentialType !== "Plot" && (
-                    <>
-                      <InputField
-                        label="Floor Number*"
-                        placeholder="Enter floor number"
-                        keyboardType="numeric"
-                        value={floorNumber}
-                        onChangeText={setFloorNumber}
-                      />
-
-                      <InputField
-                        label="Total Floors*"
-                        placeholder="Enter total floors in building"
-                        keyboardType="numeric"
-                        value={totalFloors}
-                        onChangeText={setTotalFloors}
-                      />
-                    </>
-                  )}
+                  <InputField
+                    label="Total Floors*"
+                    placeholder="Enter total floors in building"
+                    keyboardType="numeric"
+                    value={totalFloors}
+                    onChangeText={setTotalFloors}
+                  />
                 </>
               )}
 
@@ -1242,16 +1400,16 @@ const AddSellScreen = ({ navigation }) => {
                 onChangeText={setPrice}
               />
 
-              <Text style={styles.fieldLabel}>Facing Direction</Text>
+              <Text style={styles.fieldLabel}>Kitchen Type</Text>
               <OptionSelector
-                options={["North", "South", "East", "West", "North-East", "North-West", "South-East", "South-West"]}
-                selectedValue={facingDirection}
-                onSelect={setFacingDirection}
+                options={["Modular", "Simple"]}
+                selectedValue={kitchenType}
+                onSelect={setKitchenType}
               />
 
               <Text style={styles.fieldLabel}>Furnishing Status</Text>
               <OptionSelector
-                options={["Fully-Furnished", "Semi-Furnished", "Unfurnished"]}
+                options={["Furnished", "Semi-Furnished", "Unfurnished"]}
                 selectedValue={furnishing}
                 onSelect={setFurnishing}
               />
@@ -1262,8 +1420,96 @@ const AddSellScreen = ({ navigation }) => {
                 selectedValue={parking}
                 onSelect={setParking}
               />
+              
+              {/* Available From Date Picker */}
+              <View style={styles.datePickerContainer}>
+                <Text style={styles.fieldLabel}>Available From</Text>
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={() => setDatePickerOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="calendar-outline" size={20} color="#f39c12" />
+                  <Text style={styles.datePickerText}>
+                    {availableFrom.toLocaleDateString('en-IN', { 
+                      day: '2-digit', 
+                      month: 'short', 
+                      year: 'numeric' 
+                    })}
+                  </Text>
+                  <Icon name="chevron-down" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+              
+              <DatePicker
+                modal
+                open={datePickerOpen}
+                date={availableFrom}
+                mode="date"
+                minimumDate={new Date()}
+                onConfirm={(date) => {
+                  setDatePickerOpen(false);
+                  setAvailableFrom(date);
+                }}
+                onCancel={() => {
+                  setDatePickerOpen(false);
+                }}
+              />
+              
+              {propertyType === "Residential" && (
+                <>
+                  <Text style={styles.fieldLabel}>Available For</Text>
+                  <OptionSelector
+                    options={["Boys", "Girls", "Family"]}
+                    selectedValue={availableFor}
+                    onSelect={setAvailableFor}
+                  />
+                  
+                  {/* Society/Maintenance */}
+                  <Text style={styles.fieldLabel}>Society/Maintenance</Text>
+                  <OptionSelector
+                    options={["Including in Rent", "Excluding"]}
+                    selectedValue={societyMaintenance}
+                    onSelect={setSocietyMaintenance}
+                  />
+                  
+                  {/* Society Features - Multiple Selection */}
+              <Text style={styles.fieldLabel}>Society Features</Text>
+              <View style={styles.societyFeaturesContainer}>
+                {["Gym", "Lift", "Guarded Gated Campus"].map((feature) => (
+                  <TouchableOpacity
+                    key={feature}
+                    style={[
+                      styles.featureChip,
+                      societyFeatures.includes(feature) && styles.featureChipSelected
+                    ]}
+                    onPress={() => {
+                      if (societyFeatures.includes(feature)) {
+                        setSocietyFeatures(societyFeatures.filter(f => f !== feature));
+                      } else {
+                        setSocietyFeatures([...societyFeatures, feature]);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Icon 
+                      name={societyFeatures.includes(feature) ? "checkmark-circle" : "ellipse-outline"} 
+                      size={18} 
+                      color={societyFeatures.includes(feature) ? "#fff" : "#f39c12"} 
+                    />
+                    <Text style={[
+                      styles.featureChipText,
+                      societyFeatures.includes(feature) && styles.featureChipTextSelected
+                    ]}>
+                      {feature}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+                </>
+              )}
             </SectionCard>
-
+            
             <SectionCard title="Contact Details" icon="call-outline">
               <InputField
                 label="Contact Number*"
@@ -1348,12 +1594,28 @@ const AddSellScreen = ({ navigation }) => {
                 onSelect={setAvailability}
               />
 
-              <Text style={styles.fieldLabel}>Available For</Text>
+              {/* <Text style={styles.fieldLabel}>Available For</Text>
               <OptionSelector
                 options={["Family", "Students", "Bachelor", "Any"]}
                 selectedValue={availableFor}
                 onSelect={setAvailableFor}
+              /> */}
+            </SectionCard>
+
+            {/* PROPERTY DESCRIPTION SECTION */}
+            <SectionCard title="Property Description" icon="document-text-outline">
+              <Text style={styles.fieldLabel}>Description</Text>
+              <TextInput
+                style={[styles.textInput, styles.multilineInput]}
+                placeholder="Enter detailed property description..."
+                placeholderTextColor="#999"
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={5}
+                textAlignVertical="top"
               />
+              <Text style={styles.charCount}>{description.length}/500</Text>
             </SectionCard>
 
             {/* MEDIA UPLOAD SECTION */}
@@ -1487,6 +1749,145 @@ const AddSellScreen = ({ navigation }) => {
         theme="light"
         locale="en"
       />
+
+      {/* Payment Modal */}
+      <Modal
+        visible={showPaymentModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.paymentModalOverlay}>
+          <View style={styles.paymentModalContainer}>
+            <View style={styles.paymentHeader}>
+              <Text style={styles.paymentTitle}>Complete Payment</Text>
+              <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
+                <Icon name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              style={styles.paymentScrollView}
+            >
+              {/* Simple Pricing */}
+              <View style={styles.simplePriceCard}>
+                <Icon name="pricetag" size={20} color="#f39c12" />
+                <Text style={styles.simplePriceText}>₹100 Per Post</Text>
+              </View>
+
+              <Text style={styles.paymentSubtitle}>Select Payment Method</Text>
+
+              <View style={styles.paymentMethodsContainer}>
+              {/* UPI */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentMethodCard,
+                  selectedPaymentMethod === 'upi' && styles.paymentMethodSelected
+                ]}
+                onPress={() => setSelectedPaymentMethod('upi')}
+              >
+                <Icon 
+                  name={selectedPaymentMethod === 'upi' ? 'radio-button-on' : 'radio-button-off'} 
+                  size={24} 
+                  color={selectedPaymentMethod === 'upi' ? '#f39c12' : '#999'}
+                />
+                <View style={styles.paymentMethodContent}>
+                  <Text style={styles.paymentMethodTitle}>UPI</Text>
+                  <Text style={styles.paymentMethodDesc}>Google Pay, PhonePe, Paytm</Text>
+                </View>
+                <Icon name="logo-google" size={28} color="#4285F4" />
+              </TouchableOpacity>
+
+              {/* Credit/Debit Card */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentMethodCard,
+                  selectedPaymentMethod === 'card' && styles.paymentMethodSelected
+                ]}
+                onPress={() => setSelectedPaymentMethod('card')}
+              >
+                <Icon 
+                  name={selectedPaymentMethod === 'card' ? 'radio-button-on' : 'radio-button-off'} 
+                  size={24} 
+                  color={selectedPaymentMethod === 'card' ? '#f39c12' : '#999'}
+                />
+                <View style={styles.paymentMethodContent}>
+                  <Text style={styles.paymentMethodTitle}>Credit/Debit Card</Text>
+                  <Text style={styles.paymentMethodDesc}>Visa, Mastercard, RuPay</Text>
+                </View>
+                <Icon name="card" size={28} color="#f39c12" />
+              </TouchableOpacity>
+
+              {/* Net Banking */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentMethodCard,
+                  selectedPaymentMethod === 'netbanking' && styles.paymentMethodSelected
+                ]}
+                onPress={() => setSelectedPaymentMethod('netbanking')}
+              >
+                <Icon 
+                  name={selectedPaymentMethod === 'netbanking' ? 'radio-button-on' : 'radio-button-off'} 
+                  size={24} 
+                  color={selectedPaymentMethod === 'netbanking' ? '#f39c12' : '#999'}
+                />
+                <View style={styles.paymentMethodContent}>
+                  <Text style={styles.paymentMethodTitle}>Net Banking</Text>
+                  <Text style={styles.paymentMethodDesc}>All major banks</Text>
+                </View>
+                <Icon name="business" size={28} color="#2c3e50" />
+              </TouchableOpacity>
+
+              {/* Cash on Delivery */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentMethodCard,
+                  selectedPaymentMethod === 'cod' && styles.paymentMethodSelected
+                ]}
+                onPress={() => setSelectedPaymentMethod('cod')}
+              >
+                <Icon 
+                  name={selectedPaymentMethod === 'cod' ? 'radio-button-on' : 'radio-button-off'} 
+                  size={24} 
+                  color={selectedPaymentMethod === 'cod' ? '#f39c12' : '#999'}
+                />
+                <View style={styles.paymentMethodContent}>
+                  <Text style={styles.paymentMethodTitle}>Pay Later</Text>
+                  <Text style={styles.paymentMethodDesc}>Pay after verification</Text>
+                </View>
+                <Icon name="cash" size={28} color="#27ae60" />
+              </TouchableOpacity>
+            </View>
+
+              {/* Payment Button */}
+              <TouchableOpacity
+                style={[
+                  styles.payButton,
+                  !selectedPaymentMethod && styles.payButtonDisabled
+                ]}
+                onPress={handlePropertySubmission}
+                disabled={!selectedPaymentMethod || processingPayment}
+              >
+                {processingPayment ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Icon name="checkmark-circle" size={24} color="#fff" />
+                    <Text style={styles.payButtonText}>
+                      Pay & Submit Property
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.securePaymentText}>
+                <Icon name="lock-closed" size={14} color="#27ae60" /> Secure Payment
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1650,6 +2051,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: "#333",
+  },
+
+  multilineInput: {
+    height: 120,
+    paddingTop: 12,
+    textAlignVertical: "top",
+  },
+
+  charCount: {
+    textAlign: "right",
+    fontSize: 12,
+    color: "#999",
+    marginTop: 6,
   },
 
   checkboxRow: {
@@ -1886,6 +2300,37 @@ const styles = StyleSheet.create({
     transform: [{ translateX: 22 }],
   },
 
+  // Society Features Styles
+  societyFeaturesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 8,
+  },
+  featureChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#f39c12",
+    backgroundColor: "#fff",
+    gap: 6,
+  },
+  featureChipSelected: {
+    backgroundColor: "#f39c12",
+    borderColor: "#f39c12",
+  },
+  featureChipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#f39c12",
+  },
+  featureChipTextSelected: {
+    color: "#fff",
+  },
+
   // Navigation Container Styles
   navigationContainer: {
     position: "absolute",
@@ -1949,6 +2394,73 @@ const styles = StyleSheet.create({
   datePickerContainer: {
     marginBottom: 14,
   },
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fafafa",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: 15,
+    color: "#333",
+    fontWeight: "500",
+    marginLeft: 8,
+  },
+  
+  // Toggle Field Styles (for Balconies Yes/No)
+  toggleFieldContainer: {
+    marginBottom: 14,
+  },
+  toggleSwitch: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fafafa",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  toggleText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
+  },
+  toggleButton: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#ddd",
+    padding: 2,
+    justifyContent: "center",
+  },
+  toggleButtonActive: {
+    backgroundColor: "#f39c12",
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 2,
+    transform: [{ translateX: 0 }],
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 22 }],
+  },
+
   dateButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -2052,14 +2564,134 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.9)",
     borderRadius: 10,
   },
+
+  // Payment Modal Styles
+  paymentModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  paymentModalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 30,
+    maxHeight: '75%',
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  paymentTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#333',
+  },
+  paymentScrollView: {
+    flexGrow: 0,
+  },
+
+  // Simple Pricing Card
+  simplePriceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff8f0',
+    borderWidth: 2,
+    borderColor: '#f39c12',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    gap: 10,
+  },
+  simplePriceText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#f39c12',
+  },
+
+  paymentSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 14,
+  },
+  paymentMethodsContainer: {
+    gap: 10,
+    marginBottom: 20,
+  },
+  paymentMethodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  paymentMethodSelected: {
+    backgroundColor: '#fff8f0',
+    borderColor: '#f39c12',
+    elevation: 2,
+    shadowColor: '#f39c12',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  paymentMethodContent: {
+    flex: 1,
+  },
+  paymentMethodTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  paymentMethodDesc: {
+    fontSize: 13,
+    color: '#999',
+  },
+  payButton: {
+    flexDirection: 'row',
+    backgroundColor: '#f39c12',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    elevation: 3,
+    shadowColor: '#f39c12',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  payButtonDisabled: {
+    backgroundColor: '#ccc',
+    elevation: 0,
+  },
+  payButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  securePaymentText: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 16,
+  },
 });
 
 // Dropdown styles moved outside main component
 const dropdownStyles = StyleSheet.create({
   container: {
     marginBottom: 14,
-    position: "relative",
-    zIndex: 1,
   },
   label: {
     fontSize: 14,
@@ -2099,73 +2731,81 @@ const dropdownStyles = StyleSheet.create({
   placeholderText: {
     color: "#999",
   },
-  list: {
-    position: "absolute",
-    top: 52,
-    left: 0,
-    right: 0,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalContent: {
     backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#f39c12",
-    borderRadius: 12,
-    maxHeight: 250,
-    elevation: 8,
+    borderRadius: 16,
+    maxHeight: "80%",
+    elevation: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
-    zIndex: 1000,
-    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
     backgroundColor: "#f9f9f9",
   },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: 10,
+    fontSize: 15,
     color: "#333",
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
-  scroll: {
-    maxHeight: 180,
-    flexGrow: 0,
-  },
-  item: {
+  modalItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f5f5f5",
-    backgroundColor: "#fff",
   },
-  itemSelected: {
+  modalItemSelected: {
     backgroundColor: "#fff8f0",
   },
-  itemText: {
+  modalItemText: {
     fontSize: 15,
     color: "#333",
     flex: 1,
+    marginRight: 10,
   },
-  itemTextSelected: {
+  modalItemTextSelected: {
     color: "#f39c12",
     fontWeight: "600",
   },
   noResults: {
     alignItems: "center",
-    paddingVertical: 30,
+    paddingVertical: 40,
   },
   noResultsText: {
-    marginTop: 8,
-    fontSize: 14,
+    marginTop: 12,
+    fontSize: 15,
     color: "#999",
   },
 });

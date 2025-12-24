@@ -40,7 +40,7 @@ const userSchema = new mongoose.Schema({
 
   password: { 
     type: String, 
-    required: true 
+    required: false // Changed from true to false for OTP-based registration
   },
 
   isEmailVerified: { 

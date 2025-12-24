@@ -194,6 +194,45 @@ export const authService = {
     }
   },
 
+  // Check if user exists by phone number
+  checkUserByPhone: async (phoneNumber) => {
+    try {
+      console.log('🔍 Checking if user exists for phone:', phoneNumber);
+      const response = await API.checkUserByPhone(phoneNumber);
+      console.log('📥 Raw API response:', response);
+      console.log('📊 Response type:', typeof response);
+      console.log('✅ Success?', response.success);
+      console.log('👤 Exists?', response.exists);
+      
+      // Handle successful response
+      if (response.success !== undefined) {
+        return {
+          exists: response.exists || false,
+          user: response.user || null,
+          success: response.success
+        };
+      }
+      
+      // Fallback if response format is unexpected
+      console.warn('⚠️ Unexpected response format, assuming user does not exist');
+      return {
+        exists: false,
+        user: null,
+        success: false
+      };
+    } catch (error) {
+      console.error('🔥 Auth Service - Check User Error:', error);
+      console.error('🔥 Error details:', error.message);
+      // If API fails, assume user doesn't exist to allow registration
+      return {
+        exists: false,
+        user: null,
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
   // Get current user data
   getCurrentUser: async () => {
     try {

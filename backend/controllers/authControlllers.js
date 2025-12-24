@@ -116,9 +116,28 @@ export const sendPhoneOtp = async (req, res) => {
   try {
     const { phone } = req.body;
 
-    // generate OTP
-  const otp = Math.floor(1000 + Math.random() * 9000); // 4-digit OTP
+    console.log('\n=================================================');
+    console.log('📱 SEND PHONE OTP - Request received');
+    console.log('=================================================');
+    console.log('📞 Phone:', phone);
+    
+    // Check if user exists before sending OTP
+    const user = await User.findOne({ phone });
+    
+    if (!user) {
+      console.log('❌ User not found - cannot send OTP to unregistered number');
+      console.log('=================================================\n');
+      return res.status(400).json({ 
+        success: false, 
+        message: "This phone number is not registered. Please sign up first." 
+      });
+    }
+    
+    console.log('✅ User found - sending OTP');
+    console.log('👤 User:', user.fullName);
 
+    // generate OTP
+    const otp = Math.floor(1000 + Math.random() * 9000); // 4-digit OTP
 
     // save OTP
     phoneOtps[phone] = otp;
@@ -134,6 +153,7 @@ export const sendPhoneOtp = async (req, res) => {
     const response = await axios.get(url);
 
     console.log("SMS API Response:", response.data);
+    console.log('=================================================\n');
 
     res.json({ success: true, message: "OTP sent successfully" });
   } catch (err) {
@@ -143,14 +163,56 @@ export const sendPhoneOtp = async (req, res) => {
 };
 
 // Step 4: Verify Phone OTP
-export const verifyPhoneOtp = (req, res) => {
+export const verifyPhoneOtp = async (req, res) => {
   const { phone, otp } = req.body;
+
+  console.log('📱 VERIFY PHONE OTP - Request received');
+  console.log('📞 Phone:', phone);
+  console.log('🔑 OTP:', otp);
+  console.log('🗃️ Stored OTPs:', phoneOtps);
 
   if (phoneOtps[phone] && phoneOtps[phone] == otp) {
     delete phoneOtps[phone];
+    console.log('✅ OTP verified successfully');
 
-    res.json({ success: true, message: "Phone verified" });
+    // Check if user exists - MUST exist because we validated in sendPhoneOtp
+    const user = await User.findOne({ phone });
+
+    if (user) {
+      // User found - return token and user data
+      console.log('👤 User found:', user.email);
+      console.log('🎫 Generating token for login');
+      
+      const token = jwt.sign(
+        { id: user._id, email: user.email, phone: user.phone, role: user.role },
+        process.env.JWT_SECRET || "mysecretkey",
+        { expiresIn: "24h" }
+      );
+
+      console.log('✅✅✅ LOGIN SUCCESSFUL - SENDING TOKEN ✅✅✅');
+      res.json({
+        success: true,
+        message: "Phone verified and logged in",
+        token,
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+        },
+      });
+    } else {
+      // This should NEVER happen since we check user existence in sendPhoneOtp
+      console.error('❌❌❌ CRITICAL ERROR: User not found after OTP verify!');
+      console.error('This should not happen - user was verified in sendPhoneOtp');
+      res.status(500).json({ 
+        success: false, 
+        message: "User data error. Please contact support." 
+      });
+    }
   } else {
+    console.log('❌ Invalid OTP');
     res.status(400).json({ success: false, message: "Invalid OTP" });
   }
 };
@@ -467,6 +529,78 @@ export const editProfile = async (req, res) => {
     res.json({ success: true, message: "Profile updated", user });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// Check if user exists by phone number
+export const checkUserByPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    console.log('\n=================================================');
+    console.log('🔍 CHECK USER BY PHONE - Request received');
+    console.log('=================================================');
+    console.log('📱 Phone number received:', phone);
+    console.log('📱 Phone number type:', typeof phone);
+    console.log('📱 Phone number length:', phone ? phone.length : 0);
+
+    if (!phone) {
+      console.log('❌ No phone number provided');
+      console.log('=================================================\n');
+      return res.status(400).json({ 
+        success: false, 
+        exists: false,
+        message: "Phone number is required" 
+      });
+    }
+
+    console.log('🔎 Searching in database for phone:', phone);
+    
+    // Find user by phone
+    const user = await User.findOne({ phone });
+    
+    console.log('🔎 Database query completed');
+    console.log('📊 User found?', !!user);
+    
+    if (user) {
+      console.log('✅✅✅ USER EXISTS! ✅✅✅');
+      console.log('👤 User details:');
+      console.log('   - ID:', user._id);
+      console.log('   - Name:', user.fullName);
+      console.log('   - Email:', user.email);
+      console.log('   - Phone:', user.phone);
+      console.log('=================================================\n');
+      
+      return res.status(200).json({ 
+        success: true, 
+        exists: true,
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          phone: user.phone
+        }
+      });
+    } else {
+      console.log('❌❌❌ USER NOT FOUND ❌❌❌');
+      console.log('📱 Searched for phone:', phone);
+      console.log('💡 This phone number is NOT registered');
+      console.log('=================================================\n');
+      
+      return res.status(200).json({ 
+        success: true, 
+        exists: false,
+        message: "User not found with this phone number" 
+      });
+    }
+  } catch (error) {
+    console.error("🔥🔥🔥 Check User Error:", error);
+    console.log('=================================================\n');
+    res.status(500).json({ 
+      success: false, 
+      exists: false,
+      message: "Server error" 
+    });
   }
 };
 

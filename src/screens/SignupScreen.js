@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,29 +7,35 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  Modal,
   Dimensions,
   StatusBar,
   Alert,
   ActivityIndicator,
+  FlatList,
 } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from "../services/authApi";
+import { getAllStates, getCitiesByState, getPincodeByCity, getAreasByCity, getPincodeByArea } from "../utils/locationData";
+import AuthFlowManager from "../utils/AuthFlowManager";
+import CustomAlert from '../components/CustomAlert';
 
 const { width } = Dimensions.get("window");
 
 const SignupScreen = ({ navigation, route }) => {
-  const { phoneNumber, fromOtp } = route.params || {};
+  const { phoneNumber, fromOtp, email: prefilledEmail } = route.params || {};
   const isCompleteRegistration = fromOtp && phoneNumber;
   
   const [form, setForm] = useState({
     fullName: "",
-    email: "",
+    email: prefilledEmail || "",
     phone: phoneNumber || "",
     password: isCompleteRegistration ? "" : "",
     state: "",
     city: "",
+    post: "",
     street: "",
     pinCode: "",
     userType: "", // "owner" or "tenant"
@@ -39,56 +45,173 @@ const SignupScreen = ({ navigation, route }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [postDropdownOpen, setPostDropdownOpen] = useState(false);
+  const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
+  const [availableCities, setAvailableCities] = useState([]);
+  const [availablePosts, setAvailablePosts] = useState([]);
+  const [availableAreas, setAvailableAreas] = useState([]);
+  const [allStates, setAllStates] = useState([]);
+  const [stateSearch, setStateSearch] = useState("");
+  const [citySearch, setCitySearch] = useState("");
+  const [postSearch, setPostSearch] = useState("");
+
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+    icon: 'checkmark-circle',
+    iconColor: '#FDB022'
+  });
+
+  // Load all states on mount
+  useEffect(() => {
+    const states = getAllStates();
+    console.log('📍 Total states loaded:', states.length);
+    console.log('📍 First 10 states:', states.slice(0, 10));
+    setAllStates(states);
+  }, []);
+
+  // Update cities when state changes
+  useEffect(() => {
+    if (form.state) {
+      const cities = getCitiesByState(form.state);
+      console.log(`🏙️ Cities for ${form.state}:`, cities.length, cities.slice(0, 5));
+      setAvailableCities(cities);
+      // Reset city, post, area and pincode when state changes
+      if (form.city && !cities.includes(form.city)) {
+        setForm(prev => ({ ...prev, city: "", post: "", street: "", pinCode: "" }));
+      }
+    } else {
+      setAvailableCities([]);
+      setForm(prev => ({ ...prev, city: "", post: "", street: "", pinCode: "" }));
+    }
+  }, [form.state]);
+
+  // Update posts when city changes
+  useEffect(() => {
+    if (form.city) {
+      const areas = getAreasByCity(form.city);
+      console.log(`📮 Posts for ${form.city}:`, areas.length);
+      setAvailablePosts(areas);
+      // Reset post, area and pincode when city changes
+      setForm(prev => ({ ...prev, post: "", street: "", pinCode: "" }));
+    } else {
+      setAvailablePosts([]);
+      setForm(prev => ({ ...prev, post: "", street: "", pinCode: "" }));
+    }
+  }, [form.city]);
+
+  // Auto-fill pincode when post is selected
+  useEffect(() => {
+    if (form.city && form.post) {
+      const pincode = getPincodeByArea(form.city, form.post);
+      if (pincode) {
+        setForm(prev => ({ ...prev, pinCode: pincode }));
+      }
+    }
+  }, [form.post, form.city]);
 
   const showToast = (message, type = "success") => {
     Alert.alert(type === "success" ? "Success" : "Error", message);
   };
 
-  const Dropdown = ({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder }) => (
-    <View style={[styles.dropdownContainer, isOpen && { zIndex: 1000 }]}>
-      <View style={styles.inputBox}>
-        <Icon name="location" size={20} color="#f39c12" />
+  const Dropdown = ({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder, searchText, setSearchText }) => {
+    const filteredOptions = options.filter(option => 
+      option.toLowerCase().includes(searchText.toLowerCase())
+    );
+
+    return (
+      <View style={styles.dropdownContainer}>
         <TouchableOpacity
-          style={styles.dropdownButton}
+          style={[styles.inputBox, isOpen && styles.inputBoxOpen]}
           onPress={() => setIsOpen(!isOpen)}
+          activeOpacity={0.8}
         >
-          <Text style={[styles.dropdownButtonText, !selectedValue && styles.placeholderText]}>
+          <Icon name="location" size={20} color="#f39c12" />
+          <Text style={[styles.dropdownButtonText, !selectedValue && styles.placeholderDropdownText]} numberOfLines={1}>
             {selectedValue || placeholder}
           </Text>
-          <Icon name={isOpen ? "chevron-up" : "chevron-down"} size={20} color="#666" />
+          <Icon 
+            name={isOpen ? "chevron-up" : "chevron-down"} 
+            size={20} 
+            color={isOpen ? "#f39c12" : "#666"} 
+          />
         </TouchableOpacity>
-      </View>
-      
-      {isOpen && (
-        <View style={styles.dropdownList}>
-          <ScrollView 
-            style={styles.dropdownScroll} 
-            nestedScrollEnabled={true}
-            showsVerticalScrollIndicator={true}
-            persistentScrollbar={true}
-            bounces={false}
-            scrollEventThrottle={16}
+        
+        <Modal
+          visible={isOpen}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsOpen(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setIsOpen(false)}
           >
-            {options.map((option) => (
-              <TouchableOpacity
-                key={option}
-                style={styles.dropdownItem}
-                onPress={() => {
-                  onSelect(option);
-                  setIsOpen(false);
-                }}
-              >
-                <Text style={styles.dropdownItemText}>{option}</Text>
-                {selectedValue === option && (
-                  <Icon name="checkmark" size={18} color="#f39c12" />
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{placeholder}</Text>
+                <TouchableOpacity onPress={() => setIsOpen(false)}>
+                  <Icon name="close-circle" size={28} color="#f39c12" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.searchContainer}>
+                <Icon name="search" size={18} color="#999" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={`Search ${placeholder.toLowerCase()}...`}
+                  placeholderTextColor="#999"
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  autoCorrect={false}
+                />
+              </View>
+              
+              <FlatList
+                data={filteredOptions}
+                keyExtractor={(item, index) => `${item}-${index}`}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={{ paddingBottom: 20 }}
+                ListEmptyComponent={() => (
+                  <View style={styles.noResults}>
+                    <Icon name="search" size={32} color="#ccc" />
+                    <Text style={styles.noResultsText}>No results found</Text>
+                  </View>
                 )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-    </View>
-  );
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.modalItem,
+                      selectedValue === item && styles.modalItemSelected
+                    ]}
+                    onPress={() => {
+                      onSelect(item);
+                      setIsOpen(false);
+                      setSearchText("");
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.modalItemText,
+                      selectedValue === item && styles.modalItemTextSelected
+                    ]} numberOfLines={2}>
+                      {item}
+                    </Text>
+                    {selectedValue === item && (
+                      <Icon name="checkmark-circle" size={22} color="#f39c12" />
+                    )}
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    );
+  };
 
   const handleSignup = async () => {
     // Validation based on signup type
@@ -126,14 +249,21 @@ const SignupScreen = ({ navigation, route }) => {
         const response = await authService.completeRegistration(userData);
         
         if (response.success) {
-          showToast("Registration completed successfully!", "success");
-          setTimeout(() => {
-            // Navigate to Home - DynamicHomeScreen will handle role-based rendering
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "Home" }]
-            });
-          }, 1500);
+          // Use AuthFlowManager to handle registration success
+          const isStored = await AuthFlowManager.handleRegistrationSuccess(response);
+          
+          if (isStored) {
+            showToast("Registration completed successfully! Welcome! 🎉", "success");
+            setTimeout(() => {
+              // Navigate directly to Home
+              navigation.reset({
+                index: 0,
+                routes: [{ name: "Home" }]
+              });
+            }, 1500);
+          } else {
+            showToast("Registration successful but data storage failed", "error");
+          }
         } else {
           showToast(response.message || "Registration failed", "error");
         }
@@ -156,17 +286,25 @@ const SignupScreen = ({ navigation, route }) => {
         console.log('🔍 Signup response received:', response);
         
         if (response.success) {
-          // Store user role for login navigation
-          await AsyncStorage.setItem('userRole', form.userType);
-          
-          showToast("Account created successfully! Please login.", "success");
-          setTimeout(() => {
-            navigation.navigate("LoginScreen", {
-              email: form.email.trim(),
-              fromSignup: true,
-              userRole: form.userType
-            });
-          }, 1500);
+          // Show success popup and navigate to Login screen
+          setAlertConfig({
+            visible: true,
+            title: 'Registration Successful! 🎉',
+            message: `Welcome ${form.fullName}!\n\nYour account has been created successfully.\n\nPlease login to continue.`,
+            icon: 'checkmark-circle',
+            iconColor: '#4CAF50',
+            buttons: [
+              {
+                text: 'Login Now',
+                onPress: () => {
+                  navigation.navigate('LoginScreen', {
+                    phone: form.phone.trim(),
+                    fromSignup: true
+                  });
+                },
+              },
+            ],
+          });
         } else {
           const errorMessage = response.message || response.error || "Signup failed - please try again";
           console.error('❌ Signup failed with message:', errorMessage);
@@ -283,71 +421,106 @@ const SignupScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Phone Field */}
-        {!isCompleteRegistration && (
-          <View style={styles.inputBox}>
-            <Icon name="call" size={20} color="#f39c12" />
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your phone number"
-              placeholderTextColor="#9ca3af"
-              keyboardType="phone-pad"
-              value={form.phone}
-              onChangeText={(text) => setForm({ ...form, phone: text })}
-            />
-          </View>
-        )}
+        {/* Phone Field - Always show for complete profile */}
+        <View style={styles.inputBox}>
+          <Icon name="call" size={20} color="#f39c12" />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your phone number"
+            placeholderTextColor="#9ca3af"
+            keyboardType="phone-pad"
+            value={form.phone}
+            onChangeText={(text) => setForm({ ...form, phone: text })}
+            editable={true}
+          />
+        </View>
 
         {/* State Field */}
         <Dropdown
-          options={["Delhi", "Maharashtra", "Karnataka", "Gujarat", "Rajasthan", "Uttar Pradesh", "Punjab", "Haryana", "Tamil Nadu", "West Bengal", "Other"]}
+          options={allStates}
           selectedValue={form.state}
-          onSelect={(value) => setForm({ ...form, state: value })}
+          onSelect={(value) => setForm({ ...form, state: value, city: "", post: "", pinCode: "" })}
           isOpen={stateDropdownOpen}
           setIsOpen={(val) => {
             setStateDropdownOpen(val);
-            if (val) setCityDropdownOpen(false);
+            if (val) {
+              setCityDropdownOpen(false);
+              setPostDropdownOpen(false);
+            }
           }}
           placeholder="Select your state"
+          searchText={stateSearch}
+          setSearchText={setStateSearch}
         />
 
         {/* City Field */}
         <Dropdown
-          options={["Mumbai", "Delhi", "Bangalore", "Pune", "Ahmedabad", "Jaipur", "Chandigarh", "Hyderabad", "Chennai", "Kolkata", "Other"]}
+          options={availableCities}
           selectedValue={form.city}
-          onSelect={(value) => setForm({ ...form, city: value })}
+          onSelect={(value) => setForm({ ...form, city: value, post: "", pinCode: "" })}
           isOpen={cityDropdownOpen}
           setIsOpen={(val) => {
             setCityDropdownOpen(val);
-            if (val) setStateDropdownOpen(false);
+            if (val) {
+              setStateDropdownOpen(false);
+              setPostDropdownOpen(false);
+            }
           }}
-          placeholder="Select your city"
+          placeholder={form.state ? "Select your city/district" : "Select state first"}
+          searchText={citySearch}
+          setSearchText={setCitySearch}
         />
 
-        {/* Street Field */}
-        <View style={styles.inputBox}>
-          <Icon name="home" size={20} color="#f39c12" />
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your street address"
-            placeholderTextColor="#9ca3af"
-            value={form.street}
-            onChangeText={(text) => setForm({ ...form, street: text })}
-          />
-        </View>
+        {/* Post Office Field */}
+        <Dropdown
+          options={availablePosts.map(area => area.name)}
+          selectedValue={form.post}
+          onSelect={(value) => setForm({ ...form, post: value })}
+          isOpen={postDropdownOpen}
+          setIsOpen={(val) => {
+            setPostDropdownOpen(val);
+            if (val) {
+              setStateDropdownOpen(false);
+              setCityDropdownOpen(false);
+            }
+          }}
+          placeholder={form.city ? "Select post office" : "Select city first"}
+          searchText={postSearch}
+          setSearchText={setPostSearch}
+        />
 
         {/* Pin Code Field */}
-        <View style={styles.inputBox}>
-          <Icon name="pin" size={20} color="#f39c12" />
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your pin code"
-            placeholderTextColor="#9ca3af"
-            keyboardType="numeric"
-            maxLength={6}
-            value={form.pinCode}
-            onChangeText={(text) => setForm({ ...form, pinCode: text })}
-          />
+        <View>
+          <View style={styles.inputBox}>
+            <Icon name="pin" size={20} color="#f39c12" />
+            <TextInput
+              style={styles.input}
+              placeholder="Pin code (auto-filled or enter manually)"
+              placeholderTextColor="#9ca3af"
+              keyboardType="numeric"
+              maxLength={6}
+              value={form.pinCode}
+              onChangeText={(text) => {
+                // Only allow numbers
+                const numericText = text.replace(/[^0-9]/g, '');
+                setForm({ ...form, pinCode: numericText });
+              }}
+              editable={true}
+            />
+            {form.pinCode && form.pinCode.length === 6 && (
+              <Icon name="checkmark-circle" size={20} color="#10b981" style={{ marginLeft: 8 }} />
+            )}
+          </View>
+          {form.city && form.post && form.pinCode && (
+            <Text style={styles.helperText}>
+              ✓ Auto-filled for {form.post}. You can edit if incorrect.
+            </Text>
+          )}
+          {form.pinCode && form.pinCode.length > 0 && form.pinCode.length < 6 && (
+            <Text style={styles.errorText}>
+              Pincode must be 6 digits
+            </Text>
+          )}
         </View>
 
         {/* Password */}
@@ -405,6 +578,17 @@ const SignupScreen = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
       </ScrollView>
+
+      {/* Custom Alert */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        iconColor={alertConfig.iconColor}
+        buttons={alertConfig.buttons}
+        onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
     </SafeAreaView>
   );
 };
@@ -482,8 +666,20 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
     color: "#333",
+  },  helperText: {
+    fontSize: 12,
+    color: "#10b981",
+    marginTop: 4,
+    marginLeft: 12,
+    marginBottom: 8,
   },
-
+  errorText: {
+    fontSize: 12,
+    color: "#ef4444",
+    marginTop: 4,
+    marginLeft: 12,
+    marginBottom: 8,
+  },
   roleHeading: {
     fontSize: 18,
     fontWeight: "700",
@@ -604,10 +800,97 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#333",
     flex: 1,
+    marginLeft: 12,
+  },
+  placeholderDropdownText: {
+    color: "#9ca3af",
   },
   placeholderText: {
     color: "#9ca3af",
   },
+  inputBoxOpen: {
+    borderColor: "#f39c12",
+  },
+  // Modal styles for dropdown
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxHeight: '70%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fafafa',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
+    padding: 0,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  modalItemSelected: {
+    backgroundColor: '#fff5e6',
+  },
+  modalItemText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  modalItemTextSelected: {
+    color: '#f39c12',
+    fontWeight: '600',
+  },
+  noResults: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  noResultsText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 12,
+  },
+  // Old dropdown styles (can be removed later)
   dropdownList: {
     position: "absolute",
     top: 52,
@@ -617,25 +900,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 10,
-    maxHeight: 200,
+    maxHeight: 300,
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     zIndex: 1000,
-    overflow: "hidden",
-  },
-  dropdownScroll: {
-    maxHeight: 200,
-    flexGrow: 0,
   },
   dropdownItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },

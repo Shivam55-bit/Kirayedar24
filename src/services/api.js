@@ -146,6 +146,28 @@ export const sendPhoneOtp = async (phone) => {
   });
 };
 
+export const checkUserByPhone = async (phone) => {
+  console.log('\n🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟');
+  console.log('📞 API.JS - checkUserByPhone CALLED');
+  console.log('🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟');
+  console.log('📱 Phone number:', phone);
+  console.log('🌐 BASE_URL:', BASE_URL);
+  console.log('🎯 Full endpoint:', `${BASE_URL}/auth/check-user`);
+  console.log('📦 Request body:', JSON.stringify({ phone }));
+  console.log('⏰ Making request...');
+  
+  const result = await makeRequest('/auth/check-user', {
+    method: 'POST',
+    body: JSON.stringify({ phone })
+  });
+  
+  console.log('✅ Request completed!');
+  console.log('📥 Result:', JSON.stringify(result, null, 2));
+  console.log('🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟\n');
+  
+  return result;
+};
+
 export const verifyPhoneOtp = async (phone, otp) => {
   const response = await makeRequest('/auth/verify-phone-otp', {
     method: 'POST',
@@ -242,9 +264,16 @@ export const removeSavedProperty = async (propertyId) => {
 
 // Get user's posted properties (for owners)
 export const getMySellProperties = async () => {
-  return makeRequest('/api/properties/my-sell-properties', {
+  console.log('📋 [getMySellProperties] Fetching user properties from:', BASE_URL + '/api/properties/my-sell-properties');
+  const result = await makeRequest('/api/properties/my-sell-properties', {
     method: 'GET'
   });
+  console.log('📋 [getMySellProperties] API Result:', {
+    success: result.success,
+    dataCount: result.data?.length || result.properties?.length || 0,
+    fullResponse: result
+  });
+  return result;
 };
 
 // Add new property

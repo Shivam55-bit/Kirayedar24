@@ -11,6 +11,7 @@ import {
 import Icon from "react-native-vector-icons/Ionicons";
 import { Alert } from 'react-native';
 import { logoutUser } from '../utils/authManager';
+import AuthFlowManager from '../utils/AuthFlowManager';
 
 // --- Theme Colors ---
 const COLORS = {
@@ -80,7 +81,14 @@ const SettingsScreen = ({ navigation }) => {
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            await logoutUser(navigation);
+                            // Use AuthFlowManager to clear auth data
+                            await AuthFlowManager.clearAuthData();
+                            
+                            // Navigate to LoginScreen for fresh start
+                            navigation.reset({
+                                index: 0,
+                                routes: [{ name: 'LoginScreen' }]
+                            });
                         } catch (error) {
                             console.error('Logout error:', error);
                             Alert.alert('Error', 'Failed to logout. Please try again.');

@@ -17,7 +17,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import { DeviceEventEmitter } from 'react-native';
 // Import API services and helper functions
 import { formatImageUrl, formatPrice } from '../services/propertyHelpers'; 
-import propertyService from '../services/propertyApi';
+import propertyService from '../services/propertyapi';
 
 // Fallback image URL when a property has no photo link
 const DEFAULT_IMAGE_URL = 'https://via.placeholder.com/180x180.png?text=No+Image';

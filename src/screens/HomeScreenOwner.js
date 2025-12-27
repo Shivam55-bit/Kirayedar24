@@ -35,6 +35,7 @@ import { showQuickNotificationStatus } from '../utils/notificationStatus';
 
 // Import MediaCard component
 import MediaCard from '../components/MediaCard';
+import DrawerMenu from '../components/DrawerMenu';
 import { getUserProperties } from '../services/propertyService';
 
 // Theme & Layout Constants
@@ -299,6 +300,7 @@ const HomeScreenOwner = ({ navigation }) => {
     // UI States
     const [hasUnreadMessages, setHasUnreadMessages] = useState(true);
     const [notificationCount, setNotificationCount] = useState(0);
+    const [drawerVisible, setDrawerVisible] = useState(false);
 
     // Load properties from API
     const loadProperties = useCallback(async () => {
@@ -683,6 +685,27 @@ const HomeScreenOwner = ({ navigation }) => {
 
     const handleVoiceSearch = () => {
         Alert.alert('Voice Search', 'Voice search feature coming soon!');
+    };
+
+    const handleLogout = async () => {
+        Alert.alert(
+            'Logout',
+            'Are you sure you want to logout?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Logout',
+                    onPress: async () => {
+                        await clearUserCredentials();
+                        navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'LoginScreen' }],
+                        });
+                    },
+                    style: 'destructive'
+                }
+            ]
+        );
     };
 
     // Distance-based filtering removed
@@ -1191,6 +1214,20 @@ const HomeScreenOwner = ({ navigation }) => {
             >
                 {/* Top Row */}
                 <View style={styles.headerTopRow}>
+                    {/* Menu Icon - Left */}
+                    <TouchableOpacity
+                        style={styles.menuButtonModern}
+                        onPress={() => setDrawerVisible(true)}
+                        activeOpacity={0.8}
+                    >
+                        <Icon 
+                            name="menu" 
+                            size={24} 
+                            color="#1A1A1A" 
+                        />
+                    </TouchableOpacity>
+
+                    {/* Logo - Center */}
                     <View style={styles.logoContainer}>
                         <Image 
                             source={require('../assets/Kirayedar_logo.png')}
@@ -1199,9 +1236,7 @@ const HomeScreenOwner = ({ navigation }) => {
                         />
                     </View>
 
-                    <View style={styles.headerSpacer}>
-                    </View>
-
+                    {/* Notification Icon - Right */}
                     <TouchableOpacity
                         style={styles.notificationButtonModern}
                         onPress={handleNotificationPress}
@@ -1341,6 +1376,14 @@ const HomeScreenOwner = ({ navigation }) => {
                     {renderCommercialContent()}
                 </ScrollView>
             </KeyboardAvoidingView>
+
+            {/* Drawer Menu Modal */}
+            <DrawerMenu 
+                visible={drawerVisible}
+                onClose={() => setDrawerVisible(false)}
+                onLogout={handleLogout}
+                navigation={navigation}
+            />
         </SafeAreaView>
     );
 };
@@ -1373,17 +1416,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 2,
     },
-    
-    logoContainer: {
+
+    menuButtonModern: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(253, 176, 34, 0.1)',
         justifyContent: 'center',
-        alignItems: 'flex-start',
-        flex: 0,
-        marginLeft:-23,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(253, 176, 34, 0.3)',
     },
-    
+
+    logoContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+
     headerLogoImage: {
-        width: 150,
-        height: 50,
+        width: 120,
+        height: 40,
     },
     
     headerSpacer: {

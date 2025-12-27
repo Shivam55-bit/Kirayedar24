@@ -48,6 +48,7 @@ import TestFCMScreen from '../screens/TestFCMScreen';
 import NotificationListScreen from '../screens/NotificationListScreen';
 import PayBillScreen from '../screens/PayBillScreen';
 import PayRentScreen from '../screens/PayRentScreen';
+import PropertyInquiryFormScreen from '../screens/PropertyInquiryFormScreen';
 
 // --- NAVIGATION ---
 import BottomTabNavigation from '../navigation/BottomTabNavigation';
@@ -127,6 +128,9 @@ const AppNavigator = React.forwardRef((props, ref) => {
         
         {/* Pay Bill Screen */}
         <Stack.Screen name="PayBillScreen" component={PayBillScreen} />
+        
+        {/* Property Inquiry Form Screen */}
+        <Stack.Screen name="PropertyInquiryFormScreen" component={PropertyInquiryFormScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

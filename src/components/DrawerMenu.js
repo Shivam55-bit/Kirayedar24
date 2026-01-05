@@ -40,7 +40,7 @@ const DrawerMenu = ({ visible, onClose, onLogout, navigation }) => {
             icon: 'share-social-outline',
             onPress: () => {
                 onClose();
-                // Referral logic
+                navigation?.navigate('ReferralScreen');
             }
         },
         {

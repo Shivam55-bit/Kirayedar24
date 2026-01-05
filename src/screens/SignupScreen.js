@@ -214,17 +214,40 @@ const SignupScreen = ({ navigation, route }) => {
   };
 
   const handleSignup = async () => {
+    // Debug: Log current form state
+    console.log('🔍 Form state during signup:', form);
+    console.log('🔍 Selected userType:', form.userType);
+    console.log('🔍 Is complete registration:', isCompleteRegistration);
+    
     // Validation based on signup type
     if (isCompleteRegistration) {
       // Complete registration validation (no password needed)
       if (!form.fullName || !form.email || !form.userType) {
+        console.log('❌ Complete registration validation failed:', {
+          fullName: !!form.fullName,
+          email: !!form.email,
+          userType: !!form.userType,
+          userTypeValue: form.userType
+        });
         showToast("Please fill your name, email and select account type.", "error");
         return;
       }
     } else {
       // Regular signup validation
       if (!form.fullName || !form.email || !form.phone || !form.password || 
-          !form.state || !form.city || !form.street || !form.pinCode || !form.userType) {
+          !form.state || !form.city || !form.post || !form.pinCode || !form.userType) {
+        console.log('❌ Regular signup validation failed:', {
+          fullName: !!form.fullName,
+          email: !!form.email,
+          phone: !!form.phone,
+          password: !!form.password,
+          state: !!form.state,
+          city: !!form.city,
+          post: !!form.post,
+          pinCode: !!form.pinCode,
+          userType: !!form.userType,
+          userTypeValue: form.userType
+        });
         showToast("Please fill all required fields and select account type.", "error");
         return;
       }
@@ -241,7 +264,7 @@ const SignupScreen = ({ navigation, route }) => {
           phone: phoneNumber,
           state: form.state.trim(),
           city: form.city.trim(),
-          street: form.street.trim(),
+          street: form.post.trim(),
           pinCode: form.pinCode.trim(),
           role: form.userType
         };
@@ -275,7 +298,7 @@ const SignupScreen = ({ navigation, route }) => {
           phone: form.phone.trim(),
           state: form.state.trim(),
           city: form.city.trim(),
-          street: form.street.trim(),
+          street: form.post.trim(),
           pinCode: form.pinCode.trim(),
           password: form.password,
           role: form.userType
@@ -381,7 +404,10 @@ const SignupScreen = ({ navigation, route }) => {
               styles.roleBtn,
               form.userType === "Owner" && styles.roleBtnActive,
             ]}
-            onPress={() => setForm({ ...form, userType: "Owner" })}
+            onPress={() => {
+              console.log('🏠 Setting userType to Owner');
+              setForm({ ...form, userType: "Owner" });
+            }}
           >
             <Icon 
               name="home" 
@@ -403,7 +429,10 @@ const SignupScreen = ({ navigation, route }) => {
               styles.roleBtn,
               form.userType === "Tenant" && styles.roleBtnActive,
             ]}
-            onPress={() => setForm({ ...form, userType: "Tenant" })}
+            onPress={() => {
+              console.log('🔍 Setting userType to Tenant');
+              setForm({ ...form, userType: "Tenant" });
+            }}
           >
             <Icon 
               name="search" 

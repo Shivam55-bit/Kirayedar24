@@ -3,7 +3,7 @@
  */
 
 import { AppRegistry, Platform } from 'react-native';
-import App from './src/App';
+import App from './App';
 import { name as appName } from './app.json';
 
 // Only import Firebase messaging for mobile platforms

@@ -233,16 +233,7 @@ const ProfileScreen = ({ navigation }) => {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Quick Actions</Text>
                     <View style={styles.actionGrid}>
-                        <TouchableOpacity 
-                            style={[styles.actionCard, { backgroundColor: COLORS.purple + '10' }]}
-                            onPress={() => navigation.navigate('MyPropertyScreen')}
-                        >
-                            <View style={[styles.actionIcon, { backgroundColor: COLORS.purple + '20' }]}>
-                                <Icon name="home" size={24} color={COLORS.purple} />
-                            </View>
-                            <Text style={styles.actionTitle}>My Properties</Text>
-                            <Text style={styles.actionCount}>{myListingsCount}</Text>
-                        </TouchableOpacity>
+                        
 
                         <TouchableOpacity 
                             style={[styles.actionCard, { backgroundColor: COLORS.pink + '10' }]}

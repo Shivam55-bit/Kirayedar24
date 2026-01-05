@@ -98,12 +98,8 @@ export const authService = {
       
       console.log('Phone OTP response:', response);
       
-      // Show development alert
-      if (__DEV__ && response.success) {
-        setTimeout(() => {
-          alert(`📱 OTP Sent Successfully!\\n\\nOTP sent to ${phoneNumber}\\n\\n🔑 Check backend console for OTP code`);
-        }, 1000);
-      }
+      // OTP sent successfully - alert removed for better user experience
+      console.log(`📱 OTP Sent Successfully to ${phoneNumber}`);
       
       return response;
     } catch (error) {

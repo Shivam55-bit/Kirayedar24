@@ -153,14 +153,16 @@ const OtpScreen = ({ route, navigation }) => {
         
         console.log('✅ Auth data stored successfully');
         
-        // Handle FCM token
+        // Handle FCM token (silently, don't show errors to user)
         try {
           const fcmToken = await getStoredFCMToken();
           if (fcmToken && otpResponse.user.id) {
             await sendFCMTokenToBackend(otpResponse.user.id, fcmToken);
+            console.log('✅ FCM token sent to backend successfully');
           }
         } catch (fcmError) {
-          console.log('FCM token error (non-critical):', fcmError);
+          // Silently handle FCM token errors - backend endpoint may not exist
+          console.log('ℹ️ FCM token sync skipped (endpoint not available):', fcmError.message || fcmError);
         }
         
         setLoading(false);

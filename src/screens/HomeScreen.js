@@ -39,6 +39,8 @@ import { showQuickNotificationStatus } from '../utils/notificationStatus';
 // Import MediaCard component
 import MediaCard from '../components/MediaCard';
 import DrawerMenu from '../components/DrawerMenu';
+import SubscriptionModal from '../components/SubscriptionModal';
+import { useSubscription } from '../context/SubscriptionContext';
 
 // Theme & Layout Constants
 const { width, height } = Dimensions.get("window");
@@ -177,6 +179,34 @@ const formatImageUrl = (url) => {
 
 const formatPrice = (price) => `₹ ${price}`; // Using Rupee symbol instead of dollar
 
+const getDisplayLocation = (property) => {
+    if (!property) return 'Unknown Location';
+
+    // Prefer nested address object if available (API format)
+    if (property.address && typeof property.address === 'object') {
+        const { locality, city, state, district } = property.address;
+        // Build location string with available fields
+        const parts = [];
+        if (locality) parts.push(locality);
+        if (city) parts.push(city);
+        if (district && district !== city) parts.push(district);
+        if (state) parts.push(state);
+        
+        if (parts.length > 0) {
+            return parts.join(', ');
+        }
+    }
+
+    // Fallback to flat fields
+    const flatParts = [property.locality, property.city, property.state].filter(Boolean);
+    if (flatParts.length) return flatParts.join(', ');
+
+    // Fallback to propertyLocation string
+    if (property.propertyLocation) return property.propertyLocation;
+
+    return 'Location not specified';
+};
+
 const getFirstImageUrl = (photosAndVideo) => {
     if (!photosAndVideo || photosAndVideo.length === 0) return null;
     
@@ -272,6 +302,10 @@ const ChatButton = ({ onPress, theme, hasUnreadMessages }) => (
 // Location geocoding functionality removed
 
 const Homescreen = ({ navigation }) => {
+    // Subscription context
+    const { userHasPackage, setPropertyForSubscription } = useSubscription();
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    
     // Debug function to check login status (for testing)
     const checkLoginStatus = async () => {
         const credentials = await getStoredCredentials();
@@ -342,8 +376,13 @@ const Homescreen = ({ navigation }) => {
                     const recentData = recentResponse.value.data || recentResponse.value.properties || [];
                     console.log('📦 Recent data received:', recentData.length, 'properties');
                     console.log('🔍 Sample property:', recentData[0] || 'None');
-                    setFeaturedProperties(Array.isArray(recentData) ? recentData : []);
-                    console.log('✅ Featured properties loaded:', recentData.length);
+                    // Filter only approved properties (backend returns lowercase 'approved')
+                    const approvedRecent = recentData.filter(p => 
+                        p.status === 'approved' || p.approvalStatus === 'Approved'
+                    );
+                    console.log('✅ Approved properties:', approvedRecent.length, 'out of', recentData.length);
+                    setFeaturedProperties(Array.isArray(approvedRecent) ? approvedRecent : []);
+                    console.log('✅ Featured properties loaded:', approvedRecent.length);
                 } else {
                     console.warn('⚠️ Recent API returned success=false:', recentResponse.value.message);
                     setFeaturedProperties(DUMMY_PROPERTIES);
@@ -358,7 +397,11 @@ const Homescreen = ({ navigation }) => {
                 if (residentialResponse.value.success) {
                     const residentialData = residentialResponse.value.data || residentialResponse.value.properties || [];
                     console.log('📦 Residential data received:', residentialData.length, 'properties');
-                    const filteredResidential = residentialData.filter(p => p.propertyType === 'Residential');
+                    // Filter by propertyType and status (backend returns lowercase 'approved')
+                    const filteredResidential = residentialData.filter(p => 
+                        p.propertyType === 'Residential' && 
+                        (p.status === 'approved' || p.approvalStatus === 'Approved')
+                    );
                     setResidentialProperties(Array.isArray(filteredResidential) ? filteredResidential : []);
                     console.log('✅ Residential properties loaded:', filteredResidential.length);
                 } else {
@@ -378,7 +421,11 @@ const Homescreen = ({ navigation }) => {
                 if (commercialResponse.value.success) {
                     const commercialData = commercialResponse.value.data || commercialResponse.value.properties || [];
                     console.log('📦 Commercial data received:', commercialData.length, 'properties');
-                    const filteredCommercial = commercialData.filter(p => p.propertyType === 'Commercial');
+                    // Filter by propertyType and status (backend returns lowercase 'approved')
+                    const filteredCommercial = commercialData.filter(p => 
+                        p.propertyType === 'Commercial' && 
+                        (p.status === 'approved' || p.approvalStatus === 'Approved')
+                    );
                     setCommercialProperties(Array.isArray(filteredCommercial) ? filteredCommercial : []);
                     console.log('✅ Commercial properties loaded:', filteredCommercial.length);
                 } else {
@@ -571,7 +618,32 @@ const Homescreen = ({ navigation }) => {
     };
 
     const openProperty = (item) => {
+        // Check if user has active subscription
+        if (!userHasPackage) {
+            // Debug: Check token before showing modal
+            AsyncStorage.getItem('userToken').then(token => {
+                console.log('🔑 Token check before modal:', token ? 'Token exists' : 'No token');
+                if (!token) {
+                    // Log all keys for debugging
+                    AsyncStorage.getAllKeys().then(keys => {
+                        console.log('📦 All AsyncStorage keys:', keys);
+                    });
+                }
+            });
+            
+            setPropertyForSubscription(item);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
+        // User has subscription, navigate to details
         navigation.navigate('PropertyDetailsScreen', { property: item });
+    };
+
+    const handleSubscriptionSuccess = () => {
+        setShowSubscriptionModal(false);
+        // After subscription, user will have package and can view properties
+        Alert.alert('Success', 'Subscription activated! You can now view property details.');
     };
 
     const handleChatPress = () => {
@@ -800,7 +872,9 @@ const Homescreen = ({ navigation }) => {
     // Process featured properties for display
     const processedFeaturedProperties = useMemo(() => {
         return featuredProperties.map((item, index) => {
-            const firstImage = getFirstImageUrl(item.photosAndVideo);
+            // Handle multiple photo field names from API
+            const photos = item.photos || item.photosAndVideo || item.images || [];
+            const firstImage = getFirstImageUrl(photos);
             const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
             
             return {
@@ -829,17 +903,24 @@ const Homescreen = ({ navigation }) => {
                 contentContainerStyle={styles.horizontalScrollContainer}
             >
                 {displayedFeaturedProperties.map((item, index) => {
-                    // Prepare media items for MediaCard
-                    const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                        ? item.photosAndVideo.map(media => {
-                            const originalUri = media.uri || media;
-                            const formattedUri = formatImageUrl(originalUri);
-                            return {
-                                uri: formattedUri || originalUri,
-                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                            };
-                        })
-                        : [{ uri: item.processedImageUrl, type: 'image' }];
+                    // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                    const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                        ? item.photos
+                        : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                            ? item.photosAndVideo
+                            : (Array.isArray(item.images) && item.images.length > 0)
+                                ? item.images
+                                : [{ uri: item.processedImageUrl }];
+
+                    const mediaItems = sourceMedia.map(media => {
+                        const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                        const formattedUri = formatImageUrl(originalUri);
+                        const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+                        return {
+                            uri: formattedUri || originalUri,
+                            type: media.type || (isVideo ? 'video' : 'image')
+                        };
+                    });
 
                     return (
                         <TouchableOpacity
@@ -877,26 +958,26 @@ const Homescreen = ({ navigation }) => {
                                     )}
                                 </TouchableOpacity>
 
-                                {/* Property Type Badge - Bottom Left */}
-                                <View style={styles.propertyTypeBadge}>
+                                {/* Property Type Badge - Bottom Left Deleted */}
+                                {/* <View style={styles.propertyTypeBadge}>
                                     <Text style={styles.propertyTypeText}>
                                         {item.purpose || 'Apartment'}
                                     </Text>
-                                </View>
+                                </View> */}
                             </View>
 
                             {/* Property Details - Right Side */}
                             <View style={styles.featuredHouseDetails}>
                                 {/* Title */}
                                 <Text style={styles.featuredHouseTitle} numberOfLines={2}>
-                                    {item.description || 'Sky Dandelions Apartment'}
+                                    {item.description || 'Property Details'}
                                 </Text>
 
                                 {/* Location */}
                                 <View style={styles.featuredHouseLocation}>
                                     <Icon name="location-outline" size={12} color="#64748B" />
                                     <Text style={styles.featuredHouseLocationText} numberOfLines={1}>
-                                        {item.propertyLocation || 'Jakarta, Indonesia'}
+                                        {getDisplayLocation(item)}
                                     </Text>
                                 </View>
 
@@ -987,16 +1068,24 @@ const Homescreen = ({ navigation }) => {
                 contentContainerStyle={styles.horizontalScrollContainer}
             >
                 {displayedResidentialProperties.map((item, index) => {
-                    const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                        ? item.photosAndVideo.map(media => {
-                            const originalUri = media.uri || media;
-                            const formattedUri = formatImageUrl(originalUri);
-                            return {
-                                uri: formattedUri || originalUri,
-                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                            };
-                        })
-                        : [{ uri: item.processedImageUrl, type: 'image' }];
+                    // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                    const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                        ? item.photos
+                        : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                            ? item.photosAndVideo
+                            : (Array.isArray(item.images) && item.images.length > 0)
+                                ? item.images
+                                : [{ uri: item.processedImageUrl }];
+
+                    const mediaItems = sourceMedia.map(media => {
+                        const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                        const formattedUri = formatImageUrl(originalUri);
+                        const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+                        return {
+                            uri: formattedUri || originalUri,
+                            type: media.type || (isVideo ? 'video' : 'image')
+                        };
+                    });
 
                     return (
                         <TouchableOpacity
@@ -1028,7 +1117,7 @@ const Homescreen = ({ navigation }) => {
                                 <View style={styles.residentialLocation}>
                                     <Icon name="location-outline" size={13} color="#64748B" />
                                     <Text style={styles.residentialLocationText} numberOfLines={1}>
-                                        {item.propertyLocation || 'Unknown Location'}
+                                        {getDisplayLocation(item)}
                                     </Text>
                                 </View>
 
@@ -1079,17 +1168,24 @@ const Homescreen = ({ navigation }) => {
             <View>
                 <View style={styles.nearbyGrid}>
                         {displayedCommercialProperties.map((item, index) => {
-                            // Prepare media items for MediaCard
-                            const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                                ? item.photosAndVideo.map(media => {
-                                    const originalUri = media.uri || media;
-                                    const formattedUri = formatImageUrl(originalUri);
-                                    return {
-                                        uri: formattedUri || originalUri,
-                                        type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                                    };
-                                })
-                                : [{ uri: item.processedImageUrl, type: 'image' }];
+                            // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                            const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                                ? item.photos
+                                : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                                    ? item.photosAndVideo
+                                    : (Array.isArray(item.images) && item.images.length > 0)
+                                        ? item.images
+                                        : [{ uri: item.processedImageUrl }];
+
+                            const mediaItems = sourceMedia.map(media => {
+                                const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                                const formattedUri = formatImageUrl(originalUri);
+                                const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+                                return {
+                                    uri: formattedUri || originalUri,
+                                    type: media.type || (isVideo ? 'video' : 'image')
+                                };
+                            });
 
                             return (
                                 <TouchableOpacity
@@ -1131,7 +1227,7 @@ const Homescreen = ({ navigation }) => {
                                         <View style={styles.locationRow}>
                                             <Icon name="location-outline" size={12} color="#64748B" />
                                             <Text style={styles.nearbyLocation} numberOfLines={1}>
-                                                {item.propertyLocation || 'Unknown'}
+                                                {getDisplayLocation(item)}
                                             </Text>
                                         </View>
                                         <Text style={styles.nearbyPrice}>{formatPrice(item.price)}</Text>
@@ -1194,8 +1290,8 @@ const Homescreen = ({ navigation }) => {
                         activeOpacity={0.8}
                     >
                         <Icon 
-                            name="menu" 
-                            size={24} 
+                            name="menu-outline" 
+                            size={26} 
                             color="#1A1A1A" 
                         />
                     </TouchableOpacity>
@@ -1316,7 +1412,7 @@ const Homescreen = ({ navigation }) => {
                                             />
                                         </View>
                                         <View style={styles.cardContent}>
-                                            <Text style={styles.actionButtonTextModern}>{item.label}</Text>
+                                            <Text style={styles.actionButtonTextModern} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{item.label}</Text>
                                         </View>
                                     </View>
                                 </TouchableOpacity>
@@ -1357,6 +1453,13 @@ const Homescreen = ({ navigation }) => {
                 onLogout={handleLogout}
                 navigation={navigation}
             />
+
+            {/* Subscription Modal */}
+            <SubscriptionModal
+                visible={showSubscriptionModal}
+                onClose={() => setShowSubscriptionModal(false)}
+                onSuccess={handleSubscriptionSuccess}
+            />
         </SafeAreaView>
     );
 };
@@ -1371,9 +1474,9 @@ const styles = StyleSheet.create({
     
     // Modern Header Styles
     modernHeader: {
-        paddingTop: Platform.OS === 'ios' ? 3 : StatusBar.currentHeight + 3,
-        paddingHorizontal: 16,
-        paddingBottom: 3,
+        paddingTop: Platform.OS === 'ios' ? height * 0.01 : height * 0.03,
+        paddingHorizontal: width * 0.04,
+        paddingBottom: height * 0.004,
         borderBottomLeftRadius: 20,
         borderBottomRightRadius: 20,
         elevation: 8,
@@ -1387,7 +1490,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 2,
+        paddingVertical: height * 0.006,
     },
 
     menuButtonModern: {
@@ -1405,12 +1508,14 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        paddingHorizontal: width * 0.05,
     },
 
     headerLogoImage: {
-        width: 120,
-        height: 40,
+        width: width * 0.32,
+        height: height * 0.05,
+        maxWidth: 120,
+        maxHeight: 40,
     },
     
     profileButtonModern: {
@@ -1466,6 +1571,7 @@ const styles = StyleSheet.create({
     
     notificationIconModern: {
         position: 'relative',
+        left:1,
     },
     
     notificationBadgeModern: {
@@ -1492,12 +1598,11 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'flex-start',
         flex: 0,
-        marginLeft:-23,
     },
     
     headerLogoImage: {
-        width: 150,
-        height: 50,
+        width: 120,
+        height: 40,
     },
     
     headerSpacer: {
@@ -1673,7 +1778,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: theme.SPACING.l,
-        marginTop: 32,
+        marginTop: 40,
         marginBottom: 18,
     },
     sectionTitle: {
@@ -1728,11 +1833,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         gap: 12,
+        flexWrap: 'nowrap',
     },
     
     actionButtonModern: {
         flex: 1,
-        height: 95,
+        minHeight: 95,
+        maxHeight: 110,
         marginHorizontal: 4,
     },
     
@@ -1745,15 +1852,17 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.12,
         shadowRadius: 20,
-        
+        alignItems: 'center',
         overflow: 'visible',
         marginTop: 12,
+        minHeight: 95,
     },
     
     floatingIconContainer: {
         position: 'absolute',
         top: -12,
-        left: 12,
+        left: '50%',
+        marginLeft: -20,
         width: 40,
         height: 40,
         borderRadius: 20,
@@ -1763,27 +1872,29 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.5,
         shadowRadius: 8,
+        elevation: 6,
         zIndex: 10,
     },
     
     cardContent: {
         flex: 1,
-        paddingTop: 24,
-        paddingHorizontal: 12,
-        paddingBottom: 16,
+        paddingTop: 30,
+        paddingHorizontal: 2,
+        paddingBottom: 10,
         justifyContent: 'center',
         alignItems: 'center',
         position: 'relative',
     },
     
     actionButtonTextModern: {
-        fontSize: 11,
+        fontSize: width < 380 ? 8.5 : 10,
         fontWeight: '700',
         textAlign: 'center',
-        lineHeight: 14,
+        lineHeight: width < 380 ? 11 : 13,
         color: '#374151',
-        letterSpacing: 0.3,
+        letterSpacing: 0.1,
         textTransform: 'uppercase',
+        flexShrink: 1,
         marginTop: 4,
     },
     
@@ -1817,7 +1928,7 @@ const styles = StyleSheet.create({
     },
     horizontalScrollContainer: {
         paddingHorizontal: theme.SPACING.l,
-        paddingBottom: 24,
+        paddingBottom: 32,
         paddingTop: 4,
     },
     featuredCard: {
@@ -2309,6 +2420,7 @@ const styles = StyleSheet.create({
         width: width * 0.88,
         height: 180,
         marginRight: 18,
+        marginBottom: 8,
         borderRadius: 22,
         backgroundColor: '#FFFFFF',
         overflow: 'hidden',
@@ -2325,11 +2437,13 @@ const styles = StyleSheet.create({
         width: '46%',
         height: '100%',
         backgroundColor: '#F1F5F9',
+        overflow: 'hidden',
     },
     featuredHouseMediaCard: {
         width: '100%',
         height: '100%',
         borderRadius: 0,
+        overflow: 'hidden',
     },
     featuredHouseImage: {
         width: '100%',
@@ -2455,12 +2569,16 @@ const styles = StyleSheet.create({
         width: '100%',
         height: 140,
         backgroundColor: '#F1F5F9',
+        overflow: 'hidden',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
     },
     residentialMediaCard: {
         width: '100%',
         height: '100%',
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
+        overflow: 'hidden',
     },
     residentialImage: {
         width: '100%',

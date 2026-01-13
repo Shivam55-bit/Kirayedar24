@@ -25,6 +25,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 import { getRecentProperties, getResidentialProperties, getCommercialProperties } from '../services/propertyService';
+import { propertyService } from '../services/propertyapi';
 import { getNotificationCount, addTestNotifications } from '../utils/notificationManager';
 import { getStoredCredentials, clearUserCredentials } from '../utils/authManager';
 import { runCompleteNotificationTest } from '../utils/notificationTest';
@@ -165,22 +166,70 @@ const formatImageUrl = (url) => {
 
 const formatPrice = (price) => `₹ ${price}`; // Using Rupee symbol instead of dollar
 
-const getFirstImageUrl = (photosAndVideo) => {
-    if (!photosAndVideo || photosAndVideo.length === 0) return null;
-    
-    // Find the first image (not video) if possible
-    const firstImage = photosAndVideo.find(media => {
-        const mediaPath = media.uri || media;
-        return mediaPath && (mediaPath.includes('.jpg') || mediaPath.includes('.jpeg') || 
-               mediaPath.includes('.png') || mediaPath.includes('.webp') || mediaPath.includes('.gif'));
-    });
-    
-    if (firstImage) {
-        return firstImage.uri || firstImage;
+const getFirstImageUrl = (property) => {
+    // Accept either a property object or a media array
+    if (!property) return null;
+
+    // If property has a photos array (newer backend), prefer that
+    if (Array.isArray(property.photos) && property.photos.length > 0) {
+        return property.photos[0];
     }
-    
-    // If no image found, return the first item anyway
-    return photosAndVideo[0].uri || photosAndVideo[0];
+
+    // If property has photosAndVideo, search for the first image
+    const photosAndVideo = Array.isArray(property.photosAndVideo) ? property.photosAndVideo : (Array.isArray(property.photosAndVideo || property.photos) ? (property.photosAndVideo || property.photos) : null);
+
+    if (Array.isArray(photosAndVideo) && photosAndVideo.length > 0) {
+        const firstImage = photosAndVideo.find(media => {
+            const mediaPath = media && (media.uri || media);
+            return mediaPath && (mediaPath.includes('.jpg') || mediaPath.includes('.jpeg') || 
+                mediaPath.includes('.png') || mediaPath.includes('.webp') || mediaPath.includes('.gif'));
+        });
+
+        if (firstImage) return firstImage.uri || firstImage;
+        return photosAndVideo[0].uri || photosAndVideo[0];
+    }
+
+    // If property has images array
+    if (Array.isArray(property.images) && property.images.length > 0) {
+        return property.images[0];
+    }
+
+    // If single image field
+    if (property.image) return property.image;
+
+    return null;
+};
+
+// Build a consistent displayable location string from available address fields
+const getDisplayLocation = (property) => {
+    if (!property) return 'Unknown Location';
+
+    // Prefer nested address object if available (API format)
+    if (property.address && typeof property.address === 'object') {
+        const { locality, city, state, district } = property.address;
+        // Build location string with available fields
+        const parts = [];
+        if (locality) parts.push(locality);
+        if (city) parts.push(city);
+        if (district && district !== city) parts.push(district);
+        if (state) parts.push(state);
+        
+        if (parts.length > 0) {
+            return parts.join(', ');
+        }
+    }
+
+    // Fallback to flat fields
+    const flatParts = [property.locality, property.city, property.state].filter(Boolean);
+    if (flatParts.length) return flatParts.join(', ');
+
+    // Fallback to propertyLocation string
+    if (property.propertyLocation) return property.propertyLocation;
+
+    // As last resort, check for address string
+    if (property.address && typeof property.address === 'string') return property.address;
+
+    return 'Unknown Location';
 };
 
 const theme = {
@@ -234,9 +283,9 @@ const BANNER_IMAGES = [
 // Static Data - Get Started With section
 const startedItems = [
     { id: "1", icon: "home", label: "My\nProperty", color: "#FDB022", gradientColors: ["#FFF4E6", "#FFFFFF"], screen: 'MyPropertyScreen' },
-    { id: "2", icon: "receipt", label: "Pay Bill", color: "#FDB022", gradientColors: ["#F0F9FF", "#FFFFFF"], screen: 'PayBillScreen' },
-    { id: "3", icon: "card", label: "Pay Rent", color: "#FDB022", gradientColors: ["#F0FDF4", "#FFFFFF"], screen: 'PayRentScreen' },
-    { id: "4", icon: "add-circle", label: "Add Property", color: "#FDB022", gradientColors: ["#FEF3F2", "#FFFFFF"], screen: 'AddSell' },
+    { id: "2", icon: "receipt", label: "Pay\nBill", color: "#FDB022", gradientColors: ["#F0F9FF", "#FFFFFF"], screen: 'PayBillScreen' },
+    { id: "3", icon: "card", label: "Pay\nRent", color: "#FDB022", gradientColors: ["#F0FDF4", "#FFFFFF"], screen: 'PayRentScreen' },
+    { id: "4", icon: "add-circle", label: "Add\nProperty", color: "#FDB022", gradientColors: ["#FEF3F2", "#FFFFFF"], screen: 'AddSell' },
 ];
 
 // Layout Calculation
@@ -320,8 +369,13 @@ const HomeScreenOwner = ({ navigation }) => {
             if (recentResponse.status === 'fulfilled' && recentResponse.value.success) {
                 const recentData = recentResponse.value.data || recentResponse.value.properties || [];
                 console.log('📦 Recent data received:', recentData);
-                setFeaturedProperties(Array.isArray(recentData) ? recentData : []);
-                console.log('✅ Featured properties loaded:', recentData.length);
+                // Filter only approved properties (backend returns lowercase 'approved')
+                const approvedRecent = recentData.filter(p => 
+                    p.status === 'approved' || p.approvalStatus === 'Approved'
+                );
+                console.log('✅ Approved properties:', approvedRecent.length, 'out of', recentData.length);
+                setFeaturedProperties(Array.isArray(approvedRecent) ? approvedRecent : []);
+                console.log('✅ Featured properties loaded:', approvedRecent.length);
             } else {
                 console.warn('⚠️ Failed to load featured properties:', recentResponse.reason || recentResponse.value?.message);
                 setFeaturedProperties(DUMMY_PROPERTIES); // Fallback to dummy data
@@ -331,8 +385,12 @@ const HomeScreenOwner = ({ navigation }) => {
             if (residentialResponse.status === 'fulfilled' && residentialResponse.value.success) {
                 const residentialData = residentialResponse.value.data || residentialResponse.value.properties || [];
                 console.log('📦 Residential data received:', residentialData);
-                setResidentialProperties(Array.isArray(residentialData) ? residentialData : []);
-                console.log('✅ Residential properties loaded:', residentialData.length);
+                // Filter by status (backend returns lowercase 'approved')
+                const approvedResidential = residentialData.filter(p => 
+                    p.status === 'approved' || p.approvalStatus === 'Approved'
+                );
+                setResidentialProperties(Array.isArray(approvedResidential) ? approvedResidential : []);
+                console.log('✅ Residential properties loaded:', approvedResidential.length);
             } else {
                 console.warn('⚠️ Failed to load residential properties:', residentialResponse.reason || residentialResponse.value?.message);
                 setResidentialProperties(DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
@@ -342,8 +400,12 @@ const HomeScreenOwner = ({ navigation }) => {
             if (commercialResponse.status === 'fulfilled' && commercialResponse.value.success) {
                 const commercialData = commercialResponse.value.data || commercialResponse.value.properties || [];
                 console.log('📦 Commercial data received:', commercialData);
-                setCommercialProperties(Array.isArray(commercialData) ? commercialData : []);
-                console.log('✅ Commercial properties loaded:', commercialData.length);
+                // Filter by status (backend returns lowercase 'approved')
+                const approvedCommercial = commercialData.filter(p => 
+                    p.status === 'approved' || p.approvalStatus === 'Approved'
+                );
+                setCommercialProperties(Array.isArray(approvedCommercial) ? approvedCommercial : []);
+                console.log('✅ Commercial properties loaded:', approvedCommercial.length);
             } else {
                 console.warn('⚠️ Failed to load commercial properties:', commercialResponse.reason || commercialResponse.value?.message);
                 setCommercialProperties(DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
@@ -413,6 +475,39 @@ const HomeScreenOwner = ({ navigation }) => {
         return () => listener.remove();
     }, []);
 
+    // Load saved properties on mount
+    const loadSavedProperties = useCallback(async () => {
+        try {
+            const response = await propertyService.getSavedProperties();
+            if (response.savedProperties && Array.isArray(response.savedProperties)) {
+                const savedIds = response.savedProperties
+                    .filter(p => p !== null && p !== undefined) // Filter out null/undefined values
+                    .map(p => p._id || p.id)
+                    .filter(Boolean);
+                setFavorites(savedIds);
+                console.log('✅ [HomeScreenOwner] Loaded saved properties:', savedIds.length);
+            }
+        } catch (error) {
+            console.error('[HomeScreenOwner] Error loading saved properties:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSavedProperties();
+    }, [loadSavedProperties]);
+
+    // Listen for navigation focus to reload saved properties
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            console.log('[HomeScreenOwner] Screen focused - reloading saved properties');
+            loadSavedProperties();
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [navigation, loadSavedProperties]);
+
     // Auto-scroll banner effect
     useEffect(() => {
         const interval = setInterval(() => {
@@ -456,10 +551,39 @@ const HomeScreenOwner = ({ navigation }) => {
     }, [navigation]);
 
     // Component Logic (simplified for dummy data)
-    const toggleFavorite = (id) => {
-        const isCurrentlySaved = favorites.includes(id);
-        setFavorites((prev) => (isCurrentlySaved ? prev.filter((f) => f !== id) : [...prev, id]));
-        DeviceEventEmitter.emit('savedListUpdated', { propertyId: id, action: isCurrentlySaved ? 'removed' : 'added' });
+    const toggleFavorite = async (propertyId) => {
+        if (loadingSaveProperty === propertyId) return; // Prevent multiple clicks
+        
+        const isCurrentlySaved = favorites.includes(propertyId);
+        setLoadingSaveProperty(propertyId);
+        
+        try {
+            let response;
+            if (isCurrentlySaved) {
+                // Remove from saved
+                response = await propertyService.removeSavedProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => prev.filter((f) => f !== propertyId));
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'removed' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to remove property from saved list');
+                }
+            } else {
+                // Save property
+                response = await propertyService.saveProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => [...prev, propertyId]);
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'added' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to save property');
+                }
+            }
+        } catch (error) {
+            console.error('Toggle favorite error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setLoadingSaveProperty(null);
+        }
     };
 
     // Update the renderSectionHeader function to handle 'See All' click
@@ -711,18 +835,33 @@ const HomeScreenOwner = ({ navigation }) => {
     // Distance-based filtering removed
 
     // Process featured properties for display
+    // Prefer featuredProperties from API; if empty, fall back to ownerProperties (user's properties), then to dummy data
     const processedFeaturedProperties = useMemo(() => {
-        return featuredProperties.map((item, index) => {
-            const firstImage = getFirstImageUrl(item.photosAndVideo);
+        const source = (Array.isArray(featuredProperties) && featuredProperties.length > 0)
+            ? featuredProperties
+            : (Array.isArray(ownerProperties) && ownerProperties.length > 0)
+                ? ownerProperties
+                : DUMMY_PROPERTIES;
+
+        if (source === DUMMY_PROPERTIES) {
+            console.warn('⚠️ Using DUMMY_PROPERTIES as featured content fallback — no featured or owner properties available');
+        } else if (source === ownerProperties) {
+            console.log('ℹ️ Using ownerProperties as featured content fallback');
+        } else {
+            console.log('ℹ️ Using featuredProperties from API for featured content');
+        }
+
+        return source.map((item, index) => {
+            const firstImage = getFirstImageUrl(item) || getFirstImageUrl(item.photosAndVideo || item.photos || item.images);
             const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
-            
+
             return {
                 ...item,
                 processedImageUrl: imageUrl,
                 stableKey: `featured_${item._id || index}`
             };
         });
-    }, [featuredProperties]);
+    }, [featuredProperties, ownerProperties]);
 
     // Limit featured properties to display
     const displayedFeaturedProperties = useMemo(() => {
@@ -742,17 +881,24 @@ const HomeScreenOwner = ({ navigation }) => {
                 contentContainerStyle={styles.horizontalScrollContainer}
             >
                 {displayedFeaturedProperties.map((item, index) => {
-                    // Prepare media items for MediaCard
-                    const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                        ? item.photosAndVideo.map(media => {
-                            const originalUri = media.uri || media;
-                            const formattedUri = formatImageUrl(originalUri);
-                            return {
-                                uri: formattedUri || originalUri,
-                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                            };
-                        })
-                        : [{ uri: item.processedImageUrl, type: 'image' }];
+                    // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                    const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                        ? item.photos
+                        : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                            ? item.photosAndVideo
+                            : (Array.isArray(item.images) && item.images.length > 0)
+                                ? item.images
+                                : [{ uri: item.processedImageUrl }];
+
+                    const mediaItems = sourceMedia.map(media => {
+                        const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                        const formattedUri = formatImageUrl(originalUri);
+                        const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+                        return {
+                            uri: formattedUri || originalUri,
+                            type: media.type || (isVideo ? 'video' : 'image')
+                        };
+                    });
 
                     return (
                         <TouchableOpacity
@@ -777,20 +923,25 @@ const HomeScreenOwner = ({ navigation }) => {
                                     onPress={() => toggleFavorite(item._id)} 
                                     style={styles.featuredHouseFavoriteIcon}
                                     activeOpacity={0.7}
+                                    disabled={loadingSaveProperty === item._id}
                                 >
-                                    <Icon
-                                        name={favorites.includes(item._id) ? "heart" : "heart-outline"}
-                                        size={20}
-                                        color={favorites.includes(item._id) ? "#EF4444" : "#64748B"}
-                                    />
+                                    {loadingSaveProperty === item._id ? (
+                                        <ActivityIndicator size="small" color="#EF4444" />
+                                    ) : (
+                                        <Icon
+                                            name={favorites.includes(item._id) ? "heart" : "heart-outline"}
+                                            size={20}
+                                            color={favorites.includes(item._id) ? "#EF4444" : "#64748B"}
+                                        />
+                                    )}
                                 </TouchableOpacity>
 
-                                {/* Property Type Badge - Bottom Left */}
-                                <View style={styles.propertyTypeBadge}>
+                                {/* Property Type Badge - Bottom Left Deleted */}
+                                {/* <View style={styles.propertyTypeBadge}>
                                     <Text style={styles.propertyTypeText}>
                                         {item.purpose || 'Apartment'}
                                     </Text>
-                                </View>
+                                </View> */}
                             </View>
 
                             {/* Property Details - Right Side */}
@@ -804,7 +955,7 @@ const HomeScreenOwner = ({ navigation }) => {
                                 <View style={styles.featuredHouseLocation}>
                                     <Icon name="location-outline" size={12} color="#64748B" />
                                     <Text style={styles.featuredHouseLocationText} numberOfLines={1}>
-                                        {item.propertyLocation || 'Jakarta, Indonesia'}
+                                        {getDisplayLocation(item)}
                                     </Text>
                                 </View>
 
@@ -849,7 +1000,7 @@ const HomeScreenOwner = ({ navigation }) => {
     // Process properties by category
     const processedProperties = useMemo(() => {
         const residential = residentialProperties.map((item, index) => {
-            const firstImage = getFirstImageUrl(item.photosAndVideo);
+            const firstImage = getFirstImageUrl(item) || getFirstImageUrl(item.photosAndVideo);
             const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
             
             return {
@@ -895,16 +1046,24 @@ const HomeScreenOwner = ({ navigation }) => {
                 contentContainerStyle={styles.horizontalScrollContainer}
             >
                 {displayedResidentialProperties.map((item, index) => {
-                    const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                        ? item.photosAndVideo.map(media => {
-                            const originalUri = media.uri || media;
-                            const formattedUri = formatImageUrl(originalUri);
-                            return {
-                                uri: formattedUri || originalUri,
-                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                            };
-                        })
-                        : [{ uri: item.processedImageUrl, type: 'image' }];
+                    // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                    const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                        ? item.photos
+                        : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                            ? item.photosAndVideo
+                            : (Array.isArray(item.images) && item.images.length > 0)
+                                ? item.images
+                                : [{ uri: item.processedImageUrl }];
+
+                    const mediaItems = sourceMedia.map(media => {
+                        const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                        const formattedUri = formatImageUrl(originalUri);
+                        const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+                        return {
+                            uri: formattedUri || originalUri,
+                            type: media.type || (isVideo ? 'video' : 'image')
+                        };
+                    });
 
                     return (
                         <TouchableOpacity
@@ -936,7 +1095,7 @@ const HomeScreenOwner = ({ navigation }) => {
                                 <View style={styles.residentialLocation}>
                                     <Icon name="location-outline" size={13} color="#64748B" />
                                     <Text style={styles.residentialLocationText} numberOfLines={1}>
-                                        {item.propertyLocation || 'Unknown Location'}
+                                        {getDisplayLocation(item)}
                                     </Text>
                                 </View>
 
@@ -987,17 +1146,24 @@ const HomeScreenOwner = ({ navigation }) => {
             <View>
                 <View style={styles.nearbyGrid}>
                         {displayedCommercialProperties.map((item, index) => {
-                            // Prepare media items for MediaCard
-                            const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                                ? item.photosAndVideo.map(media => {
-                                    const originalUri = media.uri || media;
-                                    const formattedUri = formatImageUrl(originalUri);
-                                    return {
-                                        uri: formattedUri || originalUri,
-                                        type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                                    };
-                                })
-                                : [{ uri: item.processedImageUrl, type: 'image' }];
+                            // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                            const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                                ? item.photos
+                                : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                                    ? item.photosAndVideo
+                                    : (Array.isArray(item.images) && item.images.length > 0)
+                                        ? item.images
+                                        : [{ uri: item.processedImageUrl }];
+
+                            const mediaItems = sourceMedia.map(media => {
+                                const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                                const formattedUri = formatImageUrl(originalUri);
+                                const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+                                return {
+                                    uri: formattedUri || originalUri,
+                                    type: media.type || (isVideo ? 'video' : 'image')
+                                };
+                            });
 
                             return (
                                 <TouchableOpacity
@@ -1119,16 +1285,24 @@ const HomeScreenOwner = ({ navigation }) => {
                 contentContainerStyle={styles.horizontalScrollContainer}
             >
                 {processedOwnerProperties.map((item, index) => {
-                    const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-                        ? item.photosAndVideo.map(media => {
-                            const originalUri = media.uri || media;
-                            const formattedUri = formatImageUrl(originalUri);
-                            return {
-                                uri: formattedUri || originalUri,
-                                type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') ? 'video' : 'image')
-                            };
-                        })
-                        : [{ uri: item.processedImageUrl, type: 'image' }];
+                    // Prefer property.photos -> photosAndVideo -> images -> processedImageUrl
+                    const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+                        ? item.photos
+                        : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                            ? item.photosAndVideo
+                            : (Array.isArray(item.images) && item.images.length > 0)
+                                ? item.images
+                                : [{ uri: item.processedImageUrl }];
+
+                    const mediaItems = sourceMedia.map(media => {
+                        const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+                        const formattedUri = formatImageUrl(originalUri);
+                        const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov'));
+                        return {
+                            uri: formattedUri || originalUri,
+                            type: media.type || (isVideo ? 'video' : 'image')
+                        };
+                    });
 
                     // Get property status
                     const getPropertyStatus = () => {
@@ -1180,7 +1354,7 @@ const HomeScreenOwner = ({ navigation }) => {
                                 <View style={styles.ownerPropertyLocation}>
                                     <Icon name="location-outline" size={12} color="#64748B" />
                                     <Text style={styles.ownerPropertyLocationText} numberOfLines={1}>
-                                        {item.propertyLocation || item.address || 'Location'}
+                                        {getDisplayLocation(item)}
                                     </Text>
                                 </View>
 
@@ -1221,8 +1395,8 @@ const HomeScreenOwner = ({ navigation }) => {
                         activeOpacity={0.8}
                     >
                         <Icon 
-                            name="menu" 
-                            size={24} 
+                            name="menu-outline" 
+                            size={26} 
                             color="#1A1A1A" 
                         />
                     </TouchableOpacity>
@@ -1343,7 +1517,7 @@ const HomeScreenOwner = ({ navigation }) => {
                                             />
                                         </View>
                                         <View style={styles.cardContent}>
-                                            <Text style={styles.actionButtonTextModern}>{item.label}</Text>
+                                            <Text style={styles.actionButtonTextModern} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{item.label}</Text>
                                         </View>
                                     </View>
                                 </TouchableOpacity>
@@ -1357,7 +1531,9 @@ const HomeScreenOwner = ({ navigation }) => {
                         true,
                         () => navigation.navigate('AllPropertiesScreen', { category: 'Featured' })
                     )}
-                    {renderFeaturedContent()}
+                    <View style={{ marginBottom: 16 }}>
+                        {renderFeaturedContent()}
+                    </View>
 
                     {/* Residential Properties */}
                     {renderSectionHeader(
@@ -1398,9 +1574,9 @@ const styles = StyleSheet.create({
     
     // Modern Header Styles
     modernHeader: {
-        paddingTop: Platform.OS === 'ios' ? 3 : StatusBar.currentHeight + 3,
-        paddingHorizontal: 16,
-        paddingBottom: 3,
+        paddingTop: Platform.OS === 'ios' ? height * 0.01 : height * 0.03,
+        paddingHorizontal: width * 0.04,
+        paddingBottom: height * 0.004,
         borderBottomLeftRadius: 20,
         borderBottomRightRadius: 20,
         elevation: 8,
@@ -1414,7 +1590,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 2,
+        paddingVertical: height * 0.006,
     },
 
     menuButtonModern: {
@@ -1432,12 +1608,14 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        paddingHorizontal: width * 0.05,
     },
 
     headerLogoImage: {
-        width: 120,
-        height: 40,
+        width: width * 0.32,
+        height: height * 0.05,
+        maxWidth: 120,
+        maxHeight: 40,
     },
     
     headerSpacer: {
@@ -1462,6 +1640,9 @@ const styles = StyleSheet.create({
     
     notificationIconModern: {
         position: 'relative',
+        justifyContent: 'center',
+        alignItems: 'center',
+        left:1
     },
     
     notificationBadgeModern: {
@@ -1655,7 +1836,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: theme.SPACING.l,
-        marginTop: 32,
+        marginTop: 40,
         marginBottom: 18,
     },
     sectionTitle: {
@@ -1708,11 +1889,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         gap: 12,
+        flexWrap: 'nowrap',
     },
     
     actionButtonModern: {
         flex: 1,
-        height: 95,
+        minHeight: 95,
+        maxHeight: 110,
         marginHorizontal: 4,
     },
     
@@ -1728,12 +1911,14 @@ const styles = StyleSheet.create({
         elevation: 8,
         overflow: 'visible',
         marginTop: 12,
+        minHeight: 95,
     },
     
     floatingIconContainer: {
         position: 'absolute',
         top: -12,
-        left: 12,
+        left: '50%',
+        marginLeft: -20,
         width: 40,
         height: 40,
         borderRadius: 20,
@@ -1749,27 +1934,28 @@ const styles = StyleSheet.create({
     
     cardContent: {
         flex: 1,
-        paddingTop: 24,
-        paddingHorizontal: 12,
-        paddingBottom: 16,
+        paddingTop: 30,
+        paddingHorizontal: 2,
+        paddingBottom: 10,
         justifyContent: 'center',
         alignItems: 'center',
         position: 'relative',
     },
     
     actionButtonTextModern: {
-        fontSize: 11,
+        fontSize: width < 380 ? 8.5 : 10,
         fontWeight: '700',
         textAlign: 'center',
-        lineHeight: 14,
+        lineHeight: width < 380 ? 11 : 13,
         color: '#374151',
-        letterSpacing: 0.3,
+        letterSpacing: 0.1,
         textTransform: 'uppercase',
+        flexShrink: 1,
         marginTop: 4,
     },
     horizontalScrollContainer: {
         paddingHorizontal: theme.SPACING.l,
-        paddingBottom: 24,
+        paddingBottom: 32,
         paddingTop: 4,
     },
     featuredCard: {
@@ -2261,6 +2447,7 @@ const styles = StyleSheet.create({
         width: width * 0.88,
         height: 180,
         marginRight: 18,
+        marginBottom: 8,
         borderRadius: 22,
         backgroundColor: '#FFFFFF',
         overflow: 'hidden',
@@ -2277,11 +2464,13 @@ const styles = StyleSheet.create({
         width: '46%',
         height: '100%',
         backgroundColor: '#F1F5F9',
+        overflow: 'hidden',
     },
     featuredHouseMediaCard: {
         width: '100%',
         height: '100%',
         borderRadius: 0,
+        overflow: 'hidden',
     },
     featuredHouseImage: {
         width: '100%',
@@ -2306,29 +2495,6 @@ const styles = StyleSheet.create({
         elevation: 5,
         borderWidth: 1.5,
         borderColor: 'rgba(255, 255, 255, 0.5)',
-    },
-    propertyTypeBadge: {
-        position: 'absolute',
-        bottom: 12,
-        left: 12,
-        backgroundColor: '#FDB022',
-        paddingHorizontal: 16,
-        paddingVertical: 7,
-        borderRadius: 10,
-        shadowColor: "#FDB022",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 8,
-        elevation: 6,
-        borderWidth: 1.5,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-    },
-    propertyTypeText: {
-        color: '#FFFFFF',
-        fontSize: 11,
-        fontWeight: '800',
-        letterSpacing: 0.3,
-        textTransform: 'capitalize',
     },
     featuredHouseDetails: {
         flex: 1,
@@ -2407,12 +2573,16 @@ const styles = StyleSheet.create({
         width: '100%',
         height: 140,
         backgroundColor: '#F1F5F9',
+        overflow: 'hidden',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
     },
     residentialMediaCard: {
         width: '100%',
         height: '100%',
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
+        overflow: 'hidden',
     },
     residentialImage: {
         width: '100%',

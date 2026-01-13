@@ -18,6 +18,7 @@ import {
   Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
+import { saveProperty, getSavedProperties } from '../services/api';
 
 // import {
 //   formatImageUrl,
@@ -129,6 +130,8 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   const [showFullscreenMedia, setShowFullscreenMedia] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isSaved, setIsSaved] = useState(false);
+  const [savingProperty, setSavingProperty] = useState(false);
   const scrollX = useRef(new Animated.Value(0)).current;
   
   // Smart back navigation handler
@@ -139,6 +142,49 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
     } else {
       // Otherwise, use normal back navigation
       navigation.goBack();
+    }
+  };
+
+  // Handle favorite/shortlist button
+  const handleSaveProperty = async () => {
+    if (!property) return;
+    
+    const propertyId = property._id || property.id;
+    if (!propertyId) {
+      Alert.alert('Error', 'Unable to save this property');
+      return;
+    }
+
+    try {
+      setSavingProperty(true);
+      console.log('💾 Saving property:', propertyId);
+      
+      const response = await saveProperty(propertyId);
+      
+      if (response.success) {
+        setIsSaved(true);
+        Alert.alert(
+          'Success',
+          'Property added to your shortlist!',
+          [{ text: 'OK' }]
+        );
+        console.log('✅ Property saved successfully');
+      } else {
+        Alert.alert(
+          'Info',
+          response.message || 'Property already in your shortlist',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error saving property:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to save property. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setSavingProperty(false);
     }
   };
 
@@ -166,6 +212,52 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
     if (itemId) fetchAndFind();
     else setLoading(false);
   }, [itemId]);
+
+  // Check if property is already saved
+  useEffect(() => {
+    const checkIfSaved = async () => {
+      if (!property) return;
+      
+      const propertyId = property._id || property.id;
+      if (!propertyId) return;
+
+      try {
+        console.log('🔍 Checking if property is saved:', propertyId);
+        const response = await getSavedProperties();
+        console.log('📦 Saved Properties API Response:', response);
+        
+        // Extract saved properties array - matching SavedScreen logic
+        let savedPropertiesList = [];
+        
+        if (response && response.savedProperties && Array.isArray(response.savedProperties)) {
+          savedPropertiesList = response.savedProperties;
+        } else if (Array.isArray(response.data)) {
+          savedPropertiesList = response.data;
+        } else if (Array.isArray(response)) {
+          savedPropertiesList = response;
+        }
+        
+        // Filter out null entries
+        savedPropertiesList = savedPropertiesList.filter(Boolean);
+        
+        console.log('📋 Saved properties count:', savedPropertiesList.length);
+        
+        if (savedPropertiesList.length > 0) {
+          const savedPropertyIds = savedPropertiesList.map(p => p._id || p.id).filter(Boolean);
+          const isAlreadySaved = savedPropertyIds.includes(propertyId);
+          setIsSaved(isAlreadySaved);
+          
+          console.log(isAlreadySaved ? '✅ Property is already in shortlist' : 'ℹ️ Property is not in shortlist');
+        } else {
+          console.log('ℹ️ No saved properties found');
+        }
+      } catch (error) {
+        console.error('❌ Error checking saved status:', error);
+      }
+    };
+
+    checkIfSaved();
+  }, [property]);
 
   // Get all available images with proper URL formatting
   const getAllImages = () => {
@@ -497,8 +589,20 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity style={styles.glassButton} onPress={handleBackPress}>
             <Icon name="chevron-back" size={20} color={colors.white} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.glassButton}>
-            <Icon name="heart-outline" size={20} color={colors.white} />
+          <TouchableOpacity 
+            style={styles.glassButton} 
+            onPress={handleSaveProperty}
+            disabled={savingProperty}
+          >
+            {savingProperty ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Icon 
+                name={isSaved ? "heart" : "heart-outline"} 
+                size={20} 
+                color={isSaved ? "#EF4444" : colors.white} 
+              />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -536,7 +640,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <Text style={styles.titleText}>{title}</Text>
 
           {/* Property Quick Info Grid */}
-          <View style={styles.quickInfoGrid}>
+          {/* <View style={styles.quickInfoGrid}>
             <View style={styles.quickInfoRow}>
               <View style={styles.quickInfoItem}>
                 <Icon name="home-outline" size={16} color={colors.text} />
@@ -581,7 +685,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                 </Text>
               </View>
             </View>
-          </View>
+          </View> */}
 
           {/* Features Section */}
           <View style={styles.featuresSection}>
@@ -720,13 +824,13 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
 
           {/* Property Status and Type */}
           <View style={styles.propertyMetaRow}>
-            {property.purpose && (
+            {/* {property.purpose && (
               <View style={[styles.metaPill, { backgroundColor: 'rgba(34, 197, 94, 0.1)' }]}>
                 <Text style={[styles.metaPillText, { color: '#22C55E' }]}>
                   {property.purpose}
                 </Text>
               </View>
-            )}
+            )} */}
             {property.propertyType && (
               <View style={[styles.metaPill, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
                 <Text style={[styles.metaPillText, { color: '#3B82F6' }]}>

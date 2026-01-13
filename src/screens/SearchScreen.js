@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -12,10 +12,55 @@ import {
     StatusBar,
     Platform,
     Animated,
+    ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { getRecentProperties } from '../services/propertyService';
 
 const { width } = Dimensions.get('window');
+
+// Helper function to format image URLs
+const formatImageUrl = (url) => {
+    if (!url) return null;
+    
+    // If it's already a full URL, return as is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+    }
+    
+    // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
+    if (url.startsWith('uploads/')) {
+        return `https://n5.bhoomitechzone.us/${url}`;
+    }
+    
+    // For other relative paths, add base URL
+    return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
+};
+
+// Helper function to get the first image URL from media array
+const getFirstImageUrl = (photosAndVideo) => {
+    if (!photosAndVideo || photosAndVideo.length === 0) return null;
+    
+    // Find the first image (not video) if possible
+    const firstImage = photosAndVideo.find(media => {
+        const mediaPath = (typeof media === 'string') ? media : (media?.uri || media);
+        if (!mediaPath) return false;
+        
+        return mediaPath.includes('.jpg') || mediaPath.includes('.jpeg') || 
+               mediaPath.includes('.png') || mediaPath.includes('.webp') || 
+               mediaPath.includes('.gif');
+    });
+    
+    if (firstImage) {
+        return (typeof firstImage === 'string') ? firstImage : (firstImage.uri || firstImage);
+    }
+    
+    // If no image found, return the first item anyway
+    const firstItem = photosAndVideo[0];
+    return (typeof firstItem === 'string') ? firstItem : (firstItem?.uri || firstItem);
+};
+
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
 
 // ---- Animated Property Card ----
 const PropertyCard = ({ property, navigation }) => {
@@ -55,10 +100,10 @@ const PropertyCard = ({ property, navigation }) => {
         >
             <View style={cardStyles.imageWrapper}>
                 <Image 
-                    source={{ uri: property.image }} 
+                    source={{ uri: property.image || FALLBACK_IMAGE }} 
                     style={cardStyles.image}
                     onError={handleImageError}
-                    defaultSource={{ uri: 'https://via.placeholder.com/400x250/E5E7EB/9CA3AF?text=Property' }}
+                    resizeMode="cover"
                 />
                 
                 {/* Gradient overlay */}
@@ -153,18 +198,100 @@ const PropertyCard = ({ property, navigation }) => {
     );
 };
 
-const MOCK_PROPERTIES = [
-    { id: '1', title: 'Sky Dandelions Apartment', location: 'Ahmedabad, Gujarat', price: '25,000', beds: 2, baths: 2, image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800' },
-    { id: '2', title: 'Sunset View Villa', location: 'Mumbai, Maharashtra', price: '45,000', beds: 4, baths: 3, image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800' },
-    { id: '3', title: 'Downtown Studio', location: 'Delhi, India', price: '18,000', beds: 1, baths: 1, image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800' },
-    { id: '4', title: 'Lakeside Cabin', location: 'Bangalore, Karnataka', price: '32,000', beds: 3, baths: 2, image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800' },
-];
-
 const SearchScreen = ({ navigation }) => {
     const [searchQuery, setSearchQuery] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [properties, setProperties] = useState([]);
+    const [error, setError] = useState(null);
 
-    const filtered = MOCK_PROPERTIES.filter(
+    // Fetch properties from API on mount
+    useEffect(() => {
+        loadProperties();
+    }, []);
+
+    const loadProperties = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            console.log('🔍 [SearchScreen] Fetching all properties from API...');
+            
+            const response = await getRecentProperties();
+            console.log('📦 [SearchScreen] API Response:', response);
+            
+            if (response.success && response.data && response.data.length > 0) {
+                // Transform API data to match component format
+                const transformedProperties = response.data.map((item, index) => {
+                    // Get first image - matching PropertyDetailsScreen logic
+                    let firstImageUrl = null;
+                    
+                    // Backend sends photos array (preferred)
+                    if (item.photos && Array.isArray(item.photos) && item.photos.length > 0) {
+                        const firstPhoto = item.photos[0];
+                        if (firstPhoto && typeof firstPhoto === 'string') {
+                            firstImageUrl = formatImageUrl(firstPhoto);
+                        }
+                    }
+                    
+                    // Fallback to photosAndVideo
+                    if (!firstImageUrl && item.photosAndVideo && Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0) {
+                        const firstMedia = item.photosAndVideo[0];
+                        const mediaUrl = firstMedia.uri || firstMedia;
+                        if (mediaUrl && typeof mediaUrl === 'string') {
+                            firstImageUrl = formatImageUrl(mediaUrl);
+                        }
+                    }
+                    
+                    // Fallback to images array
+                    if (!firstImageUrl && item.images && Array.isArray(item.images) && item.images.length > 0) {
+                        firstImageUrl = formatImageUrl(item.images[0]);
+                    }
+                    
+                    // Final fallback to single image field
+                    if (!firstImageUrl && item.image) {
+                        firstImageUrl = formatImageUrl(item.image);
+                    }
+                    
+                    const imageUrl = firstImageUrl || FALLBACK_IMAGE;
+                    
+                    // Debug logging for first 2 properties
+                    if (index < 2) {
+                        console.log(`🏠 Property ${index + 1} [${item.description || item.title}]:`, {
+                            hasPhotos: !!item.photos,
+                            photosCount: item.photos?.length || 0,
+                            firstPhoto: item.photos?.[0],
+                            finalImageUrl: imageUrl
+                        });
+                    }
+                    
+                    return {
+                        id: item._id || item.id || `property_${index}`,
+                        title: item.description || item.title || 'Property',
+                        location: [item.locality, item.city, item.state].filter(Boolean).join(', ') || item.propertyLocation || 'Location',
+                        price: item.price ? item.price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0',
+                        beds: item.bedrooms || 2,
+                        baths: item.bathrooms || 2,
+                        image: imageUrl,
+                        ...item // Keep all original data for details screen
+                    };
+                });
+                
+                setProperties(transformedProperties);
+                console.log('✅ [SearchScreen] Loaded', transformedProperties.length, 'properties from API');
+            } else {
+                console.warn('⚠️ [SearchScreen] API returned no data');
+                setError('No properties available');
+                setProperties([]);
+            }
+        } catch (error) {
+            console.error('❌ [SearchScreen] Error loading properties:', error);
+            setError(error.message || 'Failed to load properties');
+            setProperties([]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const filtered = properties.filter(
         (p) =>
             p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.location.toLowerCase().includes(searchQuery.toLowerCase())
@@ -172,20 +299,44 @@ const SearchScreen = ({ navigation }) => {
 
     const handleSearch = (text) => {
         setSearchQuery(text);
-        // Simulate loading state for better UX
-        if (text.length > 0) {
-            setIsLoading(true);
-            setTimeout(() => setIsLoading(false), 300);
-        }
     };
 
-    const renderEmptyState = () => (
-        <View style={styles.emptyContainer}>
-            <Icon name="home-outline" size={60} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>No properties found</Text>
-            <Text style={styles.emptySubtitle}>Try adjusting your search terms</Text>
-        </View>
-    );
+    const renderEmptyState = () => {
+        if (isLoading) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <ActivityIndicator size="large" color="#FDB022" />
+                    <Text style={styles.emptySubtitle}>Loading properties...</Text>
+                </View>
+            );
+        }
+        
+        if (error) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <Icon name="alert-circle-outline" size={60} color="#EF4444" />
+                    <Text style={styles.emptyTitle}>Error loading properties</Text>
+                    <Text style={styles.emptySubtitle}>{error}</Text>
+                    <TouchableOpacity 
+                        style={styles.retryButton}
+                        onPress={loadProperties}
+                    >
+                        <Text style={styles.retryButtonText}>Retry</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+        
+        return (
+            <View style={styles.emptyContainer}>
+                <Icon name="home-outline" size={60} color="#9CA3AF" />
+                <Text style={styles.emptyTitle}>No properties found</Text>
+                <Text style={styles.emptySubtitle}>
+                    {searchQuery ? 'Try adjusting your search terms' : 'No properties available'}
+                </Text>
+            </View>
+        );
+    };
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -216,12 +367,13 @@ const SearchScreen = ({ navigation }) => {
                     <Icon name="search-outline" size={20} color="#9CA3AF" />
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Search by city, area, or address"
+                        placeholder="Search city, area or address"
                         placeholderTextColor="#9CA3AF"
                         value={searchQuery}
                         onChangeText={handleSearch}
                         accessibilityLabel="Search properties"
                         returnKeyType="search"
+                        numberOfLines={1}
                     />
                     {searchQuery.length > 0 && (
                         <TouchableOpacity 
@@ -257,11 +409,13 @@ const SearchScreen = ({ navigation }) => {
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => <PropertyCard property={item} navigation={navigation} />}
                 contentContainerStyle={styles.listContainer}
-                ListEmptyComponent={searchQuery.length > 0 ? renderEmptyState : null}
+                ListEmptyComponent={renderEmptyState}
                 showsVerticalScrollIndicator={false}
                 removeClippedSubviews={true}
                 maxToRenderPerBatch={10}
                 windowSize={10}
+                refreshing={isLoading}
+                onRefresh={loadProperties}
             />
         </SafeAreaView>
     );
@@ -505,9 +659,10 @@ const styles = StyleSheet.create({
     },
     searchInput: {
         marginLeft: 10,
-        fontSize: 16,
+        fontSize: 15,
         flex: 1,
         color: '#111827',
+        paddingVertical: 0,
     },
     clearButton: {
         padding: 4,
@@ -555,6 +710,18 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#9CA3AF',
         textAlign: 'center',
+    },
+    retryButton: {
+        marginTop: 20,
+        backgroundColor: '#FDB022',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 12,
+    },
+    retryButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fff',
     },
 });
 

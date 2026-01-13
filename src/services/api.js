@@ -59,7 +59,20 @@ const makeRequest = async (endpoint, options = {}) => {
     } else {
       // Not JSON response - get as text for debugging
       const responseText = await response.text();
-      console.error('❌ Non-JSON response:', responseText);
+      console.warn('⚠️ Non-JSON response received from server:', { status: response.status, contentType, raw: responseText });
+
+      // If the HTTP status is OK (2xx) treat it as success but include rawResponse so callers can handle it gracefully
+      if (response.ok) {
+        return {
+          success: true,
+          status: response.status,
+          message: 'Success (non-JSON response)',
+          data: null,
+          rawResponse: responseText
+        };
+      }
+
+      // Otherwise return a structured error containing the raw response for easier debugging
       return {
         success: false,
         status: response.status,
@@ -250,6 +263,32 @@ export const saveProperty = async (propertyId) => {
   });
 };
 
+// Verify Subscription Payment (called before adding a property when a payment/subscription is involved)
+export const verifySubscriptionPayment = async (payload = {}) => {
+  console.log('[api] verifySubscriptionPayment payload:', payload);
+  return makeRequest('/api/subscription-purchase/verify-payment', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+// Get available subscription packages
+export const getSubscriptionPackages = async () => {
+  console.log('[api] getSubscriptionPackages called');
+  return makeRequest('/api/subscription', {
+    method: 'GET'
+  });
+};
+
+// Create subscription purchase order (backend should return Razorpay order details and key)
+export const createSubscriptionOrder = async (payload = {}) => {
+  console.log('[api] createSubscriptionOrder payload:', payload);
+  return makeRequest('/api/subscription-purchase/create-order', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+};
+
 export const getSavedProperties = async () => {
   return makeRequest('/api/properties/saved/all', {
     method: 'GET'
@@ -329,6 +368,14 @@ export const addProperty = async (formData) => {
       message: data.message || (response.ok ? 'Property added successfully!' : 'Failed to add property'),
       data: data,
       property: data.property,
+      // Additional debugging info
+      debugInfo: {
+        responseOk: response.ok,
+        dataSuccess: data.success,
+        messageMatch: data.message === "Property added successfully!",
+        actualMessage: data.message,
+        statusCode: response.status
+      },
       ...data // Spread response data
     };
 
@@ -341,4 +388,33 @@ export const addProperty = async (formData) => {
       isNetworkError: true
     };
   }
+};
+
+// Location API functions
+export const getStates = async () => {
+  return makeRequest('/api/location/states', {
+    method: 'GET'
+  });
+};
+
+export const getDistricts = async (stateName) => {
+  return makeRequest(`/api/location/districts/${encodeURIComponent(stateName)}`, {
+    method: 'GET'
+  });
+};
+
+export const getCities = async (districtName) => {
+  return makeRequest(`/api/location/cities/${encodeURIComponent(districtName)}`, {
+    method: 'GET'
+  });
+};
+
+// Helper function to extract pincode from city data
+export const extractPincode = (cityData) => {
+  if (typeof cityData === 'string') {
+    return null;
+  }
+  
+  // Try different possible field names for pincode
+  return cityData?.pincode || cityData?.postal_code || cityData?.zip || cityData?.pin || null;
 };

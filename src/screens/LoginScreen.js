@@ -37,6 +37,7 @@ const LoginScreen = ({ navigation }) => {
     iconColor: '#FDB022'
   });
   const [otpSuccessAlert, setOtpSuccessAlert] = useState({ visible: false });
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const showToast = (message, type = "success") => {
     Alert.alert(type === "success" ? "Success" : "Error", message);
@@ -45,6 +46,11 @@ const LoginScreen = ({ navigation }) => {
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {
       showToast("Please fill all fields", "error");
+      return;
+    }
+
+    if (!acceptedTerms) {
+      showToast("Please accept Terms & Conditions to continue", "error");
       return;
     }
 
@@ -120,6 +126,11 @@ const LoginScreen = ({ navigation }) => {
 
     if (phone.length < 10) {
       showToast("Please enter valid phone number", "error");
+      return;
+    }
+
+    if (!acceptedTerms) {
+      showToast("Please accept Terms & Conditions to continue", "error");
       return;
     }
 
@@ -251,6 +262,25 @@ const LoginScreen = ({ navigation }) => {
               <Text style={styles.link}>Forgot Password?</Text>
             </TouchableOpacity>
 
+            {/* Terms and Conditions Checkbox */}
+            <TouchableOpacity 
+              style={styles.termsContainer}
+              onPress={() => setAcceptedTerms(!acceptedTerms)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                {acceptedTerms && (
+                  <Icon name="checkmark" size={16} color="#fff" />
+                )}
+              </View>
+              <Text style={styles.termsText}>
+                I accept the{' '}
+                <Text style={styles.termsLink}>Terms & Conditions</Text>
+                {' '}and{' '}
+                <Text style={styles.termsLink}>Privacy Policy</Text>
+              </Text>
+            </TouchableOpacity>
+
             {/* Login Button */}
             <LinearGradient
               colors={["#f39c12", "#d35400"]}
@@ -301,6 +331,25 @@ const LoginScreen = ({ navigation }) => {
                 placeholderTextColor="#9ca3af"
               />
             </View>
+
+            {/* Terms and Conditions Checkbox */}
+            <TouchableOpacity 
+              style={styles.termsContainer}
+              onPress={() => setAcceptedTerms(!acceptedTerms)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                {acceptedTerms && (
+                  <Icon name="checkmark" size={16} color="#fff" />
+                )}
+              </View>
+              <Text style={styles.termsText}>
+                I accept the{' '}
+                <Text style={styles.termsLink}>Terms & Conditions</Text>
+                {' '}and{' '}
+                <Text style={styles.termsLink}>Privacy Policy</Text>
+              </Text>
+            </TouchableOpacity>
 
             <LinearGradient
               colors={["#f39c12", "#d35400"]}
@@ -575,5 +624,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#333",
+  },
+
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 15,
+    marginBottom: 5,
+  },
+
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#f39c12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    backgroundColor: '#fff',
+  },
+
+  checkboxChecked: {
+    backgroundColor: '#f39c12',
+    borderColor: '#f39c12',
+  },
+
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#555',
+    lineHeight: 18,
+  },
+
+  termsLink: {
+    color: '#f39c12',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

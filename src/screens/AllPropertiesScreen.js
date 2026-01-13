@@ -18,13 +18,25 @@ import {
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getRecentProperties } from '../services/propertyService';
+import { getRecentProperties, getResidentialProperties, getCommercialProperties } from '../services/propertyService';
+import MediaCard from '../components/MediaCard';
 
 // Helper functions for property data formatting
 const formatImageUrl = (url) => {
     if (!url) return null;
-    if (url.startsWith('http')) return url;
-    return url.replace(/\\/g, '/');
+    
+    // If it's already a full URL, return as is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+    }
+    
+    // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
+    if (url.startsWith('uploads/')) {
+        return `https://n5.bhoomitechzone.us/${url}`;
+    }
+    
+    // For other relative paths, add base URL
+    return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
 };
 
 const formatPrice = (price) => {
@@ -38,10 +50,61 @@ const formatPrice = (price) => {
     return `₹${numPrice}`;
 };
 
-const getFirstImageUrl = (photosAndVideo) => {
-    if (!photosAndVideo || !Array.isArray(photosAndVideo)) return null;
-    const firstMedia = photosAndVideo[0];
-    return firstMedia?.uri || firstMedia;
+const getFirstImageUrl = (property) => {
+    // Accept either a property object or a media array
+    if (!property) return null;
+
+    // If property has a photos array (newer backend), prefer that
+    if (Array.isArray(property.photos) && property.photos.length > 0) {
+        return property.photos[0];
+    }
+
+    // If property has photosAndVideo, search for the first image
+    const photosAndVideo = Array.isArray(property.photosAndVideo) ? property.photosAndVideo : (Array.isArray(property.photosAndVideo || property.photos) ? (property.photosAndVideo || property.photos) : null);
+
+    if (Array.isArray(photosAndVideo) && photosAndVideo.length > 0) {
+        const firstImage = photosAndVideo.find(media => {
+            const mediaPath = media && (media.uri || media);
+            return mediaPath && (mediaPath.includes('.jpg') || mediaPath.includes('.jpeg') || 
+                mediaPath.includes('.png') || mediaPath.includes('.webp') || mediaPath.includes('.gif'));
+        });
+
+        if (firstImage) return firstImage.uri || firstImage;
+        return photosAndVideo[0].uri || photosAndVideo[0];
+    }
+
+    // If property has images array
+    if (Array.isArray(property.images) && property.images.length > 0) {
+        return property.images[0];
+    }
+
+    // If single image field
+    if (property.image) return property.image;
+
+    return null;
+};
+
+const getDisplayLocation = (property) => {
+    if (!property) return 'Unknown Location';
+
+    // Prefer nested address object if available
+    if (property.address && typeof property.address === 'object') {
+        const { locality, city, state, pincode } = property.address;
+        const parts = [locality, city, state, pincode].filter(Boolean);
+        if (parts.length) return parts.join(', ');
+    }
+
+    // Fallback to flat fields
+    const flatParts = [property.locality, property.city, property.state, property.pincode].filter(Boolean);
+    if (flatParts.length) return flatParts.join(', ');
+
+    // Fallback to propertyLocation string
+    if (property.propertyLocation) return property.propertyLocation;
+
+    // As last resort, check for address string
+    if (property.address && typeof property.address === 'string') return property.address;
+
+    return 'Unknown Location';
 };
 
 const getSavedPropertiesIds = async () => {
@@ -108,6 +171,8 @@ const HORIZONTAL_MARGIN = theme.SPACING.l;
 const CARD_MARGIN = theme.SPACING.m;
 const CARD_WIDTH = (width - (HORIZONTAL_MARGIN * 2) - CARD_MARGIN) / 2;
 
+// Fallback image for properties without images
+const FALLBACK_IMAGE_URI = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&h=600&fit=crop&crop=center';
 
 const AllPropertiesScreen = ({ navigation, route }) => {
     // Route parameters
@@ -225,9 +290,20 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         
         try {
             let propertyData = [];
+            let response;
             
-            // Load properties from API
-            const response = await getRecentProperties();
+            // Load properties from appropriate API based on category
+            if (category === 'Residential') {
+                console.log('📱 Loading Residential properties from API');
+                response = await getResidentialProperties();
+            } else if (category === 'Commercial') {
+                console.log('📱 Loading Commercial properties from API');
+                response = await getCommercialProperties();
+            } else {
+                // Featured or default - load all properties
+                console.log('📱 Loading all properties (Featured) from API');
+                response = await getRecentProperties();
+            }
             
             // Handle the API response properly
             if (response.success && response.data && Array.isArray(response.data)) {
@@ -345,21 +421,28 @@ const AllPropertiesScreen = ({ navigation, route }) => {
 
     // Property card with home screen residential card layout
     const renderPropertyCard = useCallback((item, index) => {
-        const firstImage = getFirstImageUrl(item.photosAndVideo);
-        const imageUrl = formatImageUrl(firstImage) || 'https://placehold.co/300x200/CCCCCC/888888?text=No+Image';
+        const firstImage = getFirstImageUrl(item);
+        const imageUrl = formatImageUrl(firstImage) || FALLBACK_IMAGE_URI;
         const isFavorite = favorites.includes(item._id);
         
         // Prepare media items for MediaCard (same as home screen)
-        const mediaItems = item.photosAndVideo && item.photosAndVideo.length > 0 
-            ? item.photosAndVideo.map(media => {
-                const originalUri = media.uri || media;
-                const formattedUri = formatImageUrl(originalUri);
-                return {
-                    uri: formattedUri || originalUri,
-                    type: media.type || (originalUri?.includes('.mp4') || originalUri?.includes('.mov') || originalUri?.includes('.avi') ? 'video' : 'image')
-                };
-            })
-            : [{ uri: imageUrl, type: 'image' }];
+        const sourceMedia = (Array.isArray(item.photos) && item.photos.length > 0)
+            ? item.photos
+            : (Array.isArray(item.photosAndVideo) && item.photosAndVideo.length > 0)
+                ? item.photosAndVideo
+                : (Array.isArray(item.images) && item.images.length > 0)
+                    ? item.images
+                    : [{ uri: imageUrl }];
+
+        const mediaItems = sourceMedia.map(media => {
+            const originalUri = (typeof media === 'string') ? media : (media.uri || media);
+            const formattedUri = formatImageUrl(originalUri);
+            const isVideo = originalUri && (originalUri.includes('.mp4') || originalUri.includes('.mov') || originalUri.includes('.avi'));
+            return {
+                uri: formattedUri || originalUri,
+                type: media.type || (isVideo ? 'video' : 'image')
+            };
+        });
         
         return (
             <TouchableOpacity
@@ -370,10 +453,13 @@ const AllPropertiesScreen = ({ navigation, route }) => {
             >
                 {/* Property Image Container */}
                 <View style={styles.residentialImageContainer}>
-                    <Image 
-                        source={{ uri: imageUrl }} 
-                        style={styles.residentialImage}
-                        resizeMode="cover"
+                    <MediaCard
+                        mediaItems={mediaItems}
+                        fallbackImage={FALLBACK_IMAGE_URI}
+                        imageStyle={styles.residentialImage}
+                        showControls={false}
+                        autoPlay={false}
+                        style={styles.residentialMediaCard}
                     />
                     
                     {/* Favorite Icon */}
@@ -401,7 +487,7 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                     <View style={styles.residentialLocation}>
                         <Icon name="location-outline" size={13} color="#64748B" />
                         <Text style={styles.residentialLocationText} numberOfLines={1}>
-                            {item.propertyLocation || 'Unknown Location'}
+                            {getDisplayLocation(item)}
                         </Text>
                     </View>
 
@@ -1326,6 +1412,10 @@ const styles = StyleSheet.create({
         height: 200,
         backgroundColor: '#F1F5F9',
         position: 'relative',
+    },
+    residentialMediaCard: {
+        width: '100%',
+        height: '100%',
     },
     residentialImage: {
         width: '100%',

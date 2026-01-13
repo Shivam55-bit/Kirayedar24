@@ -17,15 +17,6 @@ const { width } = Dimensions.get('window');
 const DrawerMenu = ({ visible, onClose, onLogout, navigation }) => {
     const menuItems = [
         {
-            id: 'menu',
-            label: 'Menu',
-            icon: 'menu-outline',
-            onPress: () => {
-                onClose();
-                // Menu item action
-            }
-        },
-        {
             id: 'message',
             label: 'Message',
             icon: 'chatbox-outline',
@@ -58,7 +49,7 @@ const DrawerMenu = ({ visible, onClose, onLogout, navigation }) => {
             icon: 'call-outline',
             onPress: () => {
                 onClose();
-                navigation.navigate('ContactUsScreen');
+                navigation?.navigate('ContactUs');
             }
         },
         {
@@ -67,7 +58,7 @@ const DrawerMenu = ({ visible, onClose, onLogout, navigation }) => {
             icon: 'shield-outline',
             onPress: () => {
                 onClose();
-                // Navigate to privacy policy
+                navigation?.navigate('PrivacyPolicy');
             }
         },
         {
@@ -76,7 +67,7 @@ const DrawerMenu = ({ visible, onClose, onLogout, navigation }) => {
             icon: 'document-text-outline',
             onPress: () => {
                 onClose();
-                // Navigate to terms and conditions
+                navigation?.navigate('TermAndConditionScreen');
             }
         },
     ];

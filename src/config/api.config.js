@@ -21,6 +21,9 @@ export const SOCKET_URL = '';  // TODO: Add your socket server URL here (e.g., '
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/jpg'];
 
+// Razorpay config - replace with your live/test key as needed
+export const RAZORPAY_KEY_ID = 'rzp_live_RzKd8yxLwZpPae'; // Provided by user - fallback key used when backend doesn't return key
+
 // Default headers
 export const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
@@ -79,6 +82,15 @@ export const ENDPOINTS = {
     SEND: '/notifications/send',
     LIST: '/notifications/list',
     MARK_READ: '/notifications/:id/read',
+  },
+  
+  // Tenant Subscription endpoints
+  TENANT_SUBSCRIPTION: {
+    ACTIVE: '/api/tenant-subscription/active',
+    PACKAGES: '/api/tenant-subscription/packages',
+    CREATE_ORDER: '/api/tenant-subscription/create-order',
+    VERIFY_PAYMENT: '/api/tenant-subscription/verify-payment',
+    HISTORY: '/api/tenant-subscription/history',
   },
 };
 

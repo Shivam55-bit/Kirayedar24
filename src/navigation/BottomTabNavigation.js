@@ -64,7 +64,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
                     ...FONTS.caption,
                     fontWeight: isFocused ? '700' : '600',
                     color: isFocused ? '#FDB022' : "#7d8187ff",
-                    marginTop: 3,
+            
                   }}
                 >
                   {route.name}
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
+    height: 77,
     backgroundColor: "transparent",
   },
   tabItemsContainer: {
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,
     paddingHorizontal: 6,
-    paddingTop: 6,
+    
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },

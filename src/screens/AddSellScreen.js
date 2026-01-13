@@ -13,6 +13,7 @@ import {
   Dimensions,
   PermissionsAndroid,
   Platform,
+  KeyboardAvoidingView,
   Modal,
   FlatList,
 } from "react-native";
@@ -21,20 +22,27 @@ import LinearGradient from "react-native-linear-gradient";
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import DatePicker from 'react-native-date-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addProperty } from '../services/api'; // Import the API service
+import { addProperty, verifySubscriptionPayment, getSubscriptionPackages, createSubscriptionOrder, getStates, getDistricts, getCities, extractPincode } from '../services/api'; // Import the API service (subscription helpers added)
+import RazorpayCheckout from 'react-native-razorpay';
+import { RAZORPAY_KEY_ID } from '../config/api.config';
+// Default subscription package id (replace with real package id or make configurable)
+const DEFAULT_SUBSCRIPTION_PACKAGE_ID = '64fabc1234567890abcd1234';
 import { getAllStates, getCitiesByState, getAreasByCity, getPincodeByArea } from '../utils/locationData';
 
 // Move Dropdown component outside to prevent recreation
-const Dropdown = React.memo(({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder, icon = "location", searchText, setSearchText }) => {
+const Dropdown = React.memo(({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder, icon = "location", searchText, setSearchText, label }) => {
   const filteredOptions = useMemo(() => 
     options.filter(option => 
-      option.toLowerCase().includes(searchText.toLowerCase())
+      option && typeof option === 'string' && option.toLowerCase().includes(searchText.toLowerCase())
     ), [options, searchText]
   );
 
+  // Extract label from placeholder if not provided explicitly
+  const displayLabel = label || placeholder.replace('Select ', '').replace(' first', '');
+
   return (
     <View style={dropdownStyles.container}>
-      <Text style={dropdownStyles.label}>{placeholder.replace('Select ', '')}</Text>
+      <Text style={dropdownStyles.label}>{displayLabel}</Text>
       <TouchableOpacity
         style={[dropdownStyles.button, isOpen && dropdownStyles.buttonOpen]}
         onPress={() => setIsOpen(!isOpen)}
@@ -319,7 +327,7 @@ const ContactOptionToggle = React.memo(({ label, enabled, onToggle, icon }) => (
   </View>
 ));
 
-const AddSellScreen = ({ navigation }) => {
+const AddSellScreen = ({ navigation, route }) => {
   // Multi-step form navigation - ALWAYS call these hooks first in the same order
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 3;
@@ -366,6 +374,7 @@ const AddSellScreen = ({ navigation }) => {
   const [availableStates, setAvailableStates] = useState([]);
   const [availableCities, setAvailableCities] = useState([]);
   const [availablePosts, setAvailablePosts] = useState([]);
+  const [citiesApiData, setCitiesApiData] = useState([]); // Store full city API data for pincode extraction
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [contactPreference, setContactPreference] = useState("phone");
@@ -383,60 +392,269 @@ const AddSellScreen = ({ navigation }) => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
+  // Optional: payment verification payload (to be set by real payment flow when available)
+  const [paymentVerificationPayload, setPaymentVerificationPayload] = useState(null);
 
-  // Load all states on mount
+  // Subscription / Razorpay state
+  const [subscriptionPackages, setSubscriptionPackages] = useState([]);
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [loadingPackages, setLoadingPackages] = useState(false);
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [subscriptionOrder, setSubscriptionOrder] = useState(null);
+  const [rzpKey, setRzpKey] = useState(null);
+
+  // Local draft id when we come from MyPropertyScreen to pay for a draft
+  const [currentDraftId, setCurrentDraftId] = useState(null);
+
+  // API functions for location data
+  const fetchStates = async () => {
+    try {
+      const response = await getStates();
+      if (response.success && response.data) {
+        return response.data;
+      } else {
+        console.warn('States API failed:', response.message);
+        return getAllStates();
+      }
+    } catch (error) {
+      console.error('Error fetching states:', error);
+      return getAllStates();
+    }
+  };
+
+  const fetchDistricts = async (stateName) => {
+    try {
+      const response = await getDistricts(stateName);
+      if (response.success && response.data) {
+        return response.data;
+      } else {
+        console.warn('Districts API failed:', response.message);
+        return getCitiesByState(stateName);
+      }
+    } catch (error) {
+      console.error('Error fetching districts:', error);
+      return getCitiesByState(stateName);
+    }
+  };
+
+  const fetchCities = async (districtName) => {
+    console.log('🏙️ fetchCities called with district:', districtName);
+    try {
+      console.log('📡 Making API call to getCities...');
+      const response = await getCities(districtName);
+      console.log('📨 getCities API response:', response);
+      
+      if (response.success && response.data) {
+        console.log('✅ Cities API successful! Data count:', response.data.length);
+        console.log('📄 First 3 cities:', response.data.slice(0, 3));
+        
+        // Store full city data for pincode extraction
+        setCitiesApiData(response.data);
+        // Return city names for dropdown (remove B.O, S.O suffixes)
+        const cityNames = response.data.map(city => {
+          let name = city.name || '';
+          // Remove B.O, S.O, PO suffixes
+          name = name.replace(/\s+(B\.O|S\.O|PO|SO|BO)$/i, '').trim();
+          return name;
+        });
+        console.log('🏷️ Cleaned city names for dropdown:', cityNames.slice(0, 3));
+        return cityNames;
+      } else {
+        console.warn('⚠️ Cities API failed:', response.message);
+        console.warn('⚠️ Response success:', response.success, 'Data exists:', !!response.data);
+        setCitiesApiData([]);
+        return getAreasByCity(districtName);
+      }
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+      setCitiesApiData([]);
+      return getAreasByCity(districtName);
+    }
+  };
+
+  // Load states from API on mount
   React.useEffect(() => {
-    const states = getAllStates();
-    setAvailableStates(states);
+    const loadStates = async () => {
+      const states = await fetchStates();
+      setAvailableStates(states);
+    };
+    loadStates();
   }, []);
 
-  // Update cities when state changes
+  // If navigated to with a draft to pay for, load it and open payment modal
   React.useEffect(() => {
-    if (propertyState) {
-      const cities = getCitiesByState(propertyState);
-      setAvailableCities(cities);
-      // Reset dependent fields when state changes
-      if (city && !cities.includes(city)) {
+    let mounted = true;
+    const params = route?.params || {};
+    if (params.openPayment && params.draftId) {
+      (async () => {
+        try {
+          const raw = await AsyncStorage.getItem('@local_draft_properties');
+          const drafts = raw ? JSON.parse(raw) : [];
+          const found = drafts.find(d => d._id === params.draftId);
+          if (!found) {
+            console.warn('[AddSellScreen] Draft not found for payment:', params.draftId);
+            return;
+          }
+
+          if (!mounted) return;
+
+          // Prefill fields from draft
+          setPropertyState(found.state || '');
+          setCity(found.city || '');
+          setLocality(found.locality || '');
+          setPost(found.post || '');
+          setPincode(found.pincode || '');
+          setArea(found.areaSqFt ? String(found.areaSqFt) : '');
+          setPrice(found.price ? String(found.price) : '');
+          setContactNumber(found.contactNumber || '');
+          setPropertyType(found.propertyType || 'Residential');
+          setPurpose(found.purpose || 'Sell');
+          setFurnishing(found.furnishingStatus || 'Semi-Furnished');
+          setParking(found.parking || 'Available');
+          setKitchenType(found.kitchenType || 'Simple');
+          setAvailability(found.availabilityStatus || 'Ready to Move');
+          setDescription(found.description || '');
+          setSelectedMedia((found.photos||[]).map(uri => ({ uri, type: 'photo' })).concat((found.videos||[]).map(uri => ({ uri, type: 'video' }))));
+          setCurrentDraftId(found._id);
+
+          // Open payment modal for this draft
+          setShowPaymentModal(true);
+
+          // Clear navigation params so we don't reopen repeatedly
+          try { navigation.setParams({ openPayment: false, draftId: null }); } catch (e) { }
+        } catch (e) {
+          console.error('[AddSellScreen] Failed to load draft for payment:', e);
+        }
+      })();
+    }
+
+    return () => { mounted = false; };
+  }, [route?.params]);
+
+  // Fetch subscription packages when Payment Modal opens
+  React.useEffect(() => {
+    let mounted = true;
+    const loadPackages = async () => {
+      if (!showPaymentModal) return;
+      setLoadingPackages(true);
+      try {
+        const res = await getSubscriptionPackages();
+        const pkgs = res?.data?.packages || res?.packages || res?.data || [];
+        if (!mounted) return;
+        if (Array.isArray(pkgs)) {
+          setSubscriptionPackages(pkgs);
+          setSelectedPackage(pkgs[0] || null);
+        } else {
+          setSubscriptionPackages([]);
+        }
+      } catch (e) {
+        console.warn('[AddSellScreen] getSubscriptionPackages failed:', e);
+        setSubscriptionPackages([]);
+      } finally {
+        if (mounted) setLoadingPackages(false);
+      }
+    };
+    loadPackages();
+    return () => { mounted = false; };
+  }, [showPaymentModal]);
+
+  // Update districts when state changes
+  React.useEffect(() => {
+    const loadDistricts = async () => {
+      if (propertyState) {
+        try {
+          const districts = await fetchDistricts(propertyState);
+          setAvailableCities(districts);
+          // Reset dependent fields when state changes
+          setCity("");
+          setPost("");
+          setLocality("");
+          setPincode("");
+        } catch (error) {
+          console.error('Error loading districts:', error);
+          setAvailableCities([]);
+        }
+      } else {
+        setAvailableCities([]);
         setCity("");
         setPost("");
         setLocality("");
         setPincode("");
       }
-    } else {
-      setAvailableCities([]);
-      setCity("");
-      setPost("");
-      setLocality("");
-      setPincode("");
-    }
+    };
+    loadDistricts();
   }, [propertyState]);
 
-  // Update posts (areas) when city changes
+  // Update cities when district changes
   React.useEffect(() => {
-    if (city) {
-      const posts = getAreasByCity(city);
-      setAvailablePosts(posts);
-      // Reset dependent fields when city changes
-      setPost("");
-      setLocality("");
-      setPincode("");
-    } else {
-      setAvailablePosts([]);
-      setPost("");
-      setLocality("");
-      setPincode("");
-    }
+    console.log('🔥 Cities useEffect triggered! District (city var) changed to:', city);
+    const loadCities = async () => {
+      if (city) {
+        console.log('🚀 Calling fetchCities for district:', city);
+        try {
+          const cityNames = await fetchCities(city);
+          console.log('📨 fetchCities returned:', cityNames?.length ? `${cityNames.length} cities` : 'No cities', cityNames?.slice(0, 3));
+          setAvailablePosts(cityNames);
+          console.log('✅ Set availablePosts with', cityNames?.length, 'cities');
+          // Reset dependent fields when district changes
+          setPost("");
+          setLocality("");
+          setPincode("");
+        } catch (error) {
+          console.error('Error loading cities:', error);
+          const fallbackPosts = getAreasByCity(city);
+          setAvailablePosts(fallbackPosts);
+        }
+      } else {
+        setAvailablePosts([]);
+        setCitiesApiData([]);
+        setPost("");
+        setLocality("");
+        setPincode("");
+      }
+    };
+    loadCities();
   }, [city]);
 
-  // Auto-fill pincode when post is selected
+  // Auto-fill pincode when city is selected from API data
   React.useEffect(() => {
-    if (city && post) {
+    console.log('🎯 Pincode useEffect triggered. Post:', post, 'API Data length:', citiesApiData.length);
+    
+    if (post && citiesApiData.length > 0) {
+      // Find the selected city in API data by matching cleaned names
+      const selectedCity = citiesApiData.find(cityData => {
+        // Clean the API city name the same way we cleaned dropdown names
+        let cleanedApiName = cityData.name || '';
+        cleanedApiName = cleanedApiName.replace(/\s+(B\.O|S\.O|PO|SO|BO)$/i, '').trim();
+        
+        console.log('🔍 Comparing:', { 
+          selected: post, 
+          apiOriginal: cityData.name, 
+          apiCleaned: cleanedApiName,
+          match: cleanedApiName === post 
+        });
+        
+        return cleanedApiName === post;
+      });
+      
+      if (selectedCity && selectedCity.pincode) {
+        console.log('✅ Auto-filling pincode from API:', selectedCity.pincode, 'for city:', post);
+        setPincode(selectedCity.pincode);
+      } else if (selectedCity) {
+        console.log('⚠️ City found but no pincode:', selectedCity);
+      } else {
+        console.log('❌ No matching city found in API data for:', post);
+      }
+    } else if (city && post) {
+      // Fallback to static method when no API data
+      console.log('🔄 Using static method for pincode');
       const pincode = getPincodeByArea(city, post);
       if (pincode) {
+        console.log('📋 Auto-filling pincode from static data:', pincode);
         setPincode(pincode);
       }
     }
-  }, [post, city]);
+  }, [post, citiesApiData, city]);
 
   // Debug function to test API directly
   const testAPI = async () => {
@@ -922,7 +1140,7 @@ const AddSellScreen = ({ navigation }) => {
       contactNumber
     });
     
-    // Show payment modal after validation passes
+    // Open payment modal directly instead of navigating
     setShowPaymentModal(true);
   };
   
@@ -955,231 +1173,395 @@ const AddSellScreen = ({ navigation }) => {
     setProcessingPayment(true);
     
     try {
-      const formData = new FormData();
-      
-      // ================================================================================================
-      // CRITICAL: ADDRESS FIELDS - Backend controller expects flat fields
-      // Backend destructures: const { state, city, locality, pincode } = req.body;
-      // ================================================================================================
-      
-      // Send ONLY flat address fields (remove JSON approach)
-      formData.append('state', addressValidation.state);
-      formData.append('city', addressValidation.city);
-      formData.append('locality', addressValidation.locality);
-      formData.append('post', post || ''); // Post office area
-      formData.append('pincode', addressValidation.pincode);
-      
-      console.log('📦 FormData Address Fields (Flat - Backend Compatible):');
-      console.log(`  ✅ state: "${addressValidation.state}"`);
-      console.log(`  ✅ city: "${addressValidation.city}"`);
-      console.log(`  ✅ locality: "${addressValidation.locality}"`);
-      console.log(`  ✅ post: "${post}"`);
-      console.log(`  ✅ pincode: "${addressValidation.pincode}"`);
-      
-      // Required core fields - Backend schema requirements
-      formData.append('areaSqFt', areaNum);              // ✅ FIXED: Backend expects areaSqFt
-      formData.append('price', priceNum);                // Must be Number (not string)
-      formData.append('contactNumber', contactNumber.trim());
-      formData.append('propertyType', propertyType);     // "Residential" or "Commercial"
-      formData.append('purpose', purpose);               // "Sell", "Rent", "Paying Guest"
-      formData.append('furnishingStatus', furnishing);   // Backend expects "furnishingStatus"
-      formData.append('parking', parking);               // "Available" or "Not Available"
-      
-      // Kitchen Type - Only for Residential
-      if (propertyType === 'Residential') {
-        formData.append('kitchenType', kitchenType);     // "Modular" or "Simple"
-      }
-      
-      // ✅ FIXED: Backend expects availabilityStatus not availability
-      formData.append('availabilityStatus', availability); // "Ready to Move" or "Under Construction"
-      
-      // Available From Date
-      formData.append('availableFrom', availableFrom.toISOString().split('T')[0]); // YYYY-MM-DD format
-      
-      // Available For - Only for non-Sell purposes
-      if (purpose !== 'Sell') {
-        formData.append('availableFor', availableFor); // "Boys", "Girls", "Family"
-      }
-      
-      // Society/Maintenance - Only for Residential
-      if (propertyType === 'Residential') {
-        formData.append('societyMaintenance', societyMaintenance); // "Including in Rent" or "Excluding"
-        
-        // Society Features - Send as individual array items
-        if (societyFeatures.length > 0) {
-          societyFeatures.forEach(feature => {
-            formData.append('societyFeatures[]', feature);
-          });
-        }
-      }
-      
-      // Contact Preferences
-      formData.append('contactPreferences[phone]', phoneToggleEnabled.toString());
-      formData.append('contactPreferences[whatsapp]', whatsappToggleEnabled.toString());
-      formData.append('contactPreferences[chat]', chatToggleEnabled.toString());
-      
-      // Description field (optional)
-      if (description?.trim()) {
-        formData.append('description', description.trim());
-      }
-      
-      // Property type specific fields
-      if (propertyType === 'Residential') {
-        // ✅ FIXED: Backend expects specificType not residentialType
-        formData.append('specificType', residentialType);     // "Single", "Duplex", "Room", "Flat", "PG"
-        formData.append('bedrooms', parseInt(bedrooms));      // Must be Number
-        formData.append('bathrooms', parseInt(bathrooms));    // Must be Number
-        formData.append('balconies', balconies.toString());   // ✅ FIXED: Send as Boolean string
-        
-        // ✅ CRITICAL FIX: Floor fields - Backend requires for ALL residential types (not just some)
-        // Backend schema: required if specificType !== "Plot"
-        // Since we don't have Plot option, always send floor fields
-        if (floorNumber?.trim() && totalFloors?.trim()) {
-          formData.append('floorNumber', parseInt(floorNumber));   // Required Number
-          formData.append('totalFloors', parseInt(totalFloors));  // Required Number
-        }
-        
-        console.log('🏠 Added residential fields:', {
-          residentialType,
-          bedrooms: parseInt(bedrooms),
-          bathrooms: parseInt(bathrooms),
-          balconies: balconies.toString(),
-          floorNumber: floorNumber ? parseInt(floorNumber) : 'Not provided',
-          totalFloors: totalFloors ? parseInt(totalFloors) : 'Not provided'
-        });
-        
-      } else if (propertyType === 'Commercial') {
-        // ✅ FIXED: Backend expects specificType not commercialType
-        // Capitalize first letter to match backend enum: Office, Shop, Warehouse
-        const formattedCommercialType = commercialType.charAt(0).toUpperCase() + commercialType.slice(1);
-        formData.append('specificType', formattedCommercialType); // "Office", "Shop", "Warehouse"
-        formData.append('spaceAvailable', parseInt(spaceAvailable)); // Space in sq ft
-        
-        console.log('🏢 Added commercial fields:', { 
-          commercialType,
-          spaceAvailable: parseInt(spaceAvailable)
-        });
-      }
-      
-      // ✅ FIXED: Media files - Backend expects 'photos' and 'videos' separately
-      let photoCount = 0;
-      let videoCount = 0;
-      selectedMedia.forEach((media, index) => {
-        if (media.uri) {
-          const fileExtension = media.type === 'photo' ? 'jpg' : 'mp4';
-          const fileName = media.name || `media_${index}.${fileExtension}`;
+      // First: handle payment / subscription purchase (backend + Razorpay) before final submission
+      try {
+        if (selectedPaymentMethod === 'cod') {
+          const verifyPayload = paymentVerificationPayload || {
+            subscriptionPackageId: selectedPackage?._id || DEFAULT_SUBSCRIPTION_PACKAGE_ID,
+            isFreeMode: true
+          };
+          console.log('🔁 Verifying subscription payment (COD) with payload:', verifyPayload);
+          const verifyRes = await verifySubscriptionPayment(verifyPayload);
+          console.log('🔁 verifySubscriptionPayment response:', verifyRes);
           
-          // Append photos and videos to separate fields
-          const fieldName = media.type === 'photo' ? 'photos' : 'videos';
-          formData.append(fieldName, {
-            uri: media.uri,
-            type: media.type === 'photo' ? 'image/jpeg' : 'video/mp4',
-            name: fileName
-          });
+          // Check for authentication error (401/403)
+          if (verifyRes?.status === 403 || verifyRes?.status === 401 || verifyRes?.message?.toLowerCase().includes('token')) {
+            Alert.alert(
+              'Session Expired',
+              'Your session has expired. Please login again to continue.',
+              [
+                {
+                  text: 'Login',
+                  onPress: () => {
+                    setProcessingPayment(false);
+                    setSubmitting(false);
+                    navigation.navigate('LoginScreen');
+                  }
+                },
+                {
+                  text: 'Cancel',
+                  onPress: () => {
+                    setProcessingPayment(false);
+                    setSubmitting(false);
+                  },
+                  style: 'cancel'
+                }
+              ]
+            );
+            return;
+          }
           
-          if (media.type === 'photo') photoCount++;
-          else videoCount++;
-        }
-      });
-      
-      const mediaCount = photoCount + videoCount;
-      
-      // Final payload verification log
-      console.log('🔍 FINAL PAYLOAD VERIFICATION:');
-      console.log('═══════════════════════════════════════');
-      console.log('✓ Address Fields:');
-      console.log(`  - state: "${addressValidation.state}"`);
-      console.log(`  - city: "${addressValidation.city}"`);
-      console.log(`  - locality: "${addressValidation.locality}"`);
-      console.log(`  - post: "${post}"`);
-      console.log(`  - pincode: "${addressValidation.pincode}"`);
-      console.log('✓ Property Details:');
-      console.log(`  - propertyType: "${propertyType}"`);
-      console.log(`  - specificType: "${propertyType === 'Residential' ? residentialType : commercialType}"`);
-      console.log(`  - areaSqFt: ${areaNum} (${typeof areaNum})`);
-      console.log(`  - price: ${priceNum} (${typeof priceNum})`);
-      console.log('✓ Availability:');
-      console.log(`  - availabilityStatus: "${availability}" (Valid: ${['Ready to Move', 'Under Construction'].includes(availability)})`);
-      console.log(`  - availableFrom: "${availableFrom.toISOString().split('T')[0]}"`);
-      console.log('✓ Media Files:');
-      console.log(`  - photos: ${photoCount}, videos: ${videoCount} (total: ${mediaCount})`);
-      console.log('═══════════════════════════════════════');
+          if (!verifyRes || !verifyRes.success) {
+            Alert.alert('Payment Verification Failed', verifyRes?.message || 'Unable to verify payment. Please try again.');
+            setProcessingPayment(false);
+            setSubmitting(false);
+            return;
+          }
+        } else {
+          // Online payment flow using Razorpay
+          if (!selectedPackage) {
+            Alert.alert('Select Package', 'Please select a subscription package before proceeding.');
+            setProcessingPayment(false);
+            setSubmitting(false);
+            return;
+          }
 
-      // =============================================================================
-      // API CALL (Using centralized service)
-      // =============================================================================
-      
-      console.log('🚀 Submitting to backend API...');
-      const result = await addProperty(formData);
-      
-      if (result.success) {
-        console.log('✅ Property submitted successfully!');
-        console.log('📄 Property data:', result.property);
-        
-        // Close payment modal
-        setShowPaymentModal(false);
-        setProcessingPayment(false);
-        
-        Alert.alert(
-          "Success", 
-          "Property added successfully and is pending verification!", 
-          [
-            {
-              text: "View My Properties", 
-              onPress: () => {
-                navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() });
+          setCreatingOrder(true);
+
+          const amountPaise = Math.round((selectedPackage.price || selectedPackage.amount || 100) * 100);
+          const orderPayload = {
+            subscriptionPackageId: selectedPackage._id || selectedPackage.id,
+            amount: amountPaise,
+            currency: 'INR',
+            receipt: `receipt_${Date.now()}`,
+            notes: {
+              purpose,
+              contactNumber,
+            }
+          };
+
+          console.log('🔁 Creating subscription order with payload:', orderPayload);
+          const orderRes = await createSubscriptionOrder(orderPayload);
+          console.log('🔁 createSubscriptionOrder response:', orderRes);
+
+          const order = orderRes?.order || orderRes?.data?.order || orderRes?.data || orderRes;
+          const key = orderRes?.key || orderRes?.key_id || orderRes?.data?.key || orderRes?.data?.key_id || rzpKey || RAZORPAY_KEY_ID || null;
+
+          // Extract order id where available
+          const orderId = order?.id || order?.order_id || order?.orderId || null;
+
+          const userRaw = await AsyncStorage.getItem('userData');
+          let user = {};
+          try { user = userRaw ? JSON.parse(userRaw) : {}; } catch (e) {}
+
+          const options = {
+            description: selectedPackage.name || 'Subscription',
+            currency: 'INR',
+            key: key,
+            amount: amountPaise,
+            name: 'HomeQuest',
+            prefill: {
+              email: user?.email || '',
+              contact: contactNumber || user?.phone || user?.mobile || ''
+            },
+            theme: { color: '#f39c12' }
+          };
+
+          // Include order_id only if backend returned it
+          if (orderId) {
+            options.order_id = orderId;
+            console.log('[AddSellScreen] Using order_id from backend:', orderId);
+          } else {
+            console.warn('[AddSellScreen] No order_id returned from backend - proceeding with amount-only flow.');
+          }
+
+          console.log('🔁 Opening Razorpay with options:', options);
+
+          let paymentResult;
+          try {
+            paymentResult = await RazorpayCheckout.open(options);
+            console.log('🔁 Razorpay result:', paymentResult);
+          } catch (rzpErr) {
+            console.error('🔴 Razorpay checkout failed or was cancelled:', rzpErr);
+            Alert.alert('Payment Error', rzpErr?.message || 'Payment was cancelled or failed.');
+            setProcessingPayment(false);
+            setSubmitting(false);
+            return;
+          }
+
+          const verifyPayload = {
+            razorpay_payment_id: paymentResult.razorpay_payment_id || paymentResult.payment_id || paymentResult?.id || '',
+            razorpay_order_id: paymentResult.razorpay_order_id || paymentResult.order_id || paymentResult?.order_id || orderId || '',
+            razorpay_signature: paymentResult.razorpay_signature || paymentResult.signature || paymentResult?.signature || '',
+            subscriptionPackageId: orderPayload.subscriptionPackageId
+          };
+
+          // Save payment payload for later use (even if verification fails)
+          setPaymentVerificationPayload(verifyPayload);
+          console.log('🔁 Verifying payment with payload:', verifyPayload);
+
+          // Function that performs the actual FormData creation and submission
+          const performSubmission = async (forceUnverified = false) => {
+            // Build formData and include payment verification details (or unverified flag)
+            const formData = new FormData();
+
+            if (paymentVerificationPayload) {
+              try {
+                formData.append('razorpay_payment_id', paymentVerificationPayload.razorpay_payment_id || '');
+                formData.append('razorpay_order_id', paymentVerificationPayload.razorpay_order_id || '');
+                formData.append('razorpay_signature', paymentVerificationPayload.razorpay_signature || '');
+                formData.append('subscriptionPackageId', paymentVerificationPayload.subscriptionPackageId || selectedPackage?._id || DEFAULT_SUBSCRIPTION_PACKAGE_ID);
+              } catch (e) {
+                console.warn('[performSubmission] Failed to append paymentVerificationPayload to FormData:', e);
+              }
+            } else if (selectedPackage) {
+              try {
+                formData.append('subscriptionPackageId', selectedPackage._id || selectedPackage.id || DEFAULT_SUBSCRIPTION_PACKAGE_ID);
+              } catch (e) {
+                console.warn('[performSubmission] Failed to append selectedPackage to FormData:', e);
               }
             }
-          ]
-        );
-        
-      } else {
-        console.error('❌ Property submission failed:', result);
-        
-        // Enhanced error handling with specific messages
-        let errorMessage = "Failed to add property. Please try again.";
-        
-        if (result.message) {
-          errorMessage = result.message;
-        } else if (result.error) {
-          errorMessage = result.error;
-        } else if (result.rawResponse && result.rawResponse.includes('validation')) {
-          errorMessage = "Data validation failed. Please check all required fields.";
-        } else if (result.status === 401) {
-          errorMessage = "Authentication failed. Please login again.";
-        } else if (result.status === 400) {
-          errorMessage = "Invalid data format. Please verify all fields.";
-        } else if (result.status === 422) {
-          errorMessage = "Server validation error. Please check your input.";
-        } else if (result.isNetworkError) {
-          errorMessage = "Network error. Please check your internet connection.";
+
+            if (forceUnverified) {
+              formData.append('paymentVerificationFailed', 'true');
+            }
+
+            // Now append the rest of fields (replicating the original logic)
+            // Address
+            formData.append('state', addressValidation.state);
+            formData.append('city', addressValidation.city);
+            formData.append('locality', addressValidation.locality);
+            formData.append('post', post || '');
+            formData.append('pincode', addressValidation.pincode);
+
+            // Required core fields
+            formData.append('areaSqFt', areaNum);
+            formData.append('price', priceNum);
+            formData.append('contactNumber', contactNumber.trim());
+            formData.append('propertyType', propertyType);
+            formData.append('purpose', purpose);
+            formData.append('furnishingStatus', furnishing);
+            formData.append('parking', parking);
+            if (propertyType === 'Residential') {
+              formData.append('kitchenType', kitchenType);
+            }
+            formData.append('availabilityStatus', availability);
+            formData.append('availableFrom', availableFrom.toISOString().split('T')[0]);
+            if (purpose !== 'Sell') {
+              formData.append('availableFor', availableFor);
+            }
+            if (propertyType === 'Residential') {
+              formData.append('societyMaintenance', societyMaintenance);
+              if (societyFeatures.length > 0) {
+                societyFeatures.forEach(feature => formData.append('societyFeatures[]', feature));
+              }
+            }
+            formData.append('contactPreferences[phone]', phoneToggleEnabled.toString());
+            formData.append('contactPreferences[whatsapp]', whatsappToggleEnabled.toString());
+            formData.append('contactPreferences[chat]', chatToggleEnabled.toString());
+            if (description?.trim()) formData.append('description', description.trim());
+            if (propertyType === 'Residential') {
+              formData.append('specificType', residentialType);
+              formData.append('bedrooms', parseInt(bedrooms));
+              formData.append('bathrooms', parseInt(bathrooms));
+              formData.append('balconies', balconies.toString());
+              if (floorNumber?.trim() && totalFloors?.trim()) {
+                formData.append('floorNumber', parseInt(floorNumber));
+                formData.append('totalFloors', parseInt(totalFloors));
+              }
+            } else if (propertyType === 'Commercial') {
+              const formattedCommercialType = commercialType.charAt(0).toUpperCase() + commercialType.slice(1);
+              formData.append('specificType', formattedCommercialType);
+              formData.append('spaceAvailable', parseInt(spaceAvailable));
+            }
+
+            // Media
+            let photoCount = 0;
+            let videoCount = 0;
+            selectedMedia.forEach((media, index) => {
+              if (media.uri) {
+                const fileExtension = media.type === 'photo' ? 'jpg' : 'mp4';
+                const fileName = media.name || `media_${index}.${fileExtension}`;
+                const fieldName = media.type === 'photo' ? 'photos' : 'videos';
+                formData.append(fieldName, {
+                  uri: media.uri,
+                  type: media.type === 'photo' ? 'image/jpeg' : 'video/mp4',
+                  name: fileName
+                });
+                if (media.type === 'photo') photoCount++; else videoCount++;
+              }
+            });
+
+            console.log('🔍 FINAL PAYLOAD VERIFICATION (SUBMITTING):', { photoCount, videoCount });
+
+            // Submit to backend
+            try {
+              console.log('🚀 Submitting to backend API...');
+              const result = await addProperty(formData);
+              console.log('🚀 addProperty full response:', result);
+
+              if (result.success) {
+                const createdProperty = result.property || result.data?.property || result.data || result._id || result.id || null;
+                setShowPaymentModal(false);
+                setProcessingPayment(false);
+
+                if (createdProperty) {
+                  // Remove local draft if present
+                  if (currentDraftId) {
+                    try {
+                      const raw = await AsyncStorage.getItem('@local_draft_properties');
+                      let drafts = raw ? JSON.parse(raw) : [];
+                      drafts = drafts.filter(d => d._id !== currentDraftId);
+                      await AsyncStorage.setItem('@local_draft_properties', JSON.stringify(drafts));
+                      console.log('[performSubmission] Removed local draft:', currentDraftId);
+                    } catch (e) {
+                      console.warn('[performSubmission] Failed to remove local draft:', e);
+                    }
+                  }
+
+                  Alert.alert('Success', 'Property added successfully and is pending verification!', [
+                    { text: 'View My Properties', onPress: () => navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() }) }
+                  ]);
+                  navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() });
+                } else {
+                  console.warn('[performSubmission] Backend returned success but no created property data:', result);
+                  Alert.alert('Payment Verified', 'Payment verified, but server did not return created property details. Navigating to My Properties to refresh.');
+                  navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() });
+                }
+              } else {
+                console.error('❌ Property submission failed:', result);
+                
+                // Check for authentication error
+                if (result?.status === 403 || result?.status === 401 || result?.message?.toLowerCase().includes('token')) {
+                  Alert.alert(
+                    'Session Expired',
+                    'Your session has expired. Please login again to continue.',
+                    [
+                      {
+                        text: 'Login',
+                        onPress: () => navigation.navigate('LoginScreen')
+                      },
+                      { text: 'Cancel', style: 'cancel' }
+                    ]
+                  );
+                  return;
+                }
+                
+                let errorMessage = result.message || result.error || 'Failed to add property. Please try again.';
+                if (result.rawResponse && result.rawResponse.includes('validation')) errorMessage = 'Data validation failed. Please check all required fields.';
+                Alert.alert('Property Submission Failed', errorMessage, [{ text: 'OK' }]);
+              }
+            } catch (error) {
+              console.error('🔥 Submit error:', error);
+              Alert.alert('Submission Error', 'Network error occurred. Please try again.');
+            } finally {
+              setProcessingPayment(false);
+              setSubmitting(false);
+            }
+          };
+
+          // Attempt verification
+          const verifyRes = await verifySubscriptionPayment(verifyPayload);
+          console.log('🔁 verifySubscriptionPayment response:', verifyRes);
+
+          // Check for authentication error (401/403)
+          if (verifyRes?.status === 403 || verifyRes?.status === 401 || verifyRes?.message?.toLowerCase().includes('token')) {
+            Alert.alert(
+              'Session Expired',
+              'Your session has expired. Please login again to continue.',
+              [
+                {
+                  text: 'Login',
+                  onPress: () => {
+                    setProcessingPayment(false);
+                    setSubmitting(false);
+                    navigation.navigate('LoginScreen');
+                  }
+                },
+                {
+                  text: 'Cancel',
+                  onPress: () => {
+                    setProcessingPayment(false);
+                    setSubmitting(false);
+                  },
+                  style: 'cancel'
+                }
+              ]
+            );
+            return;
+          }
+
+          if (!verifyRes || !verifyRes.success) {
+            console.warn('[AddSellScreen] Payment verification failed:', verifyRes);
+
+            Alert.alert(
+              'Payment Verification Failed',
+              typeof verifyRes === 'object' ? JSON.stringify(verifyRes, null, 2) : (verifyRes?.message || 'Unable to verify payment.'),
+              [
+                {
+                  text: 'Retry Verify',
+                  onPress: async () => {
+                    try {
+                      setProcessingPayment(true);
+                      const retryRes = await verifySubscriptionPayment(verifyPayload);
+                      console.log('[AddSellScreen] Retry verify response:', retryRes);
+                      if (retryRes && retryRes.success) {
+                        await performSubmission(false);
+                      } else {
+                        Alert.alert('Retry Failed', retryRes?.message || 'Verification still failed. You can submit the property without verification or cancel.');
+                        setProcessingPayment(false);
+                        setSubmitting(false);
+                      }
+                    } catch (retryErr) {
+                      console.error('[AddSellScreen] Retry verify error:', retryErr);
+                      Alert.alert('Retry Error', retryErr?.message || 'Retry failed.');
+                      setProcessingPayment(false);
+                      setSubmitting(false);
+                    }
+                  }
+                },
+                {
+                  text: 'Submit Anyway',
+                  onPress: async () => {
+                    try {
+                      setProcessingPayment(true);
+                      await performSubmission(true);
+                    } catch (err) {
+                      console.error('[AddSellScreen] Submit anyway error:', err);
+                      Alert.alert('Error', 'Unable to submit. Please try again.');
+                      setProcessingPayment(false);
+                      setSubmitting(false);
+                      return;
+                    }
+                  }
+                },
+                {
+                  text: 'Cancel', onPress: () => { setProcessingPayment(false); setSubmitting(false); }, style: 'cancel'
+                }
+              ],
+              { cancelable: true }
+            );
+
+            return;
+          }
+
+          // If verification passed, continue to submit normally
+          await performSubmission(false);
         }
-        
-        Alert.alert(
-          "Property Submission Failed", 
-          errorMessage,
-          [{ text: "OK", style: "default" }]
-        );
+      } catch (verifyError) {
+        console.error('🔥 Error verifying subscription/payment:', verifyError);
+        Alert.alert('Verification Error', 'Unable to verify payment. Please try again.');
+        setProcessingPayment(false);
+        setSubmitting(false);
+        return;
       }
-      
     } catch (error) {
-      console.error('🔥 Submit error:', error);
-      Alert.alert(
-        "Submission Error", 
-        "Network error occurred. Please check your connection and try again.",
-        [{ text: "OK", style: "default" }]
-      );
-    } finally {
+      console.error('💥 Payment/submission error:', error);
+      Alert.alert('Error', error.message || 'Failed to process. Please try again.');
+      setProcessingPayment(false);
       setSubmitting(false);
     }
   };
-      console.log('� Contact:', contactNumber);
-      console.log('📅 Availability:', selectedDate.toLocaleDateString('en-IN'));
-      console.log('🖼️ Media files:', selectedMedia.length);
-      
-      // API Call using centralized service
-      console.log('🚀 Making API call using service...');
-      console.log('📦 FormData total fields being sent');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1216,11 +1598,12 @@ const AddSellScreen = ({ navigation }) => {
         ))}
       </View>
 
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : 80} style={{ flex: 1 }}>
       <ScrollView 
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={false} 
         nestedScrollEnabled={true}
       >
         {/* Step 1: Property Address */}
@@ -1243,6 +1626,7 @@ const AddSellScreen = ({ navigation }) => {
               searchText={stateSearchText}
               setSearchText={setStateSearchText}
             />
+            
             <Dropdown
               options={availableCities}
               selectedValue={city}
@@ -1255,15 +1639,23 @@ const AddSellScreen = ({ navigation }) => {
                   setPostDropdownOpen(false);
                 }
               }}
-              placeholder={propertyState ? "Select City/District" : "Select state first"}
+              placeholder={propertyState ? "Select District" : "Select state first"}
+              label="District"
               icon="business"
               searchText={citySearchText}
               setSearchText={setCitySearchText}
             />
+            
             <Dropdown
-              options={availablePosts.map(post => post.name)}
+              options={(() => {
+                console.log('🎨 City Dropdown rendering. availablePosts:', availablePosts?.slice(0, 3), 'Total:', availablePosts?.length);
+                return availablePosts || [];
+              })()}
               selectedValue={post}
-              onSelect={setPost}
+              onSelect={(selectedCity) => {
+                console.log('🏙️ City selected from dropdown:', selectedCity);
+                setPost(selectedCity);
+              }}
               isOpen={postDropdownOpen}
               setIsOpen={(val) => {
                 setPostDropdownOpen(val);
@@ -1272,26 +1664,30 @@ const AddSellScreen = ({ navigation }) => {
                   setCityDropdownOpen(false);
                 }
               }}
-              placeholder={city ? "Select Post" : "Select city first"}
-              icon="mail"
+              placeholder={city ? "Select City" : "Select district first"}
+              label="City"
+              icon="location"
               searchText={postSearchText}
               setSearchText={setPostSearchText}
             />
+            
             <InputField
-              label="PIN Code*"
-              placeholder="Auto-filled (or enter manually)"
-              keyboardType="numeric"
-              maxLength={6}
-              value={pincode}
-              onChangeText={setPincode}
-            />
-            <InputField
-              label="Locality/Area*"
-              placeholder="Enter locality or area name"
-              value={locality}
-              onChangeText={setLocality}
-            />
-          </SectionCard>
+            label="PIN Code*"
+            placeholder="Auto-filled (or enter manually)"
+            placeholderTextColor="#999"
+            keyboardType="numeric"
+            maxLength={6}
+            value={pincode}
+            onChangeText={setPincode}
+          />
+          <InputField
+            label="Locality/Area*"
+            placeholder="Enter locality or area name"
+            placeholderTextColor="#999"
+            value={locality}
+            onChangeText={setLocality}
+          />
+        </SectionCard>
         )}
 
         {/* Step 2: Basic Details + Contact Details */}
@@ -1309,7 +1705,7 @@ const AddSellScreen = ({ navigation }) => {
                 <>
                   <Text style={styles.fieldLabel}>Commercial Type</Text>
                   <OptionSelector
-                    options={["office", "shop", "warehouse"]}
+                    options={["office", "shop", "warehouse","Plot","Blank Space"]}
                     selectedValue={commercialType}
                     onSelect={setCommercialType}
                   />
@@ -1317,6 +1713,7 @@ const AddSellScreen = ({ navigation }) => {
                   <InputField
                     label="Space Available (sq ft)*"
                     placeholder="Enter space available"
+                    placeholderTextColor="#999"
                     keyboardType="numeric"
                     value={spaceAvailable}
                     onChangeText={setSpaceAvailable}
@@ -1328,7 +1725,7 @@ const AddSellScreen = ({ navigation }) => {
                 <>
                   <Text style={styles.fieldLabel}>Residential Type</Text>
                   <OptionSelector
-                    options={["Single", "Duplex", "Room", "Flat", "PG"]}
+                    options={["Singlex", "Duplex", "Room", "Flat", "PG"]}
                     selectedValue={residentialType}
                     onSelect={setResidentialType}
                   />
@@ -1369,6 +1766,7 @@ const AddSellScreen = ({ navigation }) => {
                   <InputField
                     label="Floor Number*"
                     placeholder="Enter floor number"
+                    placeholderTextColor="#999"
                     keyboardType="numeric"
                     value={floorNumber}
                     onChangeText={setFloorNumber}
@@ -1377,6 +1775,7 @@ const AddSellScreen = ({ navigation }) => {
                   <InputField
                     label="Total Floors*"
                     placeholder="Enter total floors in building"
+                    placeholderTextColor="#999"
                     keyboardType="numeric"
                     value={totalFloors}
                     onChangeText={setTotalFloors}
@@ -1387,6 +1786,7 @@ const AddSellScreen = ({ navigation }) => {
               <InputField
                 label="Area (sq ft)*"
                 placeholder="Enter area"
+                placeholderTextColor="#999"
                 keyboardType="numeric"
                 value={area}
                 onChangeText={setArea}
@@ -1395,6 +1795,7 @@ const AddSellScreen = ({ navigation }) => {
               <InputField
                 label="Price (₹)*"
                 placeholder="Enter price in INR"
+                placeholderTextColor="#999"
                 keyboardType="numeric"
                 value={price}
                 onChangeText={setPrice}
@@ -1514,6 +1915,7 @@ const AddSellScreen = ({ navigation }) => {
               <InputField
                 label="Contact Number*"
                 placeholder="Enter your contact number"
+                placeholderTextColor="#999"
                 keyboardType="phone-pad"
                 maxLength={10}
                 value={contactNumber}
@@ -1604,16 +2006,17 @@ const AddSellScreen = ({ navigation }) => {
 
             {/* PROPERTY DESCRIPTION SECTION */}
             <SectionCard title="Property Description" icon="document-text-outline">
-              <Text style={styles.fieldLabel}>Description</Text>
+              <Text style={styles.fieldLabel}>Description (Title)*</Text>
               <TextInput
                 style={[styles.textInput, styles.multilineInput]}
-                placeholder="Enter detailed property description..."
+                placeholder="Enter property title/description (e.g., Sky Dandelions Apartment)..."
                 placeholderTextColor="#999"
                 value={description}
                 onChangeText={setDescription}
                 multiline
                 numberOfLines={5}
                 textAlignVertical="top"
+                maxLength={500}
               />
               <Text style={styles.charCount}>{description.length}/500</Text>
             </SectionCard>
@@ -1687,6 +2090,7 @@ const AddSellScreen = ({ navigation }) => {
 
         <View style={{ height: 120 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <View style={styles.navigationContainer}>
         {currentStep > 1 && (
@@ -1770,11 +2174,34 @@ const AddSellScreen = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
               style={styles.paymentScrollView}
             >
-              {/* Simple Pricing */}
-              <View style={styles.simplePriceCard}>
-                <Icon name="pricetag" size={20} color="#f39c12" />
-                <Text style={styles.simplePriceText}>₹100 Per Post</Text>
-              </View>
+              {/* Simple Pricing / Subscription Packages */}
+              {loadingPackages ? (
+                <View style={{ padding: 12, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#f39c12" />
+                </View>
+              ) : (subscriptionPackages && subscriptionPackages.length > 0 ? (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.paymentSubtitle, { marginBottom: 8 }]}>Choose Subscription Package</Text>
+                  {subscriptionPackages.map(pkg => (
+                    <TouchableOpacity
+                      key={pkg._id || pkg.id || pkg.subscriptionId}
+                      style={[{ padding:12, borderWidth:1, borderColor:'#eee', borderRadius:8, flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:8 }, selectedPackage && (selectedPackage._id||selectedPackage.id) === (pkg._id||pkg.id) && { borderColor:'#f39c12', backgroundColor:'#fffbe6' }]}
+                      onPress={() => setSelectedPackage(pkg)}
+                    >
+                      <View>
+                        <Text style={{ fontWeight:'600' }}>{pkg.name || pkg.title || 'Package'}</Text>
+                        <Text style={{ color:'#666', fontSize:13 }}>{pkg.description || pkg.desc || ''}</Text>
+                      </View>
+                      <Text style={{ fontWeight:'700', color:'#111' }}>₹{pkg.price || pkg.amount || 100}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.simplePriceCard}>
+                  <Icon name="pricetag" size={20} color="#f39c12" />
+                  <Text style={styles.simplePriceText}>₹100 Per Post</Text>
+                </View>
+              ))}
 
               <Text style={styles.paymentSubtitle}>Select Payment Method</Text>
 
@@ -1901,11 +2328,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 18,
+    justifyContent:"center",
     gap: 12,
   },
   headerContent: {
     flex: 1,
-  },
+    top:7
+    },
   headerTitle: {
     fontSize: 22,
     fontWeight: "700",
@@ -1914,7 +2343,7 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: "rgba(255,255,255,0.8)",
-    marginTop: 2,
+    
   },
 
   // Progress Indicator Styles

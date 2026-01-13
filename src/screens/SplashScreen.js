@@ -9,10 +9,12 @@ import {
   SafeAreaView,
 } from "react-native";
 import AuthFlowManager from "../utils/AuthFlowManager";
+import { useSubscription } from '../context/SubscriptionContext';
 
 const { width, height } = Dimensions.get("window");
 
 const SplashScreen = ({ navigation }) => {
+  const { loadActiveSubscription } = useSubscription();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
@@ -56,6 +58,8 @@ const SplashScreen = ({ navigation }) => {
         
         if (isLoggedIn) {
           console.log('✅ User is logged in - Going to Home');
+          // Load user's active subscription
+          await loadActiveSubscription();
           navigation.replace('Home');
         } else {
           console.log('❌ User not logged in - Going to Login');

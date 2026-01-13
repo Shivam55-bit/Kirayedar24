@@ -10,10 +10,20 @@ export const formatImageUrl = (url) => {
         return 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image';
     }
 
+    // Normalize backslashes and trim
+    url = url.replace(/\\/g, '/').trim();
+
     // If already a complete URL, return as is
     if (url.startsWith('http://') || url.startsWith('https://')) {
         console.log('[formatImageUrl] Complete URL, returning as is:', url);
         return url;
+    }
+
+    // Protocol-relative URL (e.g., //cdn.example.com/image.jpg)
+    if (url.startsWith('//')) {
+      const fullUrl = `https:${url}`;
+      console.log('[formatImageUrl] Protocol-relative URL, using https:', fullUrl);
+      return fullUrl;
     }
 
     // Use the known base URL if BASE_URL is not available

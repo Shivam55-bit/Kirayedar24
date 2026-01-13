@@ -21,13 +21,13 @@ import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
 // Get screen width for card calculations
 const { width } = Dimensions.get("window");
 
-const MyPropertyScreen = ({ navigation }) => {
+const MyPropertyScreen = ({ navigation, route }) => {
   const [user, setUser] = useState(null);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load user's posted properties from API
+  // Load user's posted properties from API and merge local drafts
   const loadMyProperties = React.useCallback(async () => {
     console.log('📥📥📥 LOADING MY PROPERTIES - API CALL STARTING 📥📥📥');
     setLoading(true);
@@ -35,68 +35,154 @@ const MyPropertyScreen = ({ navigation }) => {
       const response = await propertyService.getMySellProperties();
       console.log('✅✅✅ API RESPONSE RECEIVED:', response.success, 'Properties count:', response.data?.length || 0);
       
+      let propertiesData = [];
       if (response.success) {
-        const propertiesData = response.data || response.properties || [];
-        console.log('🏠🏠🏠 TOTAL PROPERTIES TO DISPLAY:', propertiesData.length);
-        
-        // Map API data to screen format
-        const mappedProperties = propertiesData.map(property => {
-          
-          // ✅ FIXED: Backend sends photos and videos separately, not photosAndVideo
-          let imageUrl = null;
-          if (property.photos && Array.isArray(property.photos) && property.photos.length > 0) {
-            const firstImage = property.photos[0];
-            if (typeof firstImage === 'string') {
-              imageUrl = formatImageUrl(firstImage);
-            }
-          } else if (property.photosAndVideo && Array.isArray(property.photosAndVideo) && property.photosAndVideo.length > 0) {
-            const firstImage = property.photosAndVideo[0];
-            if (typeof firstImage === 'string') {
-              imageUrl = formatImageUrl(firstImage);
-            } else if (firstImage && typeof firstImage === 'object') {
-              imageUrl = formatImageUrl(firstImage.uri || firstImage.url || firstImage);
-            }
-          } else if (property.image) {
-            imageUrl = formatImageUrl(property.image);
-          }
-          
-          console.log('[MyPropertyScreen] Final image URL for property', property._id, ':', imageUrl);
-          
-          // Format address object to string if it exists
-          const locationText = property.propertyLocation || property.location || 
-            (property.address && typeof property.address === 'object' 
-              ? `${property.address.locality || ''}, ${property.address.city || ''}, ${property.address.state || ''}`.replace(/^, |, $/g, '').trim()
-              : property.address) || 'Location not specified';
-          
-          return {
-            id: property._id || property.id,
-            title: property.description || property.title || `${property.specificType || 'Property'} in ${property.address?.city || 'City'}`,
-            location: locationText,
-            price: formatPrice(property.price || property.rentAmount || property.sellingPrice),
-            type: property.specificType || property.propertyType || 'Property',
-            bedrooms: property.bedrooms || property.beds || 'N/A',
-            bathrooms: property.bathrooms || property.baths || 'N/A',
-            area: `${property.areaSqFt || property.areaDetails || property.sqft || property.area || 'N/A'} sqft`,
-            status: property.status || property.availabilityStatus || 'Available',
-            image: imageUrl || 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image',
-            purpose: property.purpose || property.purposeType || 'Rent',
-            furnishing: property.furnishingStatus || property.furnishing || 'Not specified',
-            parking: property.parking || 'Not specified',
-            availableFor: property.availableFor || 'Any',
-            views: property.visitCount || property.views || 0,
-            createdAt: property.createdAt || new Date().toISOString(),
-            originalData: property  // ✅ Store complete original backend data
-          };
-        });
-        
-        console.log('💾💾💾 SETTING PROPERTIES STATE WITH COUNT:', mappedProperties.length);
-        setProperties(mappedProperties);
-        console.log('✅✅✅ PROPERTIES STATE UPDATED SUCCESSFULLY!');
+        propertiesData = response.data || response.properties || [];
       } else {
         console.error('[MyPropertyScreen] API Error:', response.message);
         Alert.alert('Error', response.message || 'Failed to load your properties');
-        setProperties([]);
       }
+
+      // Map API data to screen format
+      const mappedProperties = propertiesData.map(property => {
+        let imageUrl = null;
+        if (property.photos && Array.isArray(property.photos) && property.photos.length > 0) {
+          const firstImage = property.photos[0];
+          if (typeof firstImage === 'string') {
+            imageUrl = formatImageUrl(firstImage);
+            } else if (firstImage && typeof firstImage === 'object') {
+              // object may contain uri or url keys
+              const candidate = firstImage.uri || firstImage.url || firstImage;
+              if (typeof candidate === 'string' && (candidate.startsWith('file:') || candidate.startsWith('content:') || candidate.startsWith('data:'))) {
+                imageUrl = candidate;
+              } else {
+                imageUrl = formatImageUrl(candidate);
+              }
+            imageUrl = formatImageUrl(firstImage);
+          } else if (firstImage && typeof firstImage === 'object') {
+            imageUrl = formatImageUrl(firstImage.uri || firstImage.url || firstImage);
+          }
+        } else if (property.image) {
+          imageUrl = formatImageUrl(property.image);
+        }
+
+        const locationText = property.propertyLocation || property.location || 
+          (property.address && typeof property.address === 'object' 
+            ? [
+                property.address.locality || '',
+                property.address.post || property.address.city || '',
+                property.address.city || '',
+                property.address.state || ''
+              ].filter(part => part.trim()).join(', ')
+            : property.address) || 'Location not specified';
+
+        return {
+          id: property._id || property.id,
+          title: property.description || property.title || `${property.specificType || 'Property'} in ${property.address?.city || 'City'}`,
+          location: locationText,
+          price: formatPrice(property.price || property.rentAmount || property.sellingPrice),
+          type: property.specificType || property.propertyType || 'Property',
+          bedrooms: property.bedrooms || property.beds || 'N/A',
+          bathrooms: property.bathrooms || property.baths || 'N/A',
+          area: `${property.areaSqFt || property.areaDetails || property.sqft || property.area || 'N/A'} sqft`,
+          status: property.status || property.availabilityStatus || 'Available',
+          image: imageUrl || 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image',
+          purpose: property.purpose || property.purposeType || 'Rent',
+          furnishing: property.furnishingStatus || property.furnishing || 'Not specified',
+          parking: property.parking || 'Not specified',
+          availableFor: property.availableFor || 'Any',
+          views: property.visitCount || property.views || 0,
+          createdAt: property.createdAt || new Date().toISOString(),
+          originalData: property  // ✅ Store complete original backend data
+        };
+      });
+
+      // Load local drafts and merge them at the top
+      let localDrafts = [];
+      try {
+        const draftRaw = await AsyncStorage.getItem('@local_draft_properties');
+        localDrafts = draftRaw ? JSON.parse(draftRaw) : [];
+      } catch (e) {
+        console.warn('[MyPropertyScreen] Failed to read local drafts:', e);
+        localDrafts = [];
+      }
+
+      const mappedDrafts = (localDrafts || []).map(d => {
+        // Handle local file URIs vs server filenames
+        let imageUrl = 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image';
+        try {
+          const first = d.photos && d.photos.length > 0 ? d.photos[0] : null;
+          if (first) {
+            if (typeof first === 'string' && (first.startsWith('file:') || first.startsWith('content:') || first.startsWith('data:'))) {
+              imageUrl = first; // local URI, use directly
+            } else {
+              imageUrl = formatImageUrl(first);
+            }
+          } else if (d.image) {
+            if (typeof d.image === 'string' && (d.image.startsWith('file:') || d.image.startsWith('content:') || d.image.startsWith('data:'))) {
+              imageUrl = d.image;
+            } else {
+              imageUrl = formatImageUrl(d.image);
+            }
+          }
+        } catch (e) {
+          console.warn('[MyPropertyScreen] Failed to determine draft image URL:', e);
+        }
+
+        return {
+          id: d._id,
+          title: d.description || `${d.specificType || 'Property'} in ${d.city || 'City'}`,
+          location: [
+            d.locality || '',
+            d.post || '',
+            d.city || '', 
+            d.propertyState || d.state || ''
+          ].filter(part => part.trim()).join(', ') || 'Location not specified',
+          price: formatPrice(d.price || 0),
+          type: d.specificType || d.propertyType || 'Property',
+          bedrooms: d.bedrooms || 'N/A',
+          bathrooms: d.bathrooms || 'N/A',
+          area: `${d.areaSqFt || 'N/A'} sqft`,
+          status: d.status || 'Pending Payment',
+          image: imageUrl,
+          purpose: d.purpose || 'Sell',
+          furnishing: d.furnishingStatus || 'Not specified',
+          parking: d.parking || 'Not specified',
+          availableFor: d.availableFor || 'Any',
+          views: 0,
+          createdAt: d.createdAt || new Date().toISOString(),
+          originalData: d,
+          isLocalDraft: true
+        };
+      });
+
+      const combined = [...mappedDrafts, ...mappedProperties];
+
+      console.log('💾💾💾 SETTING PROPERTIES STATE WITH COUNT:', combined.length);
+      setProperties(combined);
+      console.log('✅✅✅ PROPERTIES STATE UPDATED SUCCESSFULLY!');
+
+      // If navigation asked to prompt payment for a draft, do it now
+      const routeParams = route?.params || {};
+      if (routeParams.draftId && routeParams.showPaymentPrompt) {
+        // Find the draft
+        const draftFound = mappedDrafts.find(d => d.id === routeParams.draftId);
+        if (draftFound) {
+          Alert.alert(
+            'Property Saved',
+            'Your property was saved as a draft and is visible in My Properties. Do you want to proceed to payment now?',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Pay Now', onPress: () => navigation.navigate('AddSell', { openPayment: true, draftId: routeParams.draftId }) }
+            ],
+            { cancelable: true }
+          );
+
+          // Clear params so prompt doesn't show again
+          try { navigation.setParams({ draftId: null, showPaymentPrompt: false }); } catch (e) { }
+        }
+      }
+
     } catch (error) {
       console.error('[MyPropertyScreen] Load properties error:', error);
       Alert.alert('Error', 'Failed to load properties. Please check your connection.');
@@ -226,10 +312,18 @@ const MyPropertyScreen = ({ navigation }) => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case "Rented":
+    const statusLower = (status || '').toLowerCase();
+    switch (statusLower) {
+      case "approved":
+        return "#10B981"; // Green for approved
+      case "pending":
+      case "pending payment":
+        return "#FDB022"; // Orange for pending
+      case "rejected":
+        return "#EF4444"; // Red for rejected
+      case "rented":
         return "#10B981";
-      case "Available":
+      case "available":
         return "#FDB022";
       default:
         return "#64748B";
@@ -237,10 +331,18 @@ const MyPropertyScreen = ({ navigation }) => {
   };
 
   const getStatusIcon = (status) => {
-    switch (status) {
-      case "Rented":
+    const statusLower = (status || '').toLowerCase();
+    switch (statusLower) {
+      case "approved":
         return "checkmark-circle";
-      case "Available":
+      case "pending":
+      case "pending payment":
+        return "time";
+      case "rejected":
+        return "close-circle";
+      case "rented":
+        return "checkmark-circle";
+      case "available":
         return "time";
       default:
         return "help-circle";
@@ -268,14 +370,20 @@ const MyPropertyScreen = ({ navigation }) => {
           }}
         />
         
-        {/* Status Badge */}
-        <View style={[styles.statusBadgeNew, { backgroundColor: getStatusColor(item.status) }]}>
+        {/* Status Badge - Show approval status (backend returns lowercase status) */}
+        <View style={[styles.statusBadgeNew, { backgroundColor: getStatusColor(
+          item.originalData?.status || item.originalData?.approvalStatus || item.status
+        ) }]}>
           <Icon 
-            name={getStatusIcon(item.status)} 
+            name={getStatusIcon(
+              item.originalData?.status || item.originalData?.approvalStatus || item.status
+            )} 
             size={12} 
             color="#FFFFFF" 
           />
-          <Text style={styles.statusTextNew}>{item.status}</Text>
+          <Text style={styles.statusTextNew}>
+            {(item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending').charAt(0).toUpperCase() + (item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending').slice(1)}
+          </Text>
         </View>
       </View>
 
@@ -371,6 +479,26 @@ const MyPropertyScreen = ({ navigation }) => {
             <Icon name="eye-outline" size={16} color="#3B82F6" />
             <Text style={styles.managementButtonText}>View</Text>
           </TouchableOpacity>
+          {/* Pay Now button for local drafts / pending payment items */}
+          {(item.isLocalDraft || item.status === 'Pending Payment') && (
+            <TouchableOpacity
+              style={styles.managementButton}
+              onPress={() => {
+                Alert.alert(
+                  'Pending Payment',
+                  'This property has a pending payment. Do you want to proceed to pay now?',
+                  [
+                    { text: 'Later', style: 'cancel' },
+                    { text: 'Pay Now', onPress: () => navigation.navigate('AddSell', { openPayment: true, draftId: item.id }) }
+                  ],
+                  { cancelable: true }
+                );
+              }}
+            >
+              <Icon name="card-outline" size={16} color="#10B981" />
+              <Text style={styles.managementButtonText}>Pay Now</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity 
             style={styles.managementButton}
             onPress={() => handleDeleteProperty(item.id)}
@@ -420,15 +548,26 @@ const MyPropertyScreen = ({ navigation }) => {
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
-              {properties.filter(p => p.status === "Rented").length}
+              {properties.filter(p => 
+                p.originalData?.approvalStatus === "Approved" || 
+                p.originalData?.status === "approved" ||
+                p.status === "Approved" || 
+                p.status === "approved"
+              ).length}
             </Text>
-            <Text style={styles.statLabel}>Rented</Text>
+            <Text style={styles.statLabel}>Approved</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
-              {properties.filter(p => p.status === "Available").length}
+              {properties.filter(p => 
+                p.originalData?.approvalStatus === "Pending" || 
+                p.originalData?.status === "pending" ||
+                p.status === "Pending" || 
+                p.status === "pending" ||
+                p.status === "Pending Payment"
+              ).length}
             </Text>
-            <Text style={styles.statLabel}>Available</Text>
+            <Text style={styles.statLabel}>Pending</Text>
           </View>
         </View>
 

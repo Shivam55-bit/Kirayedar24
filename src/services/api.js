@@ -280,6 +280,14 @@ export const getSubscriptionPackages = async () => {
   });
 };
 
+// Get user's active subscription
+export const getUserSubscription = async () => {
+  console.log('[api] getUserSubscription called');
+  return makeRequest('/api/tenant-subscription/active', {
+    method: 'GET'
+  });
+};
+
 // Create subscription purchase order (backend should return Razorpay order details and key)
 export const createSubscriptionOrder = async (payload = {}) => {
   console.log('[api] createSubscriptionOrder payload:', payload);
@@ -417,4 +425,74 @@ export const extractPincode = (cityData) => {
   
   // Try different possible field names for pincode
   return cityData?.pincode || cityData?.postal_code || cityData?.zip || cityData?.pin || null;
+};
+
+// ==================== NOTIFICATION APIs ====================
+
+/**
+ * Get paginated list of notifications
+ * @param {number} page - Page number (default 1)
+ * @param {number} limit - Items per page (default 20)
+ */
+export const getNotificationList = async (page = 1, limit = 20) => {
+  return makeRequest(`/api/notification/list?page=${page}&limit=${limit}`, {
+    method: 'GET'
+  });
+};
+
+/**
+ * Get unread notification count
+ */
+export const getUnreadNotificationCount = async () => {
+  return makeRequest('/api/notification/unread-count', {
+    method: 'GET'
+  });
+};
+
+/**
+ * Mark a specific notification as read
+ * @param {string} notificationId - ID of the notification
+ */
+export const markNotificationAsRead = async (notificationId) => {
+  return makeRequest(`/api/notification/${notificationId}/read`, {
+    method: 'POST'
+  });
+};
+
+/**
+ * Mark notification as read using PATCH method
+ * @param {string} notificationId - ID of the notification
+ */
+export const patchMarkNotificationAsRead = async (notificationId) => {
+  return makeRequest(`/api/notification/mark-read/${notificationId}`, {
+    method: 'PATCH'
+  });
+};
+
+/**
+ * Mark all notifications as read
+ */
+export const markAllNotificationsAsRead = async () => {
+  return makeRequest('/api/notification/read-all', {
+    method: 'POST'
+  });
+};
+
+/**
+ * Delete a specific notification
+ * @param {string} notificationId - ID of the notification
+ */
+export const deleteNotification = async (notificationId) => {
+  return makeRequest(`/api/notification/${notificationId}`, {
+    method: 'DELETE'
+  });
+};
+
+/**
+ * Delete all notifications
+ */
+export const deleteAllNotifications = async () => {
+  return makeRequest('/api/notification/delete-all', {
+    method: 'DELETE'
+  });
 };

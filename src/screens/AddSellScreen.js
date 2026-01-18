@@ -17,6 +17,7 @@ import {
   Modal,
   FlatList,
 } from "react-native";
+import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
@@ -327,15 +328,21 @@ const ContactOptionToggle = React.memo(({ label, enabled, onToggle, icon }) => (
   </View>
 ));
 
-const AddSellScreen = ({ navigation, route }) => {
+const AddSellScreen = () => {
+  // Get navigation and route from hooks
+  const navigation = useNavigation();
+  const route = useRoute();
+  
   // Multi-step form navigation - ALWAYS call these hooks first in the same order
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 3;
 
   // All form state - keep in consistent order
   const [propertyState, setPropertyState] = useState("");
-  const [city, setCity] = useState("");
-  const [post, setPost] = useState(""); // Post office area
+  const [city, setCity] = useState(""); // Manual city input
+  const [district, setDistrict] = useState(""); // District from dropdown
+  const [isOtherDistrict, setIsOtherDistrict] = useState(false); // Track if "Other" is selected
+  const [manualDistrict, setManualDistrict] = useState(""); // Manual district input when "Other" selected
   const [locality, setLocality] = useState(""); // Manual locality/area input
   const [pincode, setPincode] = useState("");
   const [propertyType, setPropertyType] = useState("Residential");
@@ -364,16 +371,13 @@ const AddSellScreen = ({ navigation, route }) => {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
-  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-  const [postDropdownOpen, setPostDropdownOpen] = useState(false);
+  const [districtDropdownOpen, setDistrictDropdownOpen] = useState(false);
   const [stateSearchText, setStateSearchText] = useState("");
-  const [citySearchText, setCitySearchText] = useState("");
-  const [postSearchText, setPostSearchText] = useState("");
+  const [districtSearchText, setDistrictSearchText] = useState("");
   
   // Available options from locationData
   const [availableStates, setAvailableStates] = useState([]);
-  const [availableCities, setAvailableCities] = useState([]);
-  const [availablePosts, setAvailablePosts] = useState([]);
+  const [availableDistricts, setAvailableDistricts] = useState([]);
   const [citiesApiData, setCitiesApiData] = useState([]); // Store full city API data for pincode extraction
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -502,7 +506,17 @@ const AddSellScreen = ({ navigation, route }) => {
           setPropertyState(found.state || '');
           setCity(found.city || '');
           setLocality(found.locality || '');
-          setPost(found.post || '');
+          // Handle district - check if it was manually entered (Other option)
+          const savedDistrict = found.district || found.post || '';
+          if (savedDistrict === 'OTHER' || !availableDistricts.find(d => d.value === savedDistrict)) {
+            setDistrict('OTHER');
+            setIsOtherDistrict(true);
+            setManualDistrict(savedDistrict);
+          } else {
+            setDistrict(savedDistrict);
+            setIsOtherDistrict(false);
+            setManualDistrict('');
+          }
           setPincode(found.pincode || '');
           setArea(found.areaSqFt ? String(found.areaSqFt) : '');
           setPrice(found.price ? String(found.price) : '');
@@ -564,20 +578,26 @@ const AddSellScreen = ({ navigation, route }) => {
       if (propertyState) {
         try {
           const districts = await fetchDistricts(propertyState);
-          setAvailableCities(districts);
+          // Add "Other" option at the end of districts list
+          const districtsWithOther = [...districts, "Other (Enter Manually)"];
+          setAvailableDistricts(districtsWithOther);
           // Reset dependent fields when state changes
+          setDistrict("");
+          setIsOtherDistrict(false);
+          setManualDistrict("");
           setCity("");
-          setPost("");
           setLocality("");
           setPincode("");
         } catch (error) {
           console.error('Error loading districts:', error);
-          setAvailableCities([]);
+          setAvailableDistricts(["Other (Enter Manually)"]);
         }
       } else {
-        setAvailableCities([]);
+        setAvailableDistricts([]);
+        setDistrict("");
+        setIsOtherDistrict(false);
+        setManualDistrict("");
         setCity("");
-        setPost("");
         setLocality("");
         setPincode("");
       }
@@ -585,76 +605,30 @@ const AddSellScreen = ({ navigation, route }) => {
     loadDistricts();
   }, [propertyState]);
 
-  // Update cities when district changes
-  React.useEffect(() => {
-    console.log('🔥 Cities useEffect triggered! District (city var) changed to:', city);
-    const loadCities = async () => {
-      if (city) {
-        console.log('🚀 Calling fetchCities for district:', city);
-        try {
-          const cityNames = await fetchCities(city);
-          console.log('📨 fetchCities returned:', cityNames?.length ? `${cityNames.length} cities` : 'No cities', cityNames?.slice(0, 3));
-          setAvailablePosts(cityNames);
-          console.log('✅ Set availablePosts with', cityNames?.length, 'cities');
-          // Reset dependent fields when district changes
-          setPost("");
-          setLocality("");
-          setPincode("");
-        } catch (error) {
-          console.error('Error loading cities:', error);
-          const fallbackPosts = getAreasByCity(city);
-          setAvailablePosts(fallbackPosts);
-        }
-      } else {
-        setAvailablePosts([]);
-        setCitiesApiData([]);
-        setPost("");
-        setLocality("");
-        setPincode("");
-      }
-    };
-    loadCities();
-  }, [city]);
-
-  // Auto-fill pincode when city is selected from API data
-  React.useEffect(() => {
-    console.log('🎯 Pincode useEffect triggered. Post:', post, 'API Data length:', citiesApiData.length);
-    
-    if (post && citiesApiData.length > 0) {
-      // Find the selected city in API data by matching cleaned names
-      const selectedCity = citiesApiData.find(cityData => {
-        // Clean the API city name the same way we cleaned dropdown names
-        let cleanedApiName = cityData.name || '';
-        cleanedApiName = cleanedApiName.replace(/\s+(B\.O|S\.O|PO|SO|BO)$/i, '').trim();
-        
-        console.log('🔍 Comparing:', { 
-          selected: post, 
-          apiOriginal: cityData.name, 
-          apiCleaned: cleanedApiName,
-          match: cleanedApiName === post 
-        });
-        
-        return cleanedApiName === post;
-      });
-      
-      if (selectedCity && selectedCity.pincode) {
-        console.log('✅ Auto-filling pincode from API:', selectedCity.pincode, 'for city:', post);
-        setPincode(selectedCity.pincode);
-      } else if (selectedCity) {
-        console.log('⚠️ City found but no pincode:', selectedCity);
-      } else {
-        console.log('❌ No matching city found in API data for:', post);
-      }
-    } else if (city && post) {
-      // Fallback to static method when no API data
-      console.log('🔄 Using static method for pincode');
-      const pincode = getPincodeByArea(city, post);
-      if (pincode) {
-        console.log('📋 Auto-filling pincode from static data:', pincode);
-        setPincode(pincode);
-      }
+  // Handle district selection - check if "Other" is selected
+  const handleDistrictSelect = (selectedDistrict) => {
+    if (selectedDistrict === "Other (Enter Manually)") {
+      setIsOtherDistrict(true);
+      setDistrict("");
+      setManualDistrict("");
+    } else {
+      setIsOtherDistrict(false);
+      setDistrict(selectedDistrict);
+      setManualDistrict("");
     }
-  }, [post, citiesApiData, city]);
+    // Reset city when district changes
+    setCity("");
+    setLocality("");
+    setPincode("");
+  };
+
+  // Get effective district value (from dropdown or manual)
+  const getEffectiveDistrict = () => {
+    return isOtherDistrict ? manualDistrict : district;
+  };
+
+  // Note: City is now manual input, no need for cities API call
+  // Pincode is also manual input
 
   // Debug function to test API directly
   const testAPI = async () => {
@@ -732,16 +706,19 @@ const AddSellScreen = ({ navigation, route }) => {
 
   // Step Navigation Functions - wrapped in useCallback
   const validateStep1 = useCallback(() => {
+    // Get effective district value
+    const effectiveDistrict = isOtherDistrict ? manualDistrict : district;
+    
     if (!propertyState?.trim()) {
       Alert.alert('Missing Information', 'Please select State');
       return false;
     }
-    if (!city?.trim()) {
-      Alert.alert('Missing Information', 'Please select City');
+    if (!effectiveDistrict?.trim()) {
+      Alert.alert('Missing Information', 'Please select District or enter manually');
       return false;
     }
-    if (!post?.trim()) {
-      Alert.alert('Missing Information', 'Please select Post');
+    if (!city?.trim()) {
+      Alert.alert('Missing Information', 'Please enter City/Town');
       return false;
     }
     if (!locality?.trim()) {
@@ -753,7 +730,7 @@ const AddSellScreen = ({ navigation, route }) => {
       return false;
     }
     return true;
-  }, [propertyState, city, post, locality, pincode]);
+  }, [propertyState, district, isOtherDistrict, manualDistrict, city, locality, pincode]);
 
   const validateStep2 = useCallback(() => {
     if (!area?.trim() || isNaN(parseInt(area)) || parseInt(area) <= 0) {
@@ -972,6 +949,9 @@ const AddSellScreen = ({ navigation, route }) => {
   const handleSubmit = async () => {
     console.log('🚀 Starting property submission validation...');
     
+    // Get effective district (from dropdown or manual input)
+    const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
+    
     // =============================================================================
     // COMPREHENSIVE FRONTEND VALIDATION (Prevents backend validation errors)
     // =============================================================================
@@ -979,8 +959,8 @@ const AddSellScreen = ({ navigation, route }) => {
     // 1. REQUIRED FIELDS VALIDATION - Backend schema requirements
     const requiredFields = [
       { value: propertyState, name: "State", field: "address.state" },
+      { value: effectiveDistrict, name: "District", field: "address.district" },
       { value: city, name: "City", field: "address.city" },
-      { value: post, name: "Post", field: "address.post" },
       { value: locality, name: "Locality/Area", field: "address.locality" },
       { value: pincode, name: "PIN Code", field: "address.pincode" },
       { value: area, name: "Area", field: "areaDetails" },
@@ -991,6 +971,7 @@ const AddSellScreen = ({ navigation, route }) => {
     // CRITICAL: Address fields validation - Backend requires nested address object
     const addressValidation = {
       state: propertyState?.trim() || '',
+      district: effectiveDistrict || '',
       city: city?.trim() || '',
       locality: locality?.trim() || '', // This is the manual input, not the post dropdown
       pincode: pincode?.trim() || ''
@@ -1001,11 +982,11 @@ const AddSellScreen = ({ navigation, route }) => {
       console.log(`  - ${key}: "${value}" (length: ${value.length})`);
     });
 
-    // Validate each address field individually (including post for UI validation)
+    // Validate each address field individually
     const addressErrors = [];
     if (!addressValidation.state) addressErrors.push('State');
+    if (!addressValidation.district) addressErrors.push('District');
     if (!addressValidation.city) addressErrors.push('City');
-    if (!post?.trim()) addressErrors.push('Post'); // Validate post but don't send to backend
     if (!addressValidation.locality) addressErrors.push('Locality/Area');
     if (!addressValidation.pincode || !/^\d{6}$/.test(addressValidation.pincode)) addressErrors.push('PIN Code (6 digits)');
 
@@ -1146,15 +1127,19 @@ const AddSellScreen = ({ navigation, route }) => {
   
   // New function to handle actual property submission after payment
   const handlePropertySubmission = async () => {
+    // Get effective district (from dropdown or manual input)
+    const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
+    
     console.log('🔍 DEBUG: Current state values:');
     console.log('  propertyState:', propertyState);
+    console.log('  district:', effectiveDistrict);
     console.log('  city:', city);
     console.log('  locality:', locality);
-    console.log('  post:', post);
     console.log('  pincode:', pincode);
     
     const addressValidation = {
       state: propertyState?.trim() || '',
+      district: effectiveDistrict || '',
       city: city?.trim() || '',
       locality: locality?.trim() || '',
       pincode: pincode?.trim() || ''
@@ -1327,11 +1312,11 @@ const AddSellScreen = ({ navigation, route }) => {
             }
 
             // Now append the rest of fields (replicating the original logic)
-            // Address
+            // Address - include district
             formData.append('state', addressValidation.state);
+            formData.append('district', addressValidation.district);
             formData.append('city', addressValidation.city);
             formData.append('locality', addressValidation.locality);
-            formData.append('post', post || '');
             formData.append('pincode', addressValidation.pincode);
 
             // Required core fields
@@ -1617,8 +1602,7 @@ const AddSellScreen = ({ navigation, route }) => {
               setIsOpen={(val) => {
                 setStateDropdownOpen(val);
                 if (val) {
-                  setCityDropdownOpen(false);
-                  setPostDropdownOpen(false);
+                  setDistrictDropdownOpen(false);
                 }
               }}
               placeholder="Select State"
@@ -1627,67 +1611,63 @@ const AddSellScreen = ({ navigation, route }) => {
               setSearchText={setStateSearchText}
             />
             
+            {/* District Dropdown with "Other" option */}
             <Dropdown
-              options={availableCities}
-              selectedValue={city}
-              onSelect={setCity}
-              isOpen={cityDropdownOpen}
+              options={availableDistricts}
+              selectedValue={isOtherDistrict ? "Other (Enter Manually)" : district}
+              onSelect={handleDistrictSelect}
+              isOpen={districtDropdownOpen}
               setIsOpen={(val) => {
-                setCityDropdownOpen(val);
+                setDistrictDropdownOpen(val);
                 if (val) {
                   setStateDropdownOpen(false);
-                  setPostDropdownOpen(false);
                 }
               }}
               placeholder={propertyState ? "Select District" : "Select state first"}
               label="District"
               icon="business"
-              searchText={citySearchText}
-              setSearchText={setCitySearchText}
+              searchText={districtSearchText}
+              setSearchText={setDistrictSearchText}
             />
             
-            <Dropdown
-              options={(() => {
-                console.log('🎨 City Dropdown rendering. availablePosts:', availablePosts?.slice(0, 3), 'Total:', availablePosts?.length);
-                return availablePosts || [];
-              })()}
-              selectedValue={post}
-              onSelect={(selectedCity) => {
-                console.log('🏙️ City selected from dropdown:', selectedCity);
-                setPost(selectedCity);
-              }}
-              isOpen={postDropdownOpen}
-              setIsOpen={(val) => {
-                setPostDropdownOpen(val);
-                if (val) {
-                  setStateDropdownOpen(false);
-                  setCityDropdownOpen(false);
-                }
-              }}
-              placeholder={city ? "Select City" : "Select district first"}
-              label="City"
-              icon="location"
-              searchText={postSearchText}
-              setSearchText={setPostSearchText}
+            {/* Manual District Input - shown when "Other" is selected */}
+            {isOtherDistrict && (
+              <InputField
+                label="Enter District Name*"
+                placeholder="Type your district name"
+                placeholderTextColor="#999"
+                value={manualDistrict}
+                onChangeText={setManualDistrict}
+              />
+            )}
+            
+            {/* City - Manual Input */}
+            <InputField
+              label="City/Town*"
+              placeholder="Enter city or town name"
+              placeholderTextColor="#999"
+              value={city}
+              onChangeText={setCity}
             />
             
             <InputField
-            label="PIN Code*"
-            placeholder="Auto-filled (or enter manually)"
-            placeholderTextColor="#999"
-            keyboardType="numeric"
-            maxLength={6}
-            value={pincode}
-            onChangeText={setPincode}
-          />
-          <InputField
-            label="Locality/Area*"
-            placeholder="Enter locality or area name"
-            placeholderTextColor="#999"
-            value={locality}
-            onChangeText={setLocality}
-          />
-        </SectionCard>
+              label="PIN Code*"
+              placeholder="Enter PIN code"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+              maxLength={6}
+              value={pincode}
+              onChangeText={setPincode}
+            />
+            
+            <InputField
+              label="Locality/Area*"
+              placeholder="Enter locality or area name"
+              placeholderTextColor="#999"
+              value={locality}
+              onChangeText={setLocality}
+            />
+          </SectionCard>
         )}
 
         {/* Step 2: Basic Details + Contact Details */}

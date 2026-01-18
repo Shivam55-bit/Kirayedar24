@@ -22,6 +22,8 @@ import FontAwesomeIcon from "react-native-vector-icons/FontAwesome";
 import { useFocusEffect } from '@react-navigation/native';
 import { getCurrentUserProfile } from '../services/userapi';
 import { getUserProperties } from '../services/propertyService';
+import { getActiveSubscription } from '../services/subscriptionApi';
+import { getUserSubscription } from '../services/api';
 import CustomAlert from '../components/CustomAlert';
 
 // Real API integration for profile data
@@ -57,12 +59,20 @@ const ProfileScreen = ({ navigation }) => {
     const [error, setError] = useState('');
     const [avatar, setAvatar] = useState(null);
     const [avatarVersion, setAvatarVersion] = useState(Date.now());
+    const [userRole, setUserRole] = useState('');
+    const [notificationCount, setNotificationCount] = useState(0);
+    const [activeSubscription, setActiveSubscription] = useState(null);
+    const [subscriptionLoading, setSubscriptionLoading] = useState(false);
 
     const loadProfileData = useCallback(async () => {
         setLoading(true);
         setError('');
         
         try {
+            // Load user role from AsyncStorage
+            const role = await AsyncStorage.getItem('userRole');
+            setUserRole(role || 'tenant');
+            
             // Load user profile from API
             const response = await getCurrentUserProfile();
             
@@ -80,7 +90,58 @@ const ProfileScreen = ({ navigation }) => {
                     setMyListingsCount(0);
                 }
                 
-                setShortlistedCount(0); // Keep as 0 for now
+                // Load saved properties count from AsyncStorage
+                try {
+                    const savedProperties = await AsyncStorage.getItem('savedProperties');
+                    if (savedProperties) {
+                        const savedList = JSON.parse(savedProperties);
+                        setShortlistedCount(savedList.length);
+                    } else {
+                        setShortlistedCount(0);
+                    }
+                } catch (e) {
+                    setShortlistedCount(0);
+                }
+                
+                // Load notification count from AsyncStorage
+                try {
+                    const notifCount = await AsyncStorage.getItem('notification_count');
+                    setNotificationCount(notifCount ? parseInt(notifCount) : 0);
+                } catch (e) {
+                    setNotificationCount(0);
+                }
+                
+                // Load active subscription for tenant
+                if (role === 'tenant') {
+                    console.log('🔄 Loading subscription for tenant...');
+                    setSubscriptionLoading(true);
+                    try {
+                        // Try primary subscription API
+                        let subResponse = await getActiveSubscription();
+                        console.log('📦 Primary Subscription Response:', JSON.stringify(subResponse, null, 2));
+                        
+                        // If primary fails, try fallback API
+                        if (!subResponse.success) {
+                            console.log('⚠️ Primary API failed, trying fallback...');
+                            subResponse = await getUserSubscription();
+                            console.log('📦 Fallback Subscription Response:', JSON.stringify(subResponse, null, 2));
+                        }
+                        
+                        if (subResponse.success && subResponse.data) {
+                            console.log('✅ Active subscription found:', subResponse.data);
+                            setActiveSubscription(subResponse.data);
+                        } else {
+                            console.log('⚠️ No active subscription:', subResponse.message);
+                            setActiveSubscription(null);
+                        }
+                    } catch (subErr) {
+                        console.error('❌ Failed to load subscription:', subErr);
+                        setActiveSubscription(null);
+                    } finally {
+                        setSubscriptionLoading(false);
+                        console.log('✅ Subscription loading complete.');
+                    }
+                }
                 
             } else {
                 // Fallback to stored data if API fails
@@ -237,69 +298,184 @@ const ProfileScreen = ({ navigation }) => {
 
                         <TouchableOpacity 
                             style={[styles.actionCard, { backgroundColor: COLORS.pink + '10' }]}
-                            onPress={() => navigation.navigate('Shortlisted')}
+                            onPress={() => navigation.navigate('Saved')}
                         >
                             <View style={[styles.actionIcon, { backgroundColor: COLORS.pink + '20' }]}>
                                 <Icon name="heart" size={24} color={COLORS.pink} />
                             </View>
                             <Text style={styles.actionTitle}>Favorites</Text>
-                            <Text style={styles.actionCount}>{shortlistedCount}</Text>
+                            <Text style={styles.actionCount}>{shortlistedCount > 0 ? shortlistedCount : '0'}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity 
                             style={[styles.actionCard, { backgroundColor: COLORS.orange + '10' }]}
-                            onPress={() => navigation.navigate('Notifications')}
+                            onPress={() => navigation.navigate('NotificationList')}
                         >
                             <View style={[styles.actionIcon, { backgroundColor: COLORS.orange + '20' }]}>
                                 <Icon name="notifications" size={24} color={COLORS.orange} />
                             </View>
                             <Text style={styles.actionTitle}>Notifications</Text>
-                            <Text style={styles.actionCount}>New</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            style={[styles.actionCard, { backgroundColor: COLORS.accent + '10' }]}
-                            onPress={() => navigation.navigate('PayRentScreen')}
-                        >
-                            <View style={[styles.actionIcon, { backgroundColor: COLORS.accent + '20' }]}>
-                                <Icon name="card" size={24} color={COLORS.accent} />
-                            </View>
-                            <Text style={styles.actionTitle}>Pay Rent</Text>
-                            <Text style={styles.actionCount}>Quick</Text>
+                            <Text style={styles.actionCount}>{notificationCount > 0 ? notificationCount : 'None'}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Premium Features Card */}
-                <TouchableOpacity 
-                    style={styles.premiumCard} 
-                    onPress={() => console.log('Go Premium')}
-                    activeOpacity={0.9}
-                >
-                    <View style={styles.premiumHeader}>
-                        <View style={styles.premiumIconWrapper}>
-                            <FontAwesomeIcon name="crown" size={20} color={COLORS.warning} />
-                        </View>
-                        <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
-                    </View>
-                    <Text style={styles.premiumDescription}>
-                        Unlock exclusive features, priority support, and advanced analytics
-                    </Text>
-                    <View style={styles.premiumFeatures}>
-                        <View style={styles.featureItem}>
-                            <Icon name="checkmark-circle" size={16} color={COLORS.success} />
-                            <Text style={styles.featureText}>Priority Support</Text>
-                        </View>
-                        <View style={styles.featureItem}>
-                            <Icon name="checkmark-circle" size={16} color={COLORS.success} />
-                            <Text style={styles.featureText}>Advanced Analytics</Text>
+                {/* Subscription Loading Indicator */}
+                {userRole === 'tenant' && subscriptionLoading && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Subscription</Text>
+                        <View style={styles.subscriptionCard}>
+                            <ActivityIndicator size="small" color={COLORS.primary} />
+                            <Text style={styles.loadingText}>Loading subscription...</Text>
                         </View>
                     </View>
-                    <View style={styles.premiumButton}>
-                        <Text style={styles.premiumButtonText}>Try Free for 7 Days</Text>
-                        <Icon name="arrow-forward" size={16} color={COLORS.white} />
+                )}
+
+                {/* Active Subscription Card - Only show for tenants */}
+                {userRole === 'tenant' && !subscriptionLoading && activeSubscription && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Active Subscription</Text>
+                        <View style={styles.subscriptionCard}>
+                            <View style={styles.subscriptionHeader}>
+                                <View style={styles.subscriptionBadge}>
+                                    <FontAwesomeIcon name="star" size={16} color={COLORS.warning} />
+                                    <Text style={styles.subscriptionBadgeText}>ACTIVE</Text>
+                                </View>
+                                <View style={styles.subscriptionStatus}>
+                                    <Icon 
+                                        name="checkmark-circle" 
+                                        size={20} 
+                                        color={COLORS.success} 
+                                    />
+                                </View>
+                            </View>
+                            
+                            <Text style={styles.subscriptionPlanName}>
+                                {activeSubscription.packageName || activeSubscription.planName || 'Premium Plan'}
+                            </Text>
+                            
+                            <View style={styles.subscriptionDetails}>
+                                <View style={styles.subscriptionDetailItem}>
+                                    <Icon name="calendar-outline" size={18} color={COLORS.greyText} />
+                                    <View style={styles.subscriptionDetailText}>
+                                        <Text style={styles.subscriptionDetailLabel}>Started</Text>
+                                        <Text style={styles.subscriptionDetailValue}>
+                                            {activeSubscription.startDate 
+                                                ? new Date(activeSubscription.startDate).toLocaleDateString('en-IN', { 
+                                                    day: 'numeric', 
+                                                    month: 'short', 
+                                                    year: 'numeric' 
+                                                })
+                                                : 'N/A'
+                                            }
+                                        </Text>
+                                    </View>
+                                </View>
+                                
+                                <View style={styles.subscriptionDetailItem}>
+                                    <Icon name="time-outline" size={18} color={COLORS.greyText} />
+                                    <View style={styles.subscriptionDetailText}>
+                                        <Text style={styles.subscriptionDetailLabel}>Expires</Text>
+                                        <Text style={styles.subscriptionDetailValue}>
+                                            {activeSubscription.endDate 
+                                                ? new Date(activeSubscription.endDate).toLocaleDateString('en-IN', { 
+                                                    day: 'numeric', 
+                                                    month: 'short', 
+                                                    year: 'numeric' 
+                                                })
+                                                : 'N/A'
+                                            }
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                            
+                            {activeSubscription.endDate && (() => {
+                                const today = new Date();
+                                const expiryDate = new Date(activeSubscription.endDate);
+                                const daysRemaining = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+                                const isExpiringSoon = daysRemaining <= 7 && daysRemaining > 0;
+                                const isExpired = daysRemaining <= 0;
+                                
+                                return (
+                                    <View style={[
+                                        styles.subscriptionRemainingCard,
+                                        isExpired && styles.subscriptionExpiredCard,
+                                        isExpiringSoon && styles.subscriptionExpiringSoonCard
+                                    ]}>
+                                        <Icon 
+                                            name={isExpired ? "close-circle" : "hourglass-outline"} 
+                                            size={20} 
+                                            color={isExpired ? COLORS.redAccent : isExpiringSoon ? COLORS.warning : COLORS.success} 
+                                        />
+                                        <Text style={[
+                                            styles.subscriptionRemainingText,
+                                            isExpired && styles.subscriptionExpiredText
+                                        ]}>
+                                            {isExpired 
+                                                ? 'Expired' 
+                                                : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`
+                                            }
+                                        </Text>
+                                    </View>
+                                );
+                            })()}
+                            
+                            <TouchableOpacity 
+                                style={styles.renewButton}
+                                onPress={() => navigation.navigate('AddSell')}
+                            >
+                                <Text style={styles.renewButtonText}>Renew / Upgrade</Text>
+                                <Icon name="arrow-forward" size={16} color={COLORS.white} />
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                </TouchableOpacity>
+                )}
+
+                {/* No Subscription Message */}
+                {userRole === 'tenant' && !subscriptionLoading && !activeSubscription && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Subscription</Text>
+                        <View style={styles.subscriptionCard}>
+                            <Icon name="information-circle-outline" size={40} color={COLORS.greyText} />
+                            <Text style={[styles.subscriptionPlanName, {marginTop: 12, textAlign: 'center'}]}>No Active Subscription</Text>
+                            <Text style={[styles.subscriptionDetailLabel, {textAlign: 'center', marginTop: 8}]}>Purchase a plan to list your properties</Text>
+                        </View>
+                    </View>
+                )}
+
+                {/* Premium Features Card - Only show for tenants without active subscription */}
+                {userRole === 'tenant' && !activeSubscription && !subscriptionLoading && (
+                    <TouchableOpacity 
+                        style={styles.premiumCard} 
+                        onPress={() => console.log('Go Premium')}
+                        activeOpacity={0.9}
+                    >
+                        <View style={styles.premiumHeader}>
+                            <View style={styles.premiumIconWrapper}>
+                                <FontAwesomeIcon name="crown" size={20} color={COLORS.warning} />
+                            </View>
+                            <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
+                        </View>
+                        <Text style={styles.premiumDescription}>
+                            Unlock exclusive features, priority support, and advanced analytics
+                        </Text>
+                        <View style={styles.premiumFeatures}>
+                            <View style={styles.featureItem}>
+                                <Icon name="checkmark-circle" size={16} color={COLORS.success} />
+                                <Text style={styles.featureText}>Priority Support</Text>
+                            </View>
+                            <View style={styles.featureItem}>
+                                <Icon name="checkmark-circle" size={16} color={COLORS.success} />
+                                <Text style={styles.featureText}>Advanced Analytics</Text>
+                            </View>
+                        </View>
+                        <View style={styles.premiumButton}>
+                            <Text style={styles.premiumButtonText}>Try Free for 7 Days</Text>
+                            <Icon name="arrow-forward" size={16} color={COLORS.white} />
+                        </View>
+                    </TouchableOpacity>
+                )}
 
                 {/* Settings Menu */}
                 <View style={styles.section}>
@@ -318,18 +494,7 @@ const ProfileScreen = ({ navigation }) => {
 
                         <TouchableOpacity 
                             style={styles.menuItem}
-                            onPress={() => navigation.navigate('PrivacySecurity')}
-                        >
-                            <View style={[styles.menuIcon, { backgroundColor: COLORS.success + '20' }]}>
-                                <Icon name="shield-checkmark-outline" size={20} color={COLORS.success} />
-                            </View>
-                            <Text style={styles.menuText}>Privacy & Security</Text>
-                            <Icon name="chevron-forward" size={20} color={COLORS.greyText} />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            style={styles.menuItem}
-                            onPress={() => navigation.navigate('Help')}
+                            onPress={() => navigation.navigate('PropertyInquiryFormScreen')}
                         >
                             <View style={[styles.menuIcon, { backgroundColor: COLORS.accent + '20' }]}>
                                 <Icon name="help-circle-outline" size={20} color={COLORS.accent} />
@@ -802,6 +967,122 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 15,
         fontWeight: '600',
+    },
+
+    // Subscription Card
+    subscriptionCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
+        padding: 20,
+        borderWidth: 2,
+        borderColor: COLORS.success + '30',
+        ...Platform.select({
+            ios: {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 5,
+            },
+        }),
+    },
+    subscriptionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    subscriptionBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.warning + '20',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    subscriptionBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.warning,
+        marginLeft: 6,
+        letterSpacing: 0.5,
+    },
+    subscriptionStatus: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: COLORS.success + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    subscriptionPlanName: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: COLORS.black,
+        marginBottom: 20,
+    },
+    subscriptionDetails: {
+        marginBottom: 16,
+    },
+    subscriptionDetailItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    subscriptionDetailText: {
+        marginLeft: 12,
+        flex: 1,
+    },
+    subscriptionDetailLabel: {
+        fontSize: 12,
+        color: COLORS.greyText,
+        marginBottom: 2,
+    },
+    subscriptionDetailValue: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.black,
+    },
+    subscriptionRemainingCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.success + '10',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        marginBottom: 16,
+    },
+    subscriptionExpiringSoonCard: {
+        backgroundColor: COLORS.warning + '10',
+    },
+    subscriptionExpiredCard: {
+        backgroundColor: COLORS.redAccent + '10',
+    },
+    subscriptionRemainingText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.success,
+        marginLeft: 8,
+    },
+    subscriptionExpiredText: {
+        color: COLORS.redAccent,
+    },
+    renewButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.primary,
+        paddingVertical: 14,
+        borderRadius: 12,
+    },
+    renewButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.white,
+        marginRight: 8,
     },
 });
 

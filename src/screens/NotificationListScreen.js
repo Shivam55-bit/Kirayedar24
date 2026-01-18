@@ -12,31 +12,87 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// API services removed
-// import { formatImageUrl } from '../services/homeApi';
-import { runCompleteFCMTest, showFCMTestResults, sendTestFCMNotification } from '../utils/fcmTestService';
+import { 
+  getNotificationList, 
+  getUnreadNotificationCount, 
+  markNotificationAsRead, 
+  deleteNotification,
+  deleteAllNotifications,
+  markAllNotificationsAsRead
+} from '../services/api';
 
 const NotificationListScreen = ({ navigation }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Load notifications from AsyncStorage
-  const loadNotifications = async () => {
+  // Load notifications from API
+  const loadNotifications = async (pageNum = 1, append = false) => {
+    try {
+      if (pageNum === 1) {
+        setLoading(true);
+      }
+      
+      const response = await getNotificationList(pageNum, 20);
+      
+      if (response.success && response.data) {
+        const newNotifications = response.data.notifications || response.data || [];
+        
+        if (append) {
+          setNotifications(prev => [...prev, ...newNotifications]);
+        } else {
+          setNotifications(newNotifications);
+        }
+        
+        // Check if there are more notifications
+        setHasMore(newNotifications.length === 20);
+        
+        // Load unread count
+        loadUnreadCount();
+      } else {
+        console.warn('Failed to load notifications:', response.message);
+        // Fallback to local storage if API fails
+        await loadLocalNotifications();
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+      // Fallback to local storage
+      await loadLocalNotifications();
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Load notifications from local AsyncStorage (fallback)
+  const loadLocalNotifications = async () => {
     try {
       const stored = await AsyncStorage.getItem('app_notifications');
       if (stored) {
         const notificationsList = JSON.parse(stored);
-        // Sort by timestamp (newest first)
         const sortedNotifications = notificationsList.sort((a, b) => 
           new Date(b.timestamp) - new Date(a.timestamp)
         );
         setNotifications(sortedNotifications);
       }
     } catch (error) {
-      console.error('Error loading notifications:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error loading local notifications:', error);
+    }
+  };
+
+  // Load unread notification count
+  const loadUnreadCount = async () => {
+    try {
+      const response = await getUnreadNotificationCount();
+      if (response.success) {
+        const count = response.data?.count || response.data?.unreadCount || 0;
+        setUnreadCount(count);
+      }
+    } catch (error) {
+      console.error('Error loading unread count:', error);
     }
   };
 
@@ -52,13 +108,21 @@ const NotificationListScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await AsyncStorage.removeItem('app_notifications');
-              await AsyncStorage.setItem('notification_count', '0');
-              setNotifications([]);
-              // Notify HomeScreen to update count
-              navigation.navigate('Home');
+              setLoading(true);
+              const response = await deleteAllNotifications();
+              
+              if (response.success) {
+                setNotifications([]);
+                setUnreadCount(0);
+                Alert.alert('Success', 'All notifications cleared');
+              } else {
+                Alert.alert('Error', response.message || 'Failed to clear notifications');
+              }
             } catch (error) {
               console.error('Error clearing notifications:', error);
+              Alert.alert('Error', 'Failed to clear notifications');
+            } finally {
+              setLoading(false);
             }
           },
         },
@@ -69,27 +133,83 @@ const NotificationListScreen = ({ navigation }) => {
   // Mark notification as read
   const markAsRead = async (notificationId) => {
     try {
-      const updatedNotifications = notifications.map(notification =>
-        notification.id === notificationId
-          ? { ...notification, read: true }
-          : notification
-      );
+      const response = await markNotificationAsRead(notificationId);
       
-      setNotifications(updatedNotifications);
-      await AsyncStorage.setItem('app_notifications', JSON.stringify(updatedNotifications));
-      
-      // Update unread count
-      const unreadCount = updatedNotifications.filter(n => !n.read).length;
-      await AsyncStorage.setItem('notification_count', unreadCount.toString());
+      if (response.success) {
+        // Update local state
+        const updatedNotifications = notifications.map(notification =>
+          notification._id === notificationId || notification.id === notificationId
+            ? { ...notification, read: true, isRead: true }
+            : notification
+        );
+        
+        setNotifications(updatedNotifications);
+        loadUnreadCount();
+      }
     } catch (error) {
       console.error('Error marking notification as read:', error);
+    }
+  };
+
+  // Delete a single notification
+  const handleDeleteNotification = async (notificationId) => {
+    Alert.alert(
+      'Delete Notification',
+      'Are you sure you want to delete this notification?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await deleteNotification(notificationId);
+              
+              if (response.success) {
+                setNotifications(prev => 
+                  prev.filter(n => n._id !== notificationId && n.id !== notificationId)
+                );
+                loadUnreadCount();
+              } else {
+                Alert.alert('Error', response.message || 'Failed to delete notification');
+              }
+            } catch (error) {
+              console.error('Error deleting notification:', error);
+              Alert.alert('Error', 'Failed to delete notification');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Mark all as read
+  const handleMarkAllAsRead = async () => {
+    try {
+      setLoading(true);
+      const response = await markAllNotificationsAsRead();
+      
+      if (response.success) {
+        const updatedNotifications = notifications.map(n => ({ ...n, read: true, isRead: true }));
+        setNotifications(updatedNotifications);
+        setUnreadCount(0);
+        Alert.alert('Success', 'All notifications marked as read');
+      } else {
+        Alert.alert('Error', response.message || 'Failed to mark all as read');
+      }
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+      Alert.alert('Error', 'Failed to mark all as read');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Handle notification tap
   const handleNotificationTap = async (notification) => {
     // Mark as read
-    await markAsRead(notification.id);
+    const notifId = notification._id || notification.id;
+    await markAsRead(notifId);
     
     // Navigate based on notification type
     if (notification.type === 'new_property' && notification.propertyId) {
@@ -100,6 +220,33 @@ const NotificationListScreen = ({ navigation }) => {
       navigation.navigate('ChatDetailScreen', { chatId: notification.chatId });
     }
   };
+
+  // Load more notifications (pagination)
+  const loadMore = () => {
+    if (!loading && hasMore) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadNotifications(nextPage, true);
+    }
+  };
+
+  // Refresh notifications
+  const onRefresh = async () => {
+    setRefreshing(true);
+    setPage(1);
+    await loadNotifications(1, false);
+  };
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadNotifications(1, false);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Get notification icon based on type
   const getNotificationIcon = (type) => {
@@ -139,61 +286,65 @@ const NotificationListScreen = ({ navigation }) => {
     return date.toLocaleDateString();
   };
 
-  // Refresh notifications
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadNotifications();
-    setRefreshing(false);
-  };
-
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
   // Render notification item
-  const renderNotificationItem = ({ item }) => (
-    <TouchableOpacity
-      style={[
-        styles.notificationItem,
-        !item.read && styles.unreadNotification
-      ]}
-      onPress={() => handleNotificationTap(item)}
-      activeOpacity={0.7}
-    >
-      <View style={[styles.iconContainer, { backgroundColor: getNotificationColor(item.type) + '20' }]}>
-        <Icon 
-          name={getNotificationIcon(item.type)} 
-          size={24} 
-          color={getNotificationColor(item.type)} 
-        />
-      </View>
-      
-      <View style={styles.contentContainer}>
-        <View style={styles.headerRow}>
-          <Text style={[styles.title, !item.read && styles.unreadTitle]}>
-            {item.title}
-          </Text>
-          {!item.read && <View style={styles.unreadDot} />}
+  const renderNotificationItem = ({ item }) => {
+    const notifId = item._id || item.id;
+    const isRead = item.read || item.isRead || false;
+    
+    return (
+      <TouchableOpacity
+        style={[
+          styles.notificationItem,
+          !isRead && styles.unreadNotification
+        ]}
+        onPress={() => handleNotificationTap(item)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: getNotificationColor(item.type) + '20' }]}>
+          <Icon 
+            name={getNotificationIcon(item.type)} 
+            size={24} 
+            color={getNotificationColor(item.type)} 
+          />
         </View>
         
-        <Text style={styles.message} numberOfLines={2}>
-          {item.message}
-        </Text>
+        <View style={styles.contentContainer}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.title, !isRead && styles.unreadTitle]}>
+              {item.title}
+            </Text>
+            {!isRead && <View style={styles.unreadDot} />}
+          </View>
+          
+          <Text style={styles.message} numberOfLines={2}>
+            {item.message || item.body || item.description}
+          </Text>
+          
+          <View style={styles.footerRow}>
+            <Text style={styles.timestamp}>
+              {formatTimestamp(item.timestamp || item.createdAt)}
+            </Text>
+            
+            <TouchableOpacity
+              onPress={() => handleDeleteNotification(notifId)}
+              style={styles.deleteButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="trash-outline" size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
+        </View>
         
-        <Text style={styles.timestamp}>
-          {formatTimestamp(item.timestamp)}
-        </Text>
-      </View>
-      
-      {item.image && (
-        <Image
-          source={{ uri: formatImageUrl(item.image) }}
-          style={styles.notificationImage}
-          resizeMode="cover"
-        />
-      )}
-    </TouchableOpacity>
-  );
+        {item.image && (
+          <Image
+            source={{ uri: item.image }}
+            style={styles.notificationImage}
+            resizeMode="cover"
+          />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -218,57 +369,23 @@ const NotificationListScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#FDB022" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        
-        {/* FCM Test Button - for debugging */}
-        {__DEV__ && (
-          <TouchableOpacity 
-            onPress={async () => {
-              Alert.alert(
-                'FCM Test Options',
-                'Test Firebase Cloud Messaging functionality',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Quick Test',
-                    onPress: async () => {
-                      const result = await sendTestFCMNotification();
-                      Alert.alert(
-                        result.success ? '✅ Test Sent' : '❌ Test Failed',
-                        result.success 
-                          ? `Test notification sent via ${result.method}` 
-                          : result.error
-                      );
-                      // Refresh notifications list
-                      await loadNotifications();
-                    }
-                  },
-                  {
-                    text: 'Full Diagnostics',
-                    onPress: async () => {
-                      const results = await runCompleteFCMTest();
-                      showFCMTestResults(results);
-                      // Refresh notifications list
-                      await loadNotifications();
-                    }
-                  }
-                ]
-              );
-            }}
-            style={[styles.clearButton, { backgroundColor: '#4CAF50', marginRight: 8 }]}
-          >
-            <Text style={styles.clearButtonText}>FCM</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={styles.headerTitle}>
+          Notifications {unreadCount > 0 && `(${unreadCount})`}
+        </Text>
         
         {notifications.length > 0 && (
-          <TouchableOpacity onPress={clearAllNotifications} style={styles.clearButton}>
-            <Text style={styles.clearButtonText}>Clear All</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.actionButton}>
+              <Icon name="checkmark-done-outline" size={20} color="#4CAF50" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={clearAllNotifications} style={styles.actionButton}>
+              <Icon name="trash-outline" size={20} color="#FF5252" />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
-      {notifications.length === 0 ? (
+      {notifications.length === 0 && !loading ? (
         <View style={styles.emptyContainer}>
           <Icon name="notifications-outline" size={80} color="#ccc" />
           <Text style={styles.emptyTitle}>No Notifications</Text>
@@ -280,9 +397,23 @@ const NotificationListScreen = ({ navigation }) => {
         <FlatList
           data={notifications}
           renderItem={renderNotificationItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => (item._id || item.id || item.timestamp).toString()}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh}
+              colors={['#FDB022']}
+              tintColor="#FDB022"
+            />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={() => 
+            loading && hasMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color="#FDB022" />
+              </View>
+            ) : null
           }
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
@@ -322,16 +453,14 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
   },
-  clearButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#FF4444',
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  clearButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+  actionButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
   },
   loadingContainer: {
     flex: 1,
@@ -342,6 +471,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#666',
+  },
+  footerLoader: {
+    padding: 20,
+    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -422,9 +555,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 8,
   },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   timestamp: {
     fontSize: 12,
     color: '#999',
+  },
+  deleteButton: {
+    padding: 4,
   },
   notificationImage: {
     width: 50,

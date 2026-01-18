@@ -53,6 +53,7 @@ import PayRentScreen from '../screens/PayRentScreen';
 import PropertyInquiryFormScreen from '../screens/PropertyInquiryFormScreen';
 import PrivacyPolicy from '../screens/PrivacyPolicy';
 import TermAndConditionScreen from '../screens/TermAndConditionScreen';
+import TermsScreen from '../screens/TermsScreen';
 
 // --- NAVIGATION ---
 import BottomTabNavigation from '../navigation/BottomTabNavigation';
@@ -120,6 +121,7 @@ const AppNavigator = React.forwardRef((props, ref) => {
         <Stack.Screen name="About" component={AboutScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
         <Stack.Screen name="TermAndConditionScreen" component={TermAndConditionScreen} />
+        <Stack.Screen name="TermsScreen" component={TermsScreen} />
 
 
         {/* Quick Action */}

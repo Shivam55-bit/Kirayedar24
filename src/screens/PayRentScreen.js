@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   TextInput,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 // import { paymentService } from '../services/paymentApi.js'; // REMOVED
@@ -18,6 +18,7 @@ import LinearGradient from 'react-native-linear-gradient';
 const { width, height } = Dimensions.get('window');
 
 const PayRentScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [amount, setAmount] = useState('');
   const [propertyAddress, setPropertyAddress] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -96,7 +97,7 @@ const PayRentScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -229,7 +230,7 @@ const PayRentScreen = ({ navigation }) => {
       </ScrollView>
 
       {/* Pay Button */}
-      <View style={styles.bottomContainer}>
+      <View style={[styles.bottomContainer, { paddingBottom: insets.bottom -20 }]}>
         <TouchableOpacity onPress={handlePayRent} style={styles.payButton}>
           <LinearGradient
             colors={['#FDBF4D', '#FDB022', '#E89E0F']}
@@ -432,7 +433,7 @@ const styles = StyleSheet.create({
   },
   bottomContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',

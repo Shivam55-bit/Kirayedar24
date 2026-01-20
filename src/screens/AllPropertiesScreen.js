@@ -21,6 +21,7 @@ import LinearGradient from "react-native-linear-gradient";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRecentProperties, getResidentialProperties, getCommercialProperties } from '../services/propertyService';
 import MediaCard from '../components/MediaCard';
+import ContactPreferenceIcons from '../components/ContactPreferenceIcons';
 
 // Helper functions for property data formatting
 const formatImageUrl = (url) => {
@@ -557,30 +558,16 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                         {formatPrice(item.price)}
                     </Text>
                     
-                    {/* Action Buttons */}
-                    <View style={styles.propertyActionButtons}>
-                        <TouchableOpacity 
-                            style={styles.actionButton}
-                            onPress={() => handlePhoneCall(item)}
-                            activeOpacity={0.7}
-                        >
-                            <Icon name="call" size={14} color="#FFFFFF" />
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={[styles.actionButton, { backgroundColor: '#25D366' }]}
-                            onPress={() => handleWhatsApp(item)}
-                            activeOpacity={0.7}
-                        >
-                            <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
-                            onPress={() => handlePropertyChat(item)}
-                            activeOpacity={0.7}
-                        >
-                            <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
-                        </TouchableOpacity>
-                    </View>
+                    {/* Contact Preference Icons */}
+                    <ContactPreferenceIcons
+                        contactPreferences={item.contactPreferences}
+                        onPhonePress={() => handlePhoneCall(item)}
+                        onWhatsAppPress={() => handleWhatsApp(item)}
+                        onChatPress={() => handlePropertyChat(item)}
+                        iconSize={14}
+                        buttonSize={28}
+                        containerStyle={styles.propertyActionButtons}
+                    />
                 </View>
             </TouchableOpacity>
         );

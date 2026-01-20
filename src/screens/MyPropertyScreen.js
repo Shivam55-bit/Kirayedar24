@@ -17,6 +17,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import { useFocusEffect } from '@react-navigation/native';
 import propertyService from '../services/propertyapi';
 import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
+import ContactPreferenceIcons from '../components/ContactPreferenceIcons';
 
 // Get screen width for card calculations
 const { width } = Dimensions.get("window");
@@ -93,6 +94,8 @@ const MyPropertyScreen = ({ navigation, route }) => {
           availableFor: property.availableFor || 'Any',
           views: property.visitCount || property.views || 0,
           createdAt: property.createdAt || new Date().toISOString(),
+          contactPreferences: property.contactPreferences,  // ✅ Include contact preferences
+          contactNumber: property.contactNumber || property.phone,  // ✅ Include contact number
           originalData: property  // ✅ Store complete original backend data
         };
       });
@@ -145,7 +148,7 @@ const MyPropertyScreen = ({ navigation, route }) => {
           area: `${d.areaSqFt || 'N/A'} sqft`,
           status: d.status || 'Pending Payment',
           image: imageUrl,
-          purpose: d.purpose || 'Sell',
+          purpose: d.purpose || '',
           furnishing: d.furnishingStatus || 'Not specified',
           parking: d.parking || 'Not specified',
           availableFor: d.availableFor || 'Any',
@@ -239,21 +242,55 @@ const MyPropertyScreen = ({ navigation, route }) => {
   };
 
   const handleEditProperty = (property) => {
-    console.log('[MyPropertyScreen] Navigating to edit with property:', property);
+    console.log('====================================');
+    console.log('[MyPropertyScreen] EDIT BUTTON PRESSED');
+    console.log('====================================');
+    console.log('Display property:', JSON.stringify(property, null, 2));
+    console.log('Has originalData:', !!property.originalData);
+    
+    if (property.originalData) {
+      console.log('originalData keys:', Object.keys(property.originalData));
+      console.log('originalData.photos:', property.originalData.photos);
+      console.log('originalData.bedrooms:', property.originalData.bedrooms);
+      console.log('originalData.bathrooms:', property.originalData.bathrooms);
+      console.log('originalData.propertyLocation:', property.originalData.propertyLocation);
+      console.log('originalData.price:', property.originalData.price);
+    }
+    console.log('====================================');
+    
     // Pass the original API data for proper editing
-    const propertyToEdit = property.originalData || {
-      _id: property.id,
-      description: property.title,
-      propertyLocation: property.location,
-      price: property.price.replace(/[^0-9.]/g, ''), // Remove currency symbols
-      propertyType: property.type,
-      bedrooms: property.bedrooms === 'N/A' ? '' : property.bedrooms,
-      bathrooms: property.bathrooms === 'N/A' ? '' : property.bathrooms,
-      areaDetails: property.area === 'N/A' ? '' : property.area,
-      status: property.status,
-      photosAndVideo: property.image ? [property.image] : [],
-      purpose: property.purpose
-    };
+    let propertyToEdit;
+    
+    if (property.originalData) {
+      // Use original backend data - it contains all the server fields
+      propertyToEdit = { ...property.originalData };
+      console.log('[MyPropertyScreen] Using originalData');
+    } else {
+      // Create proper mapping from display data back to backend format
+      console.log('[MyPropertyScreen] Creating fallback data from display fields');
+      propertyToEdit = {
+        _id: property.id,
+        description: property.title,
+        propertyLocation: property.location,
+        price: typeof property.price === 'string' ? property.price.replace(/[^0-9.]/g, '') : property.price,
+        specificType: property.type,
+        propertyType: property.type,
+        bedrooms: property.bedrooms === 'N/A' ? null : property.bedrooms,
+        bathrooms: property.bathrooms === 'N/A' ? null : property.bathrooms,
+        areaDetails: property.area && property.area !== 'N/A' ? property.area.replace(/[^0-9.]/g, '') : null,
+        areaSqFt: property.area && property.area !== 'N/A' ? property.area.replace(/[^0-9.]/g, '') : null,
+        status: property.status,
+        purpose: property.purpose,
+        photos: property.image ? [property.image] : [],
+        photosAndVideo: property.image ? [property.image] : [],
+        image: property.image,
+        furnishingStatus: property.furnishing,
+        parking: property.parking,
+        availableFor: property.availableFor
+      };
+    }
+    
+    console.log('[MyPropertyScreen] Passing to EditPropertyScreen:', JSON.stringify(propertyToEdit, null, 2));
     navigation.navigate('EditPropertyScreen', { property: propertyToEdit });
   };
 
@@ -269,15 +306,24 @@ const MyPropertyScreen = ({ navigation, route }) => {
           onPress: async () => {
             try {
               setLoading(true);
-              // Call API to delete property from server
-              const response = await propertyService.deleteProperty(propertyId);
-              
-              if (response.success || response.status === 200) {
-                // Remove from local state after successful API deletion
+              // Check if it's a local draft (not a real Mongo ID)
+              if (typeof propertyId === 'string' && !/^[0-9a-fA-F]{24}$/.test(propertyId)) {
+                // Remove from local drafts
+                const draftRaw = await AsyncStorage.getItem('@local_draft_properties');
+                let drafts = draftRaw ? JSON.parse(draftRaw) : [];
+                drafts = drafts.filter(d => d._id !== propertyId);
+                await AsyncStorage.setItem('@local_draft_properties', JSON.stringify(drafts));
                 setProperties(prev => prev.filter(p => p.id !== propertyId));
-                Alert.alert("Success", "Property deleted successfully");
+                Alert.alert("Success", "Draft property deleted successfully");
               } else {
-                throw new Error(response.message || 'Failed to delete property');
+                // Call API to delete property from server
+                const response = await propertyService.deleteProperty(propertyId);
+                if (response.success || response.status === 200) {
+                  setProperties(prev => prev.filter(p => p.id !== propertyId));
+                  Alert.alert("Success", "Property deleted successfully");
+                } else {
+                  throw new Error(response.message || 'Failed to delete property');
+                }
               }
             } catch (error) {
               console.error('Delete property error:', error);
@@ -454,30 +500,16 @@ const MyPropertyScreen = ({ navigation, route }) => {
           {item.price}
         </Text>
         
-        {/* Action Buttons */}
-        <View style={styles.propertyActionButtons}>
-          <TouchableOpacity 
-            style={styles.actionButtonNew}
-            onPress={() => handlePhoneCall(item)}
-            activeOpacity={0.7}
-          >
-            <Icon name="call" size={14} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionButtonNew, { backgroundColor: '#25D366' }]}
-            onPress={() => handleWhatsApp(item)}
-            activeOpacity={0.7}
-          >
-            <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionButtonNew, { backgroundColor: '#6B7280' }]}
-            onPress={() => handlePropertyChat(item)}
-            activeOpacity={0.7}
-          >
-            <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        {/* Contact Preference Icons */}
+        <ContactPreferenceIcons
+          contactPreferences={item.contactPreferences}
+          onPhonePress={() => handlePhoneCall(item)}
+          onWhatsAppPress={() => handleWhatsApp(item)}
+          onChatPress={() => handlePropertyChat(item)}
+          iconSize={14}
+          buttonSize={28}
+          containerStyle={styles.propertyActionButtons}
+        />
         
         {/* Management Buttons - Show on long press or separate section */}
         <View style={styles.managementButtons}>

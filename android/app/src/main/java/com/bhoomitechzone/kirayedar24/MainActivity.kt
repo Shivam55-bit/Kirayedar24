@@ -1,4 +1,4 @@
-package com.kirayedar24
+package com.bhoomitechzone.kirayedar24
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

@@ -434,3 +434,139 @@ export const extractPincode = (cityData) => {
   // Try different possible field names for pincode
   return cityData?.pincode || cityData?.postal_code || cityData?.zip || cityData?.pin || null;
 };
+
+// Update existing property
+export const updateProperty = async (propertyId, formData) => {
+  const token = await AsyncStorage.getItem('authToken');
+  
+  if (!token) {
+    return {
+      success: false,
+      message: 'Authentication required. Please login again.',
+      error: 'No auth token found'
+    };
+  }
+
+  try {
+    const url = `${BASE_URL}/property/update/${propertyId}`;
+    console.log('🚀 Making property update API call to:', url);
+    
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        // Don't set Content-Type for FormData - let fetch handle it
+      },
+      body: formData
+    });
+
+    console.log('📡 Property Update API Response Status:', response.status);
+    console.log('📡 Property Update API Response Headers:', Object.fromEntries(response.headers.entries()));
+
+    // Get response text first
+    const responseText = await response.text();
+    console.log('📄 Raw Property Update API Response:', responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+      console.log('✅ Parsed Property Update API Response:', data);
+    } catch (parseError) {
+      console.error('❌ Failed to parse property update API response as JSON:', parseError.message);
+      return {
+        success: false,
+        status: response.status,
+        message: 'Server returned invalid response format',
+        error: parseError.message,
+        rawResponse: responseText
+      };
+    }
+
+    return {
+      success: response.ok && (data.success || data.message?.toLowerCase().includes('successfully')),
+      status: response.status,
+      message: data.message || (response.ok ? 'Property updated successfully!' : 'Failed to update property'),
+      data: data,
+      property: data.property,
+      ...data
+    };
+
+  } catch (error) {
+    console.error('🔥 Property Update API Network Error:', error);
+    return {
+      success: false,
+      message: 'Network error. Please check your connection.',
+      error: error.message,
+      isNetworkError: true
+    };
+  }
+};
+
+// Delete property
+export const deleteProperty = async (propertyId) => {
+  const token = await AsyncStorage.getItem('authToken');
+  
+  if (!token) {
+    return {
+      success: false,
+      message: 'Authentication required. Please login again.',
+      error: 'No auth token found'
+    };
+  }
+
+  try {
+    const url = `${BASE_URL}/property/delete/${propertyId}`;
+    console.log('🚀 Making property delete API call to:', url);
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('📡 Property Delete API Response Status:', response.status);
+    console.log('📡 Property Delete API Response Headers:', Object.fromEntries(response.headers.entries()));
+
+    // Get response text first
+    const responseText = await response.text();
+    console.log('📄 Raw Property Delete API Response:', responseText);
+
+    let data = {};
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText);
+        console.log('✅ Parsed Property Delete API Response:', data);
+      } catch (parseError) {
+        console.warn('⚠️ Property delete response is not JSON:', responseText);
+        // For delete, 200/204 with empty response is OK
+        if (response.ok) {
+          return {
+            success: true,
+            status: response.status,
+            message: 'Property deleted successfully!',
+            rawResponse: responseText
+          };
+        }
+      }
+    }
+
+    return {
+      success: response.ok && (data.success || data.message?.toLowerCase().includes('deleted') || response.status === 200),
+      status: response.status,
+      message: data.message || (response.ok ? 'Property deleted successfully!' : 'Failed to delete property'),
+      data: data,
+      ...data
+    };
+
+  } catch (error) {
+    console.error('🔥 Property Delete API Network Error:', error);
+    return {
+      success: false,
+      message: 'Network error. Please check your connection.',
+      error: error.message,
+      isNetworkError: true
+    };
+  }
+};

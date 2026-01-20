@@ -2,7 +2,9 @@ import {
   saveProperty as savePropertyAPI,
   getSavedProperties as getSavedPropertiesAPI,
   removeSavedProperty as removeSavedPropertyAPI,
-  getMySellProperties as getMySellPropertiesAPI
+  getMySellProperties as getMySellPropertiesAPI,
+  updateProperty as updatePropertyAPI,
+  deleteProperty as deletePropertyAPI
 } from './api.js';
 
 // Property Service for Save/Unsave functionality
@@ -66,6 +68,36 @@ export const propertyService = {
         success: false,
         properties: [],
         message: error.message || 'Failed to fetch your posted properties'
+      };
+    }
+  },
+
+  // Update existing property
+  updateProperty: async (propertyId, formData) => {
+    try {
+      const response = await updatePropertyAPI(propertyId, formData);
+      console.log('Property Service - Update Property Response:', response);
+      return response;
+    } catch (error) {
+      console.error('Property Service - Update Property Error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to update property'
+      };
+    }
+  },
+
+  // Delete property
+  deleteProperty: async (propertyId) => {
+    try {
+      const response = await deletePropertyAPI(propertyId);
+      console.log('Property Service - Delete Property Response:', response);
+      return response;
+    } catch (error) {
+      console.error('Property Service - Delete Property Error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to delete property'
       };
     }
   },

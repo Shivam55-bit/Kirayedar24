@@ -16,14 +16,14 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kirayedar24.app"
+      "bundleIdentifier": "com.bhoomitechzone.kirayedar24"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.kirayedar24.app"
+      "package": "com.bhoomitechzone.kirayedar24"
     },
     "web": {
       "bundler": "metro",

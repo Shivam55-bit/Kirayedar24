@@ -958,7 +958,7 @@ const AddSellScreen = ({ navigation, route }) => {
       { value: effectiveDistrict, name: "District", field: "address.district" },
       { value: city, name: "City", field: "address.city" },
       { value: locality, name: "Locality/Area", field: "address.locality" },
-      { value: pincode, name: "PIN Code", field: "address.pincode" },
+      // Pincode is optional
       { value: area, name: "Area", field: "areaDetails" },
       { value: price, name: "Price", field: "price" },
       { value: contactNumber, name: "Contact Number", field: "contactNumber" },
@@ -984,7 +984,10 @@ const AddSellScreen = ({ navigation, route }) => {
     if (!addressValidation.district) addressErrors.push('District');
     if (!addressValidation.city) addressErrors.push('City');
     if (!addressValidation.locality) addressErrors.push('Locality/Area');
-    if (!addressValidation.pincode || !/^\d{6}$/.test(addressValidation.pincode)) addressErrors.push('PIN Code (6 digits)');
+    // Pincode is optional - only validate format if provided
+    if (addressValidation.pincode && !/^\d{6}$/.test(addressValidation.pincode)) {
+      addressErrors.push('PIN Code must be 6 digits if provided');
+    }
 
     if (addressErrors.length > 0) {
       Alert.alert(

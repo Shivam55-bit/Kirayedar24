@@ -1,6 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SubscriptionProvider } from '../context/SubscriptionContext';
 
 // --- MAIN SCREENS ---
@@ -70,8 +71,9 @@ const Stack = createStackNavigator();
 
 const AppNavigator = React.forwardRef((props, ref) => {
   return (
-    <SubscriptionProvider>
-      <NavigationContainer ref={ref}>
+    <SafeAreaProvider>
+      <SubscriptionProvider>
+        <NavigationContainer ref={ref}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {/* Onboarding + Auth Flow */}
           <Stack.Screen 
@@ -145,6 +147,7 @@ const AppNavigator = React.forwardRef((props, ref) => {
       </Stack.Navigator>
     </NavigationContainer>
     </SubscriptionProvider>
+    </SafeAreaProvider>
   );
 });
 

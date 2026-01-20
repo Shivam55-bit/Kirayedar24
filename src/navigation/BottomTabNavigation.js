@@ -6,9 +6,11 @@ import {
   Dimensions,
   Text,
   Platform,
+  SafeAreaViewBase
 } from "react-native";
 import { COLORS as THEME_COLORS, FONTS } from '../constants/theme';
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 
 import DynamicHomeScreen from "../screens/DynamicHomeScreen";
@@ -22,11 +24,12 @@ const tabs = ["Home", "Shortlisted", "Chat", "Profile"];
 
 // Custom Tab Bar
 const CustomTabBar = ({ state, descriptors, navigation }) => {
+  const insets = useSafeAreaInsets();
   const tabWidth = width / state.routes.length;
 
   return (
     <View style={styles.tabBarContainer} pointerEvents="box-none">
-      <View style={styles.tabItemsContainer}>
+      <View style={[styles.tabItemsContainer, { paddingBottom: insets.bottom  }]}>
         {/* simple bar: no active indicator */}
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -86,6 +89,7 @@ const BottomTabNavigator = () => {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false, // hide default labels
+        swipeEnabled: true, // Enable slide gestures
       }}
       tabBar={(props) => <CustomTabBar {...props} />}
     >
@@ -119,7 +123,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: Platform.OS === 'ios' ? 77 : 85,
+    height: Platform.OS === 'ios' ? 77 : 100,
     backgroundColor: "transparent",
   },
   tabItemsContainer: {
@@ -130,7 +134,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,
     paddingHorizontal: 6,
-    paddingBottom: Platform.OS === 'android' ? 15 : 0,
     
     elevation: 6,
     shadowColor: '#000',

@@ -24,66 +24,137 @@ const TermsScreen = ({ navigation, route }) => {
     }
   };
 
-  const termsContent = `TERMS & CONDITIONS
+  const termsContent = `TERMS AND CONDITIONS
 
-Last Updated: January 15, 2026
+Kirayedar24 provides this service to facilitate connections between property owners and tenants without brokerage fees. To access the service (including this site), acceptance of these terms and conditions ("Terms of Use") and our Privacy Policy is required.
 
-Welcome to Kirayedar24! By using our platform, you agree to these terms.
+SERVICE DESCRIPTION
 
-1. ACCEPTANCE OF TERMS
-By accessing and using Kirayedar24, you accept and agree to be bound by the terms of this agreement.
+This service offers Residents building-specific networks to foster neighborly interaction and knowledge sharing about the surrounding area.
 
-2. USER REGISTRATION
-• You must provide accurate information
-• You are responsible for maintaining account security
-• Users must be 18 years or older
-• One account per user
+1. Location Approach:
+• Each user is permitted only one username and password, using the user's provided email address or contact number.
+• We retain the right to verify this information prior to account activation.
+• Account rejection or deactivation may occur if the account is deemed a brokerage account or for any other reason deemed appropriate by Kirayedar24.
+• Users are responsible for maintaining password and account confidentiality and are liable for all activities performed under their password or account.
+• Knowingly sharing login credentials may result in account suspension or termination.
+• Unauthorized password or account use, or any security breach, must be reported immediately.
+• We are not liable for losses resulting from password or account compromise or security breaches.
 
-3. PROPERTY LISTINGS
-• All listings must be genuine and accurate
-• False information may result in account termination
-• Property owners must have legal rights to list properties
+2. Membership Information:
+• To register, please provide your full name, address, email address, phone number, and a chosen password.
+• Your email address and/or phone number will serve as your login credentials.
+• All registration information must be accurate and complete.
+• This information will be publicly viewable on the website.
+• We reserve the right to verify your ownership or tenancy status using the provided information.
 
-4. BOOKING & PAYMENTS
-• All bookings are subject to availability
-• Payment terms are final and non-refundable unless specified
-• Cancellation policies apply as per property terms
+3. Detailed Profile:
+• Your Kirayedar24 profile must not contain telephone numbers (except where requested), or any photographs depicting nudity, profanity, obscenity, excessive violence, harassment, sexually explicit content, or other objectionable material.
+• Kirayedar24 disclaims all responsibility and liability for user-generated content that may contain inappropriate material.
+• We encourage you to assist us in maintaining a clean website by reporting any misuse of the service.
 
-5. USER CONDUCT
-You agree NOT to:
-• Post false or misleading information
-• Harass or harm other users
-• Violate any laws or regulations
-• Use the platform for illegal activities
+4. Locality Information:
+• The platform incorporates local information sourced from third-party providers such as Google Maps.
+• Kirayedar24 disclaims any responsibility for the accuracy, integrity, or quality of this third-party content.
+• All interactions with businesses accessed via the service are solely the responsibility of the user and the respective business.
 
-6. PRIVACY & DATA
-• We collect and process data as per our Privacy Policy
-• Your data is protected and not shared without consent
-• We use cookies for better user experience
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-7. INTELLECTUAL PROPERTY
-• All content on Kirayedar24 is owned by us
-• Unauthorized use is prohibited
-• Trademarks and logos are protected
+AGREEMENT BETWEEN KIRAYEDAR24 AND PROPERTY OWNERS
 
-8. LIMITATION OF LIABILITY
-• Kirayedar24 acts as a platform only
-• We are not responsible for disputes between users
-• Use the platform at your own risk
+Terms and Conditions for Property Owners:
 
-9. MODIFICATIONS
-We reserve the right to modify these terms at any time. Continued use constitutes acceptance.
+• Registration and Use of Services:
+  - The Property Owner must register on Kirayedar24, providing accurate and up-to-date personal and property details.
+  - The Property Owner agrees to pay the specified fee to Kirayedar24 for availing of its services.
 
-10. CONTACT
-For questions, contact us at:
-Email: support@kirayedar24.com
-Website: https://kirayedar24.com
+• Property Listings:
+  - The Property Owner is responsible for uploading authentic property photos and accurate descriptions of the property, including location, rental terms, and amenities.
+  - Any misleading, fraudulent, or inaccurate information will lead to the suspension or termination of the Property Owner's account.
+
+• Background Verification:
+  - Kirayedar24 acts solely as a mediator between Property Owners and tenants.
+  - Kirayedar24 does not conduct any background verification of tenants. The Property Owner is solely responsible for such verifications.
+
+• Rental Agreements and Police Verification:
+  - Before giving any property on rent, the Property Owner must ensure that the necessary rent agreements and police verification are completed.
+
+• Communication with Tenants:
+  - The Property Owner is solely responsible for responding to tenant inquiries and negotiating rental agreements.
+  - The Property Owner acknowledges that Kirayedar24 is not a party to any rental agreement or contract entered into with the tenant.
+
+• Compliance with Laws:
+  - The Property Owner is responsible for ensuring that their property complies with all applicable local laws, including but not limited to building codes, rental regulations, and tax requirements.
+
+• Payment Terms:
+  - The Property Owner agrees to pay any listing or subscription fees as prescribed by Kirayedar24.
+  - Fees paid to Kirayedar24 are non-refundable under any circumstances.
+
+• Liability Disclaimer:
+  - Kirayedar24 is not liable for any disputes, damages, or losses arising from the Property Owner's interactions with tenants.
+  - Addendums or changes in rent amounts and security charges are solely the responsibility of the Property Owner and tenant.
+  - Neither the tenant nor the Property Owner has the right to claim any payment disputes with Kirayedar24.
+
+• Advance Payments:
+  - Kirayedar24 will not be responsible for any advance payments made to Property Owners.
+  - If tenants make any payments without viewing the property or obtaining confirmation from the Property Owner, the entire responsibility lies with the tenant.
+
+• Completion of Tenancy Transaction:
+  - The Property Owner shall provide Kirayedar24 with confirmation of the successful execution of the agreement and completion of the tenancy transaction.
+  - The Property Owner must upload the tenancy agreement, possession certificate, and self-attested KYC documents of both the Property Owner and the Tenant.
+
+• Termination of Services:
+  - Kirayedar24 reserves the right to suspend or terminate the Property Owner's account in case of a breach of these terms and conditions.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AGREEMENT BETWEEN KIRAYEDAR24 AND PROBABLE TENANTS
+
+Terms and Conditions for Probable Tenants:
+
+• Registration and Use of Services:
+  - The Tenant must register on Kirayedar24, providing accurate and up-to-date personal details.
+  - The Tenant agrees to pay the specified fee to Kirayedar24 for availing of its services.
+
+• Property Search and Contact:
+  - The Tenant can search for rental properties using the filters and information provided on the platform.
+  - The Tenant is solely responsible for contacting the Property Owner and negotiating the rental agreement.
+
+• Accuracy of Information:
+  - Kirayedar24 does not guarantee the accuracy or authenticity of property listings.
+  - The Tenant acknowledges that they must conduct their due diligence before entering into any rental agreement.
+
+• Advance Payments:
+  - Kirayedar24 will not be responsible for any advance payments made to Property Owners.
+  - If tenants make any payments without viewing the property or obtaining confirmation from the Property Owner, the entire responsibility lies with the tenant.
+
+• Rental Charges and Brokerage:
+  - Kirayedar24 is only a browsing/searching platform for properties.
+  - Kirayedar24 is not responsible for any rental charges or brokerage fees charged by the Property Owner.
+  - Tenants must clarify such charges directly with the Property Owner.
+
+• Addendums in Agreements:
+  - Addendums or changes in rent amounts and security charges are solely the responsibility of the Tenant and Property Owner.
+  - Kirayedar24 is not responsible for any changes in rent agreements or disputes arising from such changes.
+  - Neither the Tenant nor the Property Owner has the right to claim any payment disputes with Kirayedar24.
+
+• Compliance with Laws:
+  - The Tenant is responsible for ensuring that their rental activities comply with all applicable local laws and regulations.
+
+• Liability Disclaimer:
+  - Kirayedar24 is not liable for any disputes, damages, or losses arising from interactions between the Tenant and the Property Owner.
+  - The Tenant indemnifies Kirayedar24 against any claims, disputes, or legal actions initiated by the Property Owner or third parties.
+
+• Completion of Tenancy Transaction:
+  - The Tenant shall provide Kirayedar24 with confirmation of the successful execution of the agreement and completion of the tenancy transaction.
+  - The Tenant must upload the tenancy agreement, possession certificate, and self-attested KYC documents of both the Property Owner and the Tenant.
+
+• Termination of Services:
+  - Kirayedar24 reserves the right to suspend or terminate the Tenant's account in case of a breach of these terms and conditions.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PRIVACY POLICY
-
-Last Updated: January 15, 2026
 
 At Kirayedar24, we value your privacy and are committed to protecting your personal information.
 
@@ -138,16 +209,12 @@ Our service is not intended for users under 18. We do not knowingly collect data
 9. DATA RETENTION
 We retain data as long as necessary for services or as required by law.
 
-10. INTERNATIONAL TRANSFERS
-Your data may be transferred and stored globally, with appropriate safeguards.
+10. CONTACT US
+For any concerns:
+Email: support@kirayedar24.com
+Website: https://kirayedar24.com
 
-11. CHANGES TO POLICY
-We may update this policy. Continued use means acceptance.
-
-12. CONTACT US
-For privacy concerns:
-Email: privacy@kirayedar24.com
-Website: https://kirayedar24.com`;
+© 2024 Kirayedar24. All rights reserved.`;
 
   return (
     <SafeAreaView style={styles.container}>

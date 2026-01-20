@@ -64,10 +64,18 @@ const NotificationsScreen = ({ navigation }) => {
     ]);
   };
 
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Home');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#FF7A00" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>

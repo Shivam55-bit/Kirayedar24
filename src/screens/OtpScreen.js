@@ -15,7 +15,7 @@ import {
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getStoredFCMToken } from "../utils/fcmService";
+import { getStoredFCMToken, getFCMToken } from "../utils/fcmService";
 import { sendFCMTokenToBackend } from "../services/api";
 import { authService } from "../services/authApi";
 import { storeUserCredentials } from '../utils/authManager';
@@ -155,10 +155,18 @@ const OtpScreen = ({ route, navigation }) => {
         
         // Handle FCM token (silently, don't show errors to user)
         try {
-          const fcmToken = await getStoredFCMToken();
+          // First try stored token, if not available generate new one
+          let fcmToken = await getStoredFCMToken();
+          if (!fcmToken) {
+            console.log('📲 No stored FCM token, generating new one...');
+            fcmToken = await getFCMToken();
+          }
           if (fcmToken && otpResponse.user.id) {
+            console.log('📤 Sending FCM token:', fcmToken?.substring(0, 30) + '...');
             await sendFCMTokenToBackend(otpResponse.user.id, fcmToken);
             console.log('✅ FCM token sent to backend successfully');
+          } else {
+            console.log('⚠️ Missing fcmToken or userId:', { hasFcmToken: !!fcmToken, hasUserId: !!otpResponse.user.id });
           }
         } catch (fcmError) {
           // Silently handle FCM token errors - backend endpoint may not exist

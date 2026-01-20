@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -13,6 +13,8 @@ import {
     Platform,
     Animated,
     ActivityIndicator,
+    Modal,
+    ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { getRecentProperties } from '../services/propertyService';
@@ -119,11 +121,6 @@ const PropertyCard = ({ property, navigation }) => {
                     <Icon name="heart-outline" size={18} color="#fff" />
                 </TouchableOpacity>
 
-                {/* Property type badge */}
-                <View style={cardStyles.propertyBadge}>
-                    <Text style={cardStyles.propertyBadgeText}>FOR RENT</Text>
-                </View>
-
                 {/* Price tag */}
                 <View style={cardStyles.priceContainer}>
                     <Text style={cardStyles.priceText}>₹{property.price}</Text>
@@ -132,13 +129,9 @@ const PropertyCard = ({ property, navigation }) => {
             </View>
 
             <View style={cardStyles.cardContent}>
-                {/* Title and rating */}
+                {/* Title */}
                 <View style={cardStyles.titleRow}>
                     <Text style={cardStyles.title} numberOfLines={1}>{property.title}</Text>
-                    <View style={cardStyles.ratingContainer}>
-                        <Icon name="star" size={12} color="#FDB022" />
-                        <Text style={cardStyles.rating}>4.8</Text>
-                    </View>
                 </View>
 
                 {/* Location */}
@@ -167,7 +160,7 @@ const PropertyCard = ({ property, navigation }) => {
                         <View style={cardStyles.featureIcon}>
                             <Icon name="resize-outline" size={12} color="#FDB022" />
                         </View>
-                        <Text style={cardStyles.featureText}>1200 sq ft</Text>
+                        <Text style={cardStyles.featureText}>{property.area || property.areaSqFt || property.areaDetails || 'N/A'} sq ft</Text>
                     </View>
                 </View>
 
@@ -203,6 +196,33 @@ const SearchScreen = ({ navigation }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [properties, setProperties] = useState([]);
     const [error, setError] = useState(null);
+    
+    // Filter state
+    const [showFilterModal, setShowFilterModal] = useState(false);
+    const [filters, setFilters] = useState({
+        propertyType: '',
+        purpose: '',
+        minPrice: '',
+        maxPrice: '',
+        bedrooms: '',
+    });
+    
+    // Filter options
+    const propertyTypes = ['House', 'Apartment', 'Villa', 'Plot', 'Commercial', 'Office'];
+    const purposes = ['Rent', 'Lease'];
+    const bedroomOptions = ['1', '2', '3', '4', '5+'];
+    const priceRanges = [
+        { label: 'Under ₹10K', min: '0', max: '10000' },
+        { label: '₹10K - ₹25K', min: '10000', max: '25000' },
+        { label: '₹25K - ₹50K', min: '25000', max: '50000' },
+        { label: '₹50K - ₹1L', min: '50000', max: '100000' },
+        { label: 'Above ₹1L', min: '100000', max: '' },
+    ];
+    
+    // Count active filters
+    const activeFiltersCount = useMemo(() => {
+        return Object.values(filters).filter(v => v && v.toString().trim() !== '').length;
+    }, [filters]);
 
     // Fetch properties from API on mount
     useEffect(() => {
@@ -263,20 +283,37 @@ const SearchScreen = ({ navigation }) => {
                         });
                     }
                     
+                    // ✅ Get location from nested address object (backend format)
+                    let locationStr = 'Location';
+                    if (item.address && typeof item.address === 'object') {
+                        const { locality, city, state } = item.address;
+                        locationStr = [locality, city, state].filter(Boolean).join(', ') || 'Location';
+                    } else {
+                        locationStr = [item.locality, item.city, item.state].filter(Boolean).join(', ') || item.propertyLocation || 'Location';
+                    }
+                    
                     return {
                         id: item._id || item.id || `property_${index}`,
                         title: item.description || item.title || 'Property',
-                        location: [item.locality, item.city, item.state].filter(Boolean).join(', ') || item.propertyLocation || 'Location',
+                        location: locationStr,
                         price: item.price ? item.price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '0',
-                        beds: item.bedrooms || 2,
-                        baths: item.bathrooms || 2,
+                        beds: item.bedrooms || 0,
+                        baths: item.bathrooms || 0,
+                        area: item.areaSqFt || item.areaDetails || item.area || null,
+                        purpose: item.purpose || 'Rent',
+                        status: item.status || 'pending',
                         image: imageUrl,
                         ...item // Keep all original data for details screen
                     };
                 });
                 
-                setProperties(transformedProperties);
-                console.log('✅ [SearchScreen] Loaded', transformedProperties.length, 'properties from API');
+                // ✅ Filter only approved properties
+                const approvedProperties = transformedProperties.filter(p => 
+                    p.status === 'approved' || p.approvalStatus === 'Approved'
+                );
+                
+                setProperties(approvedProperties);
+                console.log('✅ [SearchScreen] Loaded', approvedProperties.length, 'approved properties from', transformedProperties.length, 'total');
             } else {
                 console.warn('⚠️ [SearchScreen] API returned no data');
                 setError('No properties available');
@@ -291,11 +328,84 @@ const SearchScreen = ({ navigation }) => {
         }
     };
 
-    const filtered = properties.filter(
-        (p) =>
-            p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.location.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Apply filters and search
+    const filtered = useMemo(() => {
+        let result = [...properties];
+        
+        // Search filter
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            result = result.filter(p =>
+                p.title?.toLowerCase().includes(query) ||
+                p.location?.toLowerCase().includes(query) ||
+                p.propertyType?.toLowerCase().includes(query)
+            );
+        }
+        
+        // Property type filter
+        if (filters.propertyType) {
+            result = result.filter(p => 
+                p.propertyType?.toLowerCase().includes(filters.propertyType.toLowerCase())
+            );
+        }
+        
+        // Purpose filter
+        if (filters.purpose) {
+            result = result.filter(p => 
+                p.purpose?.toLowerCase().includes(filters.purpose.toLowerCase())
+            );
+        }
+        
+        // Min price filter
+        if (filters.minPrice) {
+            const minPrice = parseFloat(filters.minPrice);
+            result = result.filter(p => {
+                const price = parseFloat(p.price?.toString().replace(/,/g, '')) || 0;
+                return price >= minPrice;
+            });
+        }
+        
+        // Max price filter
+        if (filters.maxPrice) {
+            const maxPrice = parseFloat(filters.maxPrice);
+            result = result.filter(p => {
+                const price = parseFloat(p.price?.toString().replace(/,/g, '')) || 0;
+                return price <= maxPrice;
+            });
+        }
+        
+        // Bedrooms filter
+        if (filters.bedrooms) {
+            const beds = filters.bedrooms === '5+' ? 5 : parseInt(filters.bedrooms);
+            result = result.filter(p => {
+                const propBeds = parseInt(p.beds) || 0;
+                if (filters.bedrooms === '5+') return propBeds >= 5;
+                return propBeds === beds;
+            });
+        }
+        
+        return result;
+    }, [properties, searchQuery, filters]);
+    
+    // Clear all filters
+    const clearFilters = () => {
+        setFilters({
+            propertyType: '',
+            purpose: '',
+            minPrice: '',
+            maxPrice: '',
+            bedrooms: '',
+        });
+    };
+    
+    // Select price range
+    const selectPriceRange = (range) => {
+        setFilters(prev => ({
+            ...prev,
+            minPrice: range.min,
+            maxPrice: range.max
+        }));
+    };
 
     const handleSearch = (text) => {
         setSearchQuery(text);
@@ -386,20 +496,31 @@ const SearchScreen = ({ navigation }) => {
                 </View>
 
                 <TouchableOpacity 
-                    style={styles.filterButton}
+                    style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]}
                     activeOpacity={0.8}
                     accessibilityLabel="Filter properties"
+                    onPress={() => setShowFilterModal(true)}
                 >
                     <Icon name="options-outline" size={22} color="#fff" />
+                    {activeFiltersCount > 0 && (
+                        <View style={styles.filterBadge}>
+                            <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+                        </View>
+                    )}
                 </TouchableOpacity>
             </View>
 
             {/* Results Count */}
-            {searchQuery.length > 0 && (
+            {(searchQuery.length > 0 || activeFiltersCount > 0) && (
                 <View style={styles.resultsHeader}>
                     <Text style={styles.resultsText}>
                         {filtered.length} properties found
                     </Text>
+                    {activeFiltersCount > 0 && (
+                        <TouchableOpacity onPress={clearFilters}>
+                            <Text style={styles.clearFiltersText}>Clear filters</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             )}
 
@@ -417,6 +538,182 @@ const SearchScreen = ({ navigation }) => {
                 refreshing={isLoading}
                 onRefresh={loadProperties}
             />
+            
+            {/* Filter Modal */}
+            <Modal
+                visible={showFilterModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowFilterModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContainer}>
+                        {/* Modal Header */}
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Filter Properties</Text>
+                            <TouchableOpacity 
+                                onPress={() => setShowFilterModal(false)}
+                                style={styles.modalCloseButton}
+                            >
+                                <Icon name="close" size={24} color="#6B7280" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                            {/* Property Type Filter */}
+                            <View style={styles.filterSection}>
+                                <Text style={styles.filterLabel}>Property Type</Text>
+                                <View style={styles.filterRow}>
+                                    {propertyTypes.map((type) => (
+                                        <TouchableOpacity
+                                            key={type}
+                                            style={[
+                                                styles.filterChip,
+                                                filters.propertyType === type && styles.filterChipActive
+                                            ]}
+                                            onPress={() => setFilters(prev => ({
+                                                ...prev,
+                                                propertyType: prev.propertyType === type ? '' : type
+                                            }))}
+                                        >
+                                            <Text style={[
+                                                styles.filterChipText,
+                                                filters.propertyType === type && styles.filterChipTextActive
+                                            ]}>
+                                                {type}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Purpose Filter */}
+                            <View style={styles.filterSection}>
+                                <Text style={styles.filterLabel}>Purpose</Text>
+                                <View style={styles.filterRow}>
+                                    {purposes.map((purpose) => (
+                                        <TouchableOpacity
+                                            key={purpose}
+                                            style={[
+                                                styles.filterChip,
+                                                filters.purpose === purpose && styles.filterChipActive
+                                            ]}
+                                            onPress={() => setFilters(prev => ({
+                                                ...prev,
+                                                purpose: prev.purpose === purpose ? '' : purpose
+                                            }))}
+                                        >
+                                            <Text style={[
+                                                styles.filterChipText,
+                                                filters.purpose === purpose && styles.filterChipTextActive
+                                            ]}>
+                                                {purpose}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Bedrooms Filter */}
+                            <View style={styles.filterSection}>
+                                <Text style={styles.filterLabel}>Bedrooms</Text>
+                                <View style={styles.filterRow}>
+                                    {bedroomOptions.map((bed) => (
+                                        <TouchableOpacity
+                                            key={bed}
+                                            style={[
+                                                styles.filterChip,
+                                                filters.bedrooms === bed && styles.filterChipActive
+                                            ]}
+                                            onPress={() => setFilters(prev => ({
+                                                ...prev,
+                                                bedrooms: prev.bedrooms === bed ? '' : bed
+                                            }))}
+                                        >
+                                            <Text style={[
+                                                styles.filterChipText,
+                                                filters.bedrooms === bed && styles.filterChipTextActive
+                                            ]}>
+                                                {bed} BHK
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Price Range Filter */}
+                            <View style={styles.filterSection}>
+                                <Text style={styles.filterLabel}>Price Range (₹/month)</Text>
+                                <View style={styles.filterRow}>
+                                    {priceRanges.map((range, index) => {
+                                        const isSelected = filters.minPrice === range.min && filters.maxPrice === range.max;
+                                        return (
+                                            <TouchableOpacity
+                                                key={index}
+                                                style={[
+                                                    styles.filterChip,
+                                                    isSelected && styles.filterChipActive
+                                                ]}
+                                                onPress={() => selectPriceRange(range)}
+                                            >
+                                                <Text style={[
+                                                    styles.filterChipText,
+                                                    isSelected && styles.filterChipTextActive
+                                                ]}>
+                                                    {range.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                                
+                                {/* Custom Price Range */}
+                                <View style={styles.priceInputContainer}>
+                                    <View style={styles.priceInputWrapper}>
+                                        <Text style={styles.priceInputLabel}>Min</Text>
+                                        <TextInput
+                                            style={styles.priceInput}
+                                            placeholder="₹0"
+                                            value={filters.minPrice}
+                                            onChangeText={(text) => setFilters(prev => ({ ...prev, minPrice: text }))}
+                                            keyboardType="numeric"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                    <Text style={styles.priceInputSeparator}>-</Text>
+                                    <View style={styles.priceInputWrapper}>
+                                        <Text style={styles.priceInputLabel}>Max</Text>
+                                        <TextInput
+                                            style={styles.priceInput}
+                                            placeholder="Any"
+                                            value={filters.maxPrice}
+                                            onChangeText={(text) => setFilters(prev => ({ ...prev, maxPrice: text }))}
+                                            keyboardType="numeric"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+                        </ScrollView>
+
+                        {/* Modal Footer */}
+                        <View style={styles.modalFooter}>
+                            <TouchableOpacity
+                                style={styles.clearButton}
+                                onPress={clearFilters}
+                            >
+                                <Text style={styles.clearButtonText}>Clear All</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.applyButton}
+                                onPress={() => setShowFilterModal(false)}
+                            >
+                                <Text style={styles.applyButtonText}>Apply Filters</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -721,6 +1018,163 @@ const styles = StyleSheet.create({
     retryButtonText: {
         fontSize: 14,
         fontWeight: '600',
+        color: '#fff',
+    },
+    filterButtonActive: {
+        backgroundColor: '#E89E0F',
+    },
+    filterBadge: {
+        position: 'absolute',
+        top: -5,
+        right: -5,
+        backgroundColor: '#EF4444',
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    filterBadgeText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    clearFiltersText: {
+        color: '#FDB022',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    resultsHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        marginBottom: 10,
+    },
+    // Filter Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContainer: {
+        backgroundColor: '#fff',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#111827',
+    },
+    modalCloseButton: {
+        padding: 4,
+    },
+    modalContent: {
+        padding: 20,
+    },
+    filterSection: {
+        marginBottom: 24,
+    },
+    filterLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#374151',
+        marginBottom: 12,
+    },
+    filterRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+    },
+    filterChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        backgroundColor: '#F3F4F6',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        marginBottom: 8,
+    },
+    filterChipActive: {
+        backgroundColor: '#FDB022',
+        borderColor: '#FDB022',
+    },
+    filterChipText: {
+        fontSize: 14,
+        color: '#6B7280',
+        fontWeight: '500',
+    },
+    filterChipTextActive: {
+        color: '#fff',
+    },
+    priceInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+    },
+    priceInputWrapper: {
+        flex: 1,
+    },
+    priceInputLabel: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginBottom: 4,
+    },
+    priceInput: {
+        backgroundColor: '#F3F4F6',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        fontSize: 14,
+        color: '#111827',
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    priceInputSeparator: {
+        marginHorizontal: 12,
+        color: '#6B7280',
+        fontSize: 16,
+    },
+    modalFooter: {
+        flexDirection: 'row',
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#E5E7EB',
+        gap: 12,
+    },
+    clearButton: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        alignItems: 'center',
+    },
+    clearButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#6B7280',
+    },
+    applyButton: {
+        flex: 2,
+        backgroundColor: '#FDB022',
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    applyButtonText: {
+        fontSize: 16,
+        fontWeight: '700',
         color: '#fff',
     },
 });

@@ -11,6 +11,35 @@ export const useSubscription = () => {
   return context;
 };
 
+/**
+ * Check if subscription is still valid (not expired)
+ */
+const isSubscriptionValid = (subscription) => {
+  if (!subscription) return false;
+  
+  // Check expiry date
+  const expiryDate = subscription.expiryDate || subscription.expiry_date || subscription.endDate || subscription.end_date;
+  
+  if (expiryDate) {
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    
+    if (expiry < now) {
+      console.log('⚠️ Subscription expired on:', expiry.toISOString());
+      return false;
+    }
+  }
+  
+  // Check status field if available
+  const status = subscription.status || subscription.subscriptionStatus;
+  if (status && status.toLowerCase() !== 'active') {
+    console.log('⚠️ Subscription status is not active:', status);
+    return false;
+  }
+  
+  return true;
+};
+
 export const SubscriptionProvider = ({ children }) => {
   const [userHasPackage, setUserHasPackage] = useState(false);
   const [activeSubscription, setActiveSubscription] = useState(null);
@@ -26,9 +55,18 @@ export const SubscriptionProvider = ({ children }) => {
       const response = await subscriptionApi.getActiveSubscription();
       
       if (response.success && response.data) {
-        setActiveSubscription(response.data);
-        setUserHasPackage(true);
+        // Validate subscription is not expired
+        if (isSubscriptionValid(response.data)) {
+          console.log('✅ Active subscription found:', response.data.packageName || response.data.planName);
+          setActiveSubscription(response.data);
+          setUserHasPackage(true);
+        } else {
+          console.log('⚠️ Subscription found but expired or inactive');
+          setActiveSubscription(null);
+          setUserHasPackage(false);
+        }
       } else {
+        console.log('ℹ️ No active subscription found');
         setActiveSubscription(null);
         setUserHasPackage(false);
       }

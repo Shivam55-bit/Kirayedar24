@@ -214,6 +214,19 @@ export const getRecentProperties = async () => {
     });
     
     console.log('📡 Recent properties response status:', response.status);
+    
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('⚠️ Recent properties API returned non-JSON response');
+      return {
+        success: false,
+        message: 'API returned invalid response format',
+        data: [],
+        properties: []
+      };
+    }
+    
     const data = await response.json();
     console.log('📦 Recent properties data:', data);
     
@@ -259,6 +272,18 @@ export const getResidentialProperties = async () => {
         'Content-Type': 'application/json'
       }
     });
+    
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('⚠️ Residential properties API returned non-JSON response');
+      return {
+        success: false,
+        message: 'API returned invalid response format',
+        data: [],
+        properties: []
+      };
+    }
     
     const data = await response.json();
     console.log('📦 Residential properties data:', data);
@@ -307,6 +332,19 @@ export const getCommercialProperties = async () => {
       }
     });
     
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('⚠️ Commercial properties API returned non-JSON response');
+      // Return empty array instead of crashing
+      return {
+        success: false,
+        message: 'API returned invalid response format',
+        data: [],
+        properties: []
+      };
+    }
+    
     const data = await response.json();
     console.log('📦 Commercial properties data:', data);
     
@@ -314,12 +352,17 @@ export const getCommercialProperties = async () => {
     let properties = [];
     if (data?.success && data?.data) {
       properties = Array.isArray(data.data) ? data.data : [];
+    } else if (data?.properties && Array.isArray(data.properties)) {
+      properties = data.properties;
     } else if (Array.isArray(data)) {
       properties = data;
     }
     
     // Additional filter to ensure only commercial properties
-    const commercialProperties = properties.filter(p => p.propertyType === 'Commercial');
+    const commercialProperties = properties.filter(p => 
+      p.propertyType === 'Commercial' || 
+      p.propertyType?.toLowerCase() === 'commercial'
+    );
     
     console.log(`✅ Processed ${commercialProperties.length} commercial properties`);
     
@@ -372,6 +415,18 @@ export const getUserProperties = async () => {
         'Content-Type': 'application/json'
       }
     });
+    
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('⚠️ User properties API returned non-JSON response');
+      return {
+        success: false,
+        message: 'API returned invalid response format',
+        data: [],
+        properties: []
+      };
+    }
     
     const data = await response.json();
     console.log('📦 All properties data for user filter:', data);

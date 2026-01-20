@@ -20,9 +20,8 @@ import {
 import Icon from "react-native-vector-icons/Ionicons";
 import { useFocusEffect } from '@react-navigation/native'; // Used to trigger data fetch when screen is active
 
-// API services removed
-// import { getUserId } from '../services/authApi';
-// import { getUserProfile, getCurrentUserProfile, updateUserProfile } from '../services/userapi'; 
+// API services
+import { getCurrentUserProfile, updateCurrentUserProfile } from '../services/userapi'; 
 
 // Try to require react-native-image-picker if available; show instructions otherwise
 let ImagePicker = null;
@@ -64,22 +63,60 @@ const EditProfileScreen = ({ navigation }) => {
         setError('');
         try {
             // Use authenticated current-user endpoint to avoid 404 for /users/:id
-            const data = await getCurrentUserProfile();
-
-            // Populate state with fetched data
-            setName(data.fullName || data.name || '');
-            setEmail(data.email || '');
-            setPhone(data.phone || '');
-            // Prefer photosAndVideo[0] for avatar
-            const firstMedia = (Array.isArray(data.photosAndVideo) && data.photosAndVideo.length > 0)
-                ? data.photosAndVideo[0]
-                : (data.avatar || null);
-            setAvatarUrl(firstMedia);
-            // bump version to force image reload when profile data changes
-            setAvatarVersion(Date.now());
+            const response = await getCurrentUserProfile();
+            
+            // Handle response structure
+            let data = null;
+            if (response && response.success) {
+                data = response.user || response.data || response;
+            } else if (response && response.user) {
+                data = response.user;
+            } else if (response) {
+                data = response;
+            }
+            
+            if (data) {
+                // Populate state with fetched data
+                setName(data.fullName || data.name || '');
+                setEmail(data.email || '');
+                setPhone(data.phone || data.mobile || '');
+                // Prefer photosAndVideo[0] for avatar
+                const firstMedia = (Array.isArray(data.photosAndVideo) && data.photosAndVideo.length > 0)
+                    ? data.photosAndVideo[0]
+                    : (data.avatar || data.profilePicture || null);
+                setAvatarUrl(firstMedia);
+                // bump version to force image reload when profile data changes
+                setAvatarVersion(Date.now());
+            } else {
+                // Try to load from AsyncStorage as fallback
+                const storedUser = await AsyncStorage.getItem('userData');
+                if (storedUser) {
+                    const user = JSON.parse(storedUser);
+                    setName(user.fullName || user.name || '');
+                    setEmail(user.email || '');
+                    setPhone(user.phone || user.mobile || '');
+                    setAvatarUrl(user.avatar || user.profilePicture || null);
+                    setAvatarVersion(Date.now());
+                }
+            }
 
         } catch (err) {
             console.error("Failed to load profile data:", err);
+            // Try fallback from storage
+            try {
+                const storedUser = await AsyncStorage.getItem('userData');
+                if (storedUser) {
+                    const user = JSON.parse(storedUser);
+                    setName(user.fullName || user.name || '');
+                    setEmail(user.email || '');
+                    setPhone(user.phone || user.mobile || '');
+                    setAvatarUrl(user.avatar || user.profilePicture || null);
+                    setAvatarVersion(Date.now());
+                    return; // Don't show error if we got data from storage
+                }
+            } catch (storageErr) {
+                console.log('Storage fallback failed:', storageErr);
+            }
             setError('Failed to load profile data. Please try again.');
         } finally {
             setLoading(false);
@@ -125,7 +162,8 @@ const EditProfileScreen = ({ navigation }) => {
             }
 
             // Call the no-userId endpoint: PUT /api/users/edit-profile
-            const updated = await updateUserProfile(updates);
+            const response = await updateCurrentUserProfile(updates);
+            const updated = response.user || response.data || response;
             // If API returns updated user, prefer photosAndVideo[0] to update avatarUrl so this screen shows the new image immediately
             if (updated) {
                 const updatedFirst = (Array.isArray(updated.photosAndVideo) && updated.photosAndVideo.length > 0)

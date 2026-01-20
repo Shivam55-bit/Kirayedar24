@@ -42,10 +42,13 @@ const makeAuthenticatedRequest = async (endpoint, options = {}) => {
     const response = await fetch(url, config);
     const data = await response.json();
     
+    console.log('API Response for', endpoint, ':', JSON.stringify(data, null, 2));
+    
     return {
       success: response.ok,
       status: response.status,
       data: data,
+      user: data.user || data.data || data, // Handle different response formats
       ...data // Spread response data for backward compatibility
     };
   } catch (error) {

@@ -15,7 +15,7 @@ export const API_TIMEOUT = 15000; // 15 seconds
 export const API_VERSION = 'v1';
 
 // Socket configuration
-export const SOCKET_URL = '';  // TODO: Add your socket server URL here (e.g., 'https://your-domain.com')
+export const SOCKET_URL = 'https://n5.bhoomitechzone.us';  // Same as BASE_URL for socket connections
 
 // Image upload configuration
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB

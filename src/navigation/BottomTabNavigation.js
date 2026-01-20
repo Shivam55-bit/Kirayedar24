@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Text,
+  Platform,
 } from "react-native";
 import { COLORS as THEME_COLORS, FONTS } from '../constants/theme';
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -118,7 +119,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 77,
+    height: Platform.OS === 'ios' ? 77 : 85,
     backgroundColor: "transparent",
   },
   tabItemsContainer: {
@@ -129,6 +130,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,
     paddingHorizontal: 6,
+    paddingBottom: Platform.OS === 'android' ? 15 : 0,
     
     elevation: 6,
     shadowColor: '#000',

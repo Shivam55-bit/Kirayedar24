@@ -84,6 +84,7 @@ const AppNavigator = React.forwardRef((props, ref) => {
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="OtpScreen" component={OtpScreen} />
         <Stack.Screen name="Otp" component={OtpScreen} />
+        <Stack.Screen name="TermsScreen" component={TermsScreen} />
 
         {/* Core App */}
         <Stack.Screen name="Home" component={BottomTabNavigation} />
@@ -121,7 +122,6 @@ const AppNavigator = React.forwardRef((props, ref) => {
         <Stack.Screen name="About" component={AboutScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
         <Stack.Screen name="TermAndConditionScreen" component={TermAndConditionScreen} />
-        <Stack.Screen name="TermsScreen" component={TermsScreen} />
 
 
         {/* Quick Action */}

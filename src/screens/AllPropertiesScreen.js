@@ -14,6 +14,7 @@ import {
     StatusBar,
     Modal,
     TextInput,
+    Linking,
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
@@ -197,6 +198,20 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         location: '',
     });
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
+    const [userRole, setUserRole] = useState(null);
+
+    // Load user role on mount
+    useEffect(() => {
+        const loadUserRole = async () => {
+            try {
+                const role = await AsyncStorage.getItem('userRole');
+                setUserRole(role);
+            } catch (error) {
+                console.warn('Error loading user role:', error);
+            }
+        };
+        loadUserRole();
+    }, []);
 
     // Enhanced title calculation
     const screenTitle = useMemo(() => {
@@ -419,6 +434,52 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         navigation.navigate('PropertyDetailsScreen', { property: item });
     }, [navigation]);
 
+    // Property action handlers
+    const handlePhoneCall = useCallback((property) => {
+        const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
+        const phoneUrl = `tel:${phoneNumber}`;
+        Linking.openURL(phoneUrl).catch((err) => {
+            console.error('Error opening phone dialer:', err);
+            Alert.alert('Error', 'Could not open phone dialer');
+        });
+    }, []);
+
+    const handleWhatsApp = useCallback((property) => {
+        const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
+        const message = encodeURIComponent(`Hi, I'm interested in your property: ${property.description || property.title || 'Property'}`);
+        const whatsappUrl = `whatsapp://send?phone=+91${phoneNumber}&text=${message}`;
+        Linking.openURL(whatsappUrl).catch((err) => {
+            console.error('Error opening WhatsApp:', err);
+            Alert.alert('Error', 'WhatsApp is not installed or could not be opened');
+        });
+    }, []);
+
+    const handlePropertyChat = useCallback(async (property) => {
+        try {
+            // Navigate to chat with property owner
+            const ownerId = property.ownerId || property.userId || property.postedBy?._id || property.postedBy;
+            
+            if (!ownerId) {
+                console.warn('No owner ID found for property:', property._id);
+                Alert.alert('Error', 'Unable to start chat - owner information not available');
+                return;
+            }
+            
+            console.log('Starting chat with owner:', ownerId);
+            navigation.navigate('ChatDetailScreen', { 
+                user: {
+                    _id: ownerId,
+                    fullName: property.ownerName || property.postedBy?.fullName || 'Property Owner',
+                },
+                propertyId: property._id || property.id,
+                propertyTitle: property.description || property.title || 'Property',
+            });
+        } catch (error) {
+            console.error('Error starting chat:', error);
+            Alert.alert('Error', 'Unable to start chat. Please try again.');
+        }
+    }, [navigation]);
+
     // Property card with home screen residential card layout
     const renderPropertyCard = useCallback((item, index) => {
         const firstImage = getFirstImageUrl(item);
@@ -498,20 +559,32 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                     
                     {/* Action Buttons */}
                     <View style={styles.propertyActionButtons}>
-                        <TouchableOpacity style={styles.actionButton}>
+                        <TouchableOpacity 
+                            style={styles.actionButton}
+                            onPress={() => handlePhoneCall(item)}
+                            activeOpacity={0.7}
+                        >
                             <Icon name="call" size={14} color="#FFFFFF" />
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#25D366' }]}>
+                        <TouchableOpacity 
+                            style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                            onPress={() => handleWhatsApp(item)}
+                            activeOpacity={0.7}
+                        >
                             <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#6B7280' }]}>
+                        <TouchableOpacity 
+                            style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                            onPress={() => handlePropertyChat(item)}
+                            activeOpacity={0.7}
+                        >
                             <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
                         </TouchableOpacity>
                     </View>
                 </View>
             </TouchableOpacity>
         );
-    }, [favorites, openProperty, toggleFavorite]);
+    }, [favorites, openProperty, toggleFavorite, handlePhoneCall, handleWhatsApp, handlePropertyChat]);
 
     return (
         <SafeAreaView style={styles.container}>

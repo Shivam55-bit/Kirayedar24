@@ -15,6 +15,8 @@ import {
     ScrollView,
     StatusBar,
     Platform,
+    Clipboard,
+    ToastAndroid,
 } from 'react-native';
 import Icon from "react-native-vector-icons/Ionicons";
 import FeatherIcon from "react-native-vector-icons/Feather";
@@ -22,9 +24,10 @@ import FontAwesomeIcon from "react-native-vector-icons/FontAwesome";
 import { useFocusEffect } from '@react-navigation/native';
 import { getCurrentUserProfile } from '../services/userapi';
 import { getUserProperties } from '../services/propertyService';
-import { getActiveSubscription } from '../services/subscriptionApi';
-import { getUserSubscription } from '../services/api';
 import CustomAlert from '../components/CustomAlert';
+import { useSubscription } from '../context/SubscriptionContext';
+import { getNotificationCount } from '../utils/notificationManager';
+import { propertyService } from '../services/propertyapi';
 
 // Real API integration for profile data
 
@@ -52,35 +55,37 @@ const COLORS = {
 const ProfileScreen = ({ navigation }) => {
     const [name, setName] = useState('');
     const [logoutAlert, setLogoutAlert] = useState({ visible: false });
+    const [userRole, setUserRole] = useState('');
     const [email, setEmail] = useState('');
     const [shortlistedCount, setShortlistedCount] = useState(0);
+    const [notificationCount, setNotificationCount] = useState(0);
     const [myListingsCount, setMyListingsCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [avatar, setAvatar] = useState(null);
     const [avatarVersion, setAvatarVersion] = useState(Date.now());
-    const [userRole, setUserRole] = useState('');
-    const [notificationCount, setNotificationCount] = useState(0);
-    const [activeSubscription, setActiveSubscription] = useState(null);
-    const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+    const [fcmToken, setFcmToken] = useState('');
+    
+    // Subscription context
+    const { activeSubscription, userHasPackage, loadActiveSubscription } = useSubscription();
 
     const loadProfileData = useCallback(async () => {
         setLoading(true);
         setError('');
         
         try {
-            // Load user role from AsyncStorage
-            const role = await AsyncStorage.getItem('userRole');
-            setUserRole(role || 'tenant');
-            
             // Load user profile from API
             const response = await getCurrentUserProfile();
+            
+            // Load subscription data
+            await loadActiveSubscription();
             
             if (response.success && response.user) {
                 const userData = response.user;
                 setName(userData.fullName || 'User');
                 setEmail(userData.email || 'user@example.com');
                 setAvatar(userData.profilePicture || null);
+                setUserRole(userData.role || userData.userType || '');
                 
                 // Fetch user's properties count
                 const propertiesResponse = await getUserProperties();
@@ -90,57 +95,48 @@ const ProfileScreen = ({ navigation }) => {
                     setMyListingsCount(0);
                 }
                 
-                // Load saved properties count from AsyncStorage
+                // Fetch shortlisted/favorites count
                 try {
-                    const savedProperties = await AsyncStorage.getItem('savedProperties');
-                    if (savedProperties) {
-                        const savedList = JSON.parse(savedProperties);
-                        setShortlistedCount(savedList.length);
-                    } else {
-                        setShortlistedCount(0);
+                    const savedResponse = await propertyService.getSavedProperties();
+                    console.log('[ProfileScreen] savedResponse:', savedResponse);
+                    let savedData = [];
+                    
+                    // Handle different response structures (same as SavedScreen)
+                    if (savedResponse && savedResponse.savedProperties && Array.isArray(savedResponse.savedProperties)) {
+                        savedData = savedResponse.savedProperties;
+                    } else if (savedResponse && Array.isArray(savedResponse.data)) {
+                        savedData = savedResponse.data;
+                    } else if (Array.isArray(savedResponse)) {
+                        savedData = savedResponse;
                     }
+                    
+                    // Filter out null entries
+                    savedData = savedData.filter(Boolean);
+                    setShortlistedCount(savedData.length);
                 } catch (e) {
+                    console.error('[ProfileScreen] Error fetching saved properties:', e);
                     setShortlistedCount(0);
                 }
                 
-                // Load notification count from AsyncStorage
+                // Fetch notification count
                 try {
-                    const notifCount = await AsyncStorage.getItem('notification_count');
-                    setNotificationCount(notifCount ? parseInt(notifCount) : 0);
+                    const notifCount = await getNotificationCount();
+                    setNotificationCount(notifCount || 0);
                 } catch (e) {
                     setNotificationCount(0);
                 }
                 
-                // Load active subscription for tenant
-                if (role === 'tenant') {
-                    console.log('🔄 Loading subscription for tenant...');
-                    setSubscriptionLoading(true);
-                    try {
-                        // Try primary subscription API
-                        let subResponse = await getActiveSubscription();
-                        console.log('📦 Primary Subscription Response:', JSON.stringify(subResponse, null, 2));
-                        
-                        // If primary fails, try fallback API
-                        if (!subResponse.success) {
-                            console.log('⚠️ Primary API failed, trying fallback...');
-                            subResponse = await getUserSubscription();
-                            console.log('📦 Fallback Subscription Response:', JSON.stringify(subResponse, null, 2));
-                        }
-                        
-                        if (subResponse.success && subResponse.data) {
-                            console.log('✅ Active subscription found:', subResponse.data);
-                            setActiveSubscription(subResponse.data);
-                        } else {
-                            console.log('⚠️ No active subscription:', subResponse.message);
-                            setActiveSubscription(null);
-                        }
-                    } catch (subErr) {
-                        console.error('❌ Failed to load subscription:', subErr);
-                        setActiveSubscription(null);
-                    } finally {
-                        setSubscriptionLoading(false);
-                        console.log('✅ Subscription loading complete.');
+                // Fetch FCM token for testing
+                try {
+                    const storedFcmToken = await AsyncStorage.getItem('current_fcm_token');
+                    if (storedFcmToken) {
+                        setFcmToken(storedFcmToken);
+                    } else {
+                        setFcmToken('No FCM Token Found');
                     }
+                } catch (e) {
+                    console.error('[ProfileScreen] Error fetching FCM token:', e);
+                    setFcmToken('Error loading token');
                 }
                 
             } else {
@@ -169,7 +165,29 @@ const ProfileScreen = ({ navigation }) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [loadActiveSubscription]);
+
+    // Helper function to calculate days remaining
+    const getDaysRemaining = (endDate) => {
+        if (!endDate) return 0;
+        const end = new Date(endDate);
+        const now = new Date();
+        const diff = end - now;
+        const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        return days > 0 ? days : 0;
+    };
+
+    // Helper function to calculate subscription progress (% of time used)
+    const getSubscriptionProgress = (subscription) => {
+        if (!subscription?.startDate || !subscription?.endDate) return 0;
+        const start = new Date(subscription.startDate);
+        const end = new Date(subscription.endDate);
+        const now = new Date();
+        const totalDuration = end - start;
+        const elapsed = now - start;
+        const progress = (elapsed / totalDuration) * 100;
+        return Math.min(Math.max(progress, 0), 100);
+    };
 
     // Dummy profile - no server polling needed
 
@@ -219,68 +237,73 @@ const ProfileScreen = ({ navigation }) => {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
             
-            {/* Modern Header with Gradient */}
+            {/* Beautiful Header Design */}
             <View style={styles.headerSection}>
-                <View style={styles.headerBar}>
+                {/* Top Bar */}
+                <View style={styles.headerTopBar}>
                     <TouchableOpacity 
-                        style={styles.headerButton}
+                        style={styles.backButton}
                         onPress={() => navigation.goBack()}
                     >
-                        <Icon name="arrow-back" size={24} color={COLORS.white} />
+                        <Icon name="chevron-back" size={24} color={COLORS.black} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>My Profile</Text>
-                    <TouchableOpacity style={styles.headerButton}>
-                        <Icon name="settings-outline" size={24} color={COLORS.white} />
-                    </TouchableOpacity>
+                    <Text style={styles.headerPageTitle}>My Profile</Text>
+                    <View style={{ width: 40 }} />
                 </View>
 
                 {/* Profile Card */}
                 <View style={styles.profileCard}>
-                    <TouchableOpacity 
-                        style={styles.avatarContainer} 
-                        onPress={() => navigation.navigate('EditProfileScreen')}
-                        activeOpacity={0.8}
-                    >
-                        {avatar ? (
-                            (() => {
-                                let uri = avatar;
-                                try {
-                                    const low = (avatar || '').toLowerCase();
-                                    if (low.startsWith('http://') || low.startsWith('https://')) {
-                                        const sep = avatar.includes('?') ? '&' : '?';
-                                        uri = avatar + sep + 'v=' + avatarVersion;
+                    <View style={styles.profileCardInner}>
+                        {/* Avatar */}
+                        <TouchableOpacity 
+                            style={styles.avatarWrapper} 
+                            onPress={() => navigation.navigate('EditProfileScreen')}
+                            activeOpacity={0.9}
+                        >
+                            {avatar ? (
+                                (() => {
+                                    let uri = avatar;
+                                    try {
+                                        const low = (avatar || '').toLowerCase();
+                                        if (low.startsWith('http://') || low.startsWith('https://')) {
+                                            const sep = avatar.includes('?') ? '&' : '?';
+                                            uri = avatar + sep + 'v=' + avatarVersion;
+                                        }
+                                    } catch (e) {
+                                        uri = avatar;
                                     }
-                                } catch (e) {
-                                    uri = avatar;
-                                }
 
-                                return (
-                                    <Image
-                                        source={{ uri }}
-                                        style={styles.avatarImage}
-                                        onError={() => setAvatar(null)}
-                                        resizeMode="cover"
-                                    />
-                                );
-                            })()
-                        ) : (
-                            <View style={styles.avatarCircle}>
-                                <Text style={styles.avatarText}>{initials}</Text>
+                                    return (
+                                        <Image
+                                            source={{ uri }}
+                                            style={styles.avatarImg}
+                                            onError={() => setAvatar(null)}
+                                            resizeMode="cover"
+                                        />
+                                    );
+                                })()
+                            ) : (
+                                <View style={styles.avatarPlaceholder}>
+                                    <Text style={styles.avatarInitials}>{initials}</Text>
+                                </View>
+                            )}
+                            <View style={styles.editIconBadge}>
+                                <FeatherIcon name="camera" size={12} color={COLORS.white} />
                             </View>
-                        )}
-                        <View style={styles.cameraButton}>
-                            <FeatherIcon name="edit-3" size={12} color={COLORS.white} />
-                        </View>
-                    </TouchableOpacity>
-                    
-                    <Text style={styles.userName}>{name}</Text>
-                    <Text style={styles.userEmail}>{email}</Text>
-                    
-                    <View style={styles.badgeContainer}>
-                        <View style={styles.verifiedBadge}>
-                            <Icon name="checkmark-circle" size={16} color={COLORS.success} />
-                            <Text style={styles.badgeText}>Verified</Text>
-                        </View>
+                        </TouchableOpacity>
+
+                        {/* User Info */}
+                        <Text style={styles.profileName} numberOfLines={1}>{name}</Text>
+                        <Text style={styles.profileEmail} numberOfLines={1}>{email}</Text>
+                        
+                        {/* Edit Button */}
+                        <TouchableOpacity 
+                            style={styles.editProfileButton}
+                            onPress={() => navigation.navigate('EditProfileScreen')}
+                        >
+                            <FeatherIcon name="edit-2" size={14} color={COLORS.primary} />
+                            <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
             </View>
@@ -304,151 +327,103 @@ const ProfileScreen = ({ navigation }) => {
                                 <Icon name="heart" size={24} color={COLORS.pink} />
                             </View>
                             <Text style={styles.actionTitle}>Favorites</Text>
-                            <Text style={styles.actionCount}>{shortlistedCount > 0 ? shortlistedCount : '0'}</Text>
+                            <Text style={styles.actionCount}>{String(shortlistedCount)}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity 
                             style={[styles.actionCard, { backgroundColor: COLORS.orange + '10' }]}
-                            onPress={() => navigation.navigate('NotificationList')}
+                            onPress={() => navigation.navigate('Notifications')}
                         >
                             <View style={[styles.actionIcon, { backgroundColor: COLORS.orange + '20' }]}>
                                 <Icon name="notifications" size={24} color={COLORS.orange} />
                             </View>
                             <Text style={styles.actionTitle}>Notifications</Text>
-                            <Text style={styles.actionCount}>{notificationCount > 0 ? notificationCount : 'None'}</Text>
+                            <Text style={styles.actionCount}>{notificationCount}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Subscription Loading Indicator */}
-                {userRole === 'tenant' && subscriptionLoading && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Subscription</Text>
-                        <View style={styles.subscriptionCard}>
-                            <ActivityIndicator size="small" color={COLORS.primary} />
-                            <Text style={styles.loadingText}>Loading subscription...</Text>
-                        </View>
-                    </View>
-                )}
-
-                {/* Active Subscription Card - Only show for tenants */}
-                {userRole === 'tenant' && !subscriptionLoading && activeSubscription && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Active Subscription</Text>
-                        <View style={styles.subscriptionCard}>
-                            <View style={styles.subscriptionHeader}>
-                                <View style={styles.subscriptionBadge}>
-                                    <FontAwesomeIcon name="star" size={16} color={COLORS.warning} />
-                                    <Text style={styles.subscriptionBadgeText}>ACTIVE</Text>
-                                </View>
-                                <View style={styles.subscriptionStatus}>
-                                    <Icon 
-                                        name="checkmark-circle" 
-                                        size={20} 
-                                        color={COLORS.success} 
-                                    />
+                {/* Subscription Status Card - Only for Tenants */}
+                {userRole !== 'owner' && userRole !== 'Owner' && userHasPackage && activeSubscription ? (
+                    <View style={styles.subscriptionActiveCard}>
+                        <View style={styles.subscriptionHeader}>
+                            <View style={styles.subscriptionIconWrapper}>
+                                <FontAwesomeIcon name="crown" size={20} color={COLORS.warning} />
+                            </View>
+                            <View style={styles.subscriptionTitleWrapper}>
+                                <Text style={styles.subscriptionPlanName}>
+                                    {activeSubscription.package?.name || activeSubscription.packageName || 'Premium Plan'}
+                                </Text>
+                                <View style={styles.activeStatusBadge}>
+                                    <View style={styles.activeDot} />
+                                    <Text style={styles.activeStatusText}>Active</Text>
                                 </View>
                             </View>
+                        </View>
+                        
+                        <View style={styles.subscriptionDetails}>
+                            <View style={styles.subscriptionDetailRow}>
+                                <Icon name="calendar-outline" size={18} color={COLORS.greyText} />
+                                <Text style={styles.subscriptionDetailLabel}>Started:</Text>
+                                <Text style={styles.subscriptionDetailValue}>
+                                    {activeSubscription.startDate 
+                                        ? new Date(activeSubscription.startDate).toLocaleDateString('en-IN', {
+                                            day: 'numeric', month: 'short', year: 'numeric'
+                                          })
+                                        : 'N/A'}
+                                </Text>
+                            </View>
                             
-                            <Text style={styles.subscriptionPlanName}>
-                                {activeSubscription.packageName || activeSubscription.planName || 'Premium Plan'}
+                            <View style={styles.subscriptionDetailRow}>
+                                <Icon name="time-outline" size={18} color={COLORS.greyText} />
+                                <Text style={styles.subscriptionDetailLabel}>Expires:</Text>
+                                <Text style={[styles.subscriptionDetailValue, { color: COLORS.redAccent }]}>
+                                    {activeSubscription.endDate 
+                                        ? new Date(activeSubscription.endDate).toLocaleDateString('en-IN', {
+                                            day: 'numeric', month: 'short', year: 'numeric'
+                                          })
+                                        : 'N/A'}
+                                </Text>
+                            </View>
+                            
+                            <View style={styles.subscriptionDetailRow}>
+                                <Icon name="hourglass-outline" size={18} color={COLORS.greyText} />
+                                <Text style={styles.subscriptionDetailLabel}>Days Left:</Text>
+                                <Text style={[styles.subscriptionDetailValue, { 
+                                    color: getDaysRemaining(activeSubscription.endDate) <= 7 ? COLORS.redAccent : COLORS.success 
+                                }]}>
+                                    {getDaysRemaining(activeSubscription.endDate)} days
+                                </Text>
+                            </View>
+                            
+                            {activeSubscription.package?.contactLimit && (
+                                <View style={styles.subscriptionDetailRow}>
+                                    <Icon name="call-outline" size={18} color={COLORS.greyText} />
+                                    <Text style={styles.subscriptionDetailLabel}>Contacts:</Text>
+                                    <Text style={styles.subscriptionDetailValue}>
+                                        {activeSubscription.contactsUsed || 0} / {activeSubscription.package.contactLimit}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                        
+                        <View style={styles.subscriptionProgress}>
+                            <View style={styles.progressBar}>
+                                <View style={[styles.progressFill, { 
+                                    width: `${getSubscriptionProgress(activeSubscription)}%`,
+                                    backgroundColor: getSubscriptionProgress(activeSubscription) > 80 ? COLORS.redAccent : COLORS.success
+                                }]} />
+                            </View>
+                            <Text style={styles.progressText}>
+                                {getSubscriptionProgress(activeSubscription).toFixed(0)}% used
                             </Text>
-                            
-                            <View style={styles.subscriptionDetails}>
-                                <View style={styles.subscriptionDetailItem}>
-                                    <Icon name="calendar-outline" size={18} color={COLORS.greyText} />
-                                    <View style={styles.subscriptionDetailText}>
-                                        <Text style={styles.subscriptionDetailLabel}>Started</Text>
-                                        <Text style={styles.subscriptionDetailValue}>
-                                            {activeSubscription.startDate 
-                                                ? new Date(activeSubscription.startDate).toLocaleDateString('en-IN', { 
-                                                    day: 'numeric', 
-                                                    month: 'short', 
-                                                    year: 'numeric' 
-                                                })
-                                                : 'N/A'
-                                            }
-                                        </Text>
-                                    </View>
-                                </View>
-                                
-                                <View style={styles.subscriptionDetailItem}>
-                                    <Icon name="time-outline" size={18} color={COLORS.greyText} />
-                                    <View style={styles.subscriptionDetailText}>
-                                        <Text style={styles.subscriptionDetailLabel}>Expires</Text>
-                                        <Text style={styles.subscriptionDetailValue}>
-                                            {activeSubscription.endDate 
-                                                ? new Date(activeSubscription.endDate).toLocaleDateString('en-IN', { 
-                                                    day: 'numeric', 
-                                                    month: 'short', 
-                                                    year: 'numeric' 
-                                                })
-                                                : 'N/A'
-                                            }
-                                        </Text>
-                                    </View>
-                                </View>
-                            </View>
-                            
-                            {activeSubscription.endDate && (() => {
-                                const today = new Date();
-                                const expiryDate = new Date(activeSubscription.endDate);
-                                const daysRemaining = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-                                const isExpiringSoon = daysRemaining <= 7 && daysRemaining > 0;
-                                const isExpired = daysRemaining <= 0;
-                                
-                                return (
-                                    <View style={[
-                                        styles.subscriptionRemainingCard,
-                                        isExpired && styles.subscriptionExpiredCard,
-                                        isExpiringSoon && styles.subscriptionExpiringSoonCard
-                                    ]}>
-                                        <Icon 
-                                            name={isExpired ? "close-circle" : "hourglass-outline"} 
-                                            size={20} 
-                                            color={isExpired ? COLORS.redAccent : isExpiringSoon ? COLORS.warning : COLORS.success} 
-                                        />
-                                        <Text style={[
-                                            styles.subscriptionRemainingText,
-                                            isExpired && styles.subscriptionExpiredText
-                                        ]}>
-                                            {isExpired 
-                                                ? 'Expired' 
-                                                : `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`
-                                            }
-                                        </Text>
-                                    </View>
-                                );
-                            })()}
-                            
-                            <TouchableOpacity 
-                                style={styles.renewButton}
-                                onPress={() => navigation.navigate('AddSell')}
-                            >
-                                <Text style={styles.renewButtonText}>Renew / Upgrade</Text>
-                                <Icon name="arrow-forward" size={16} color={COLORS.white} />
-                            </TouchableOpacity>
                         </View>
                     </View>
-                )}
-
-                {/* No Subscription Message */}
-                {userRole === 'tenant' && !subscriptionLoading && !activeSubscription && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Subscription</Text>
-                        <View style={styles.subscriptionCard}>
-                            <Icon name="information-circle-outline" size={40} color={COLORS.greyText} />
-                            <Text style={[styles.subscriptionPlanName, {marginTop: 12, textAlign: 'center'}]}>No Active Subscription</Text>
-                            <Text style={[styles.subscriptionDetailLabel, {textAlign: 'center', marginTop: 8}]}>Purchase a plan to list your properties</Text>
-                        </View>
-                    </View>
-                )}
-
-                {/* Premium Features Card - Only show for tenants without active subscription */}
-                {userRole === 'tenant' && !activeSubscription && !subscriptionLoading && (
+                ) : userRole !== 'owner' && userRole !== 'Owner' ? (
+                    /* Premium Features Card - Show when no active subscription (only for tenants) */
                     <TouchableOpacity 
                         style={styles.premiumCard} 
-                        onPress={() => console.log('Go Premium')}
+                        onPress={() => navigation.navigate('SubscriptionPlans')}
                         activeOpacity={0.9}
                     >
                         <View style={styles.premiumHeader}>
@@ -475,7 +450,41 @@ const ProfileScreen = ({ navigation }) => {
                             <Icon name="arrow-forward" size={16} color={COLORS.white} />
                         </View>
                     </TouchableOpacity>
-                )}
+                ) : null}
+
+                {/* FCM Token Test Section */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>FCM Token (Test)</Text>
+                    <View style={styles.fcmCard}>
+                        <View style={styles.fcmHeader}>
+                            <View style={[styles.menuIcon, { backgroundColor: COLORS.success + '20' }]}>
+                                <Icon name="notifications-outline" size={20} color={COLORS.success} />
+                            </View>
+                            <Text style={styles.fcmLabel}>Current FCM Token</Text>
+                        </View>
+                        <Text 
+                            style={styles.fcmTokenText}
+                            numberOfLines={3}
+                            ellipsizeMode="middle"
+                        >
+                            {fcmToken || 'Loading...'}
+                        </Text>
+                        <TouchableOpacity 
+                            style={styles.copyButton}
+                            onPress={() => {
+                                if (fcmToken && fcmToken !== 'No FCM Token Found' && fcmToken !== 'Error loading token') {
+                                    Clipboard.setString(fcmToken);
+                                    if (Platform.OS === 'android') {
+                                        ToastAndroid.show('FCM Token copied!', ToastAndroid.SHORT);
+                                    }
+                                }
+                            }}
+                        >
+                            <Icon name="copy-outline" size={18} color={COLORS.white} />
+                            <Text style={styles.copyButtonText}>Copy Token</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
 
                 {/* Settings Menu */}
                 <View style={styles.section}>
@@ -585,104 +594,138 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         paddingHorizontal: 20,
+        paddingTop: 20,
         paddingBottom: 40,
     },
 
-    // Header Section
+    // Header Section - Beautiful Design
     headerSection: {
-        backgroundColor: COLORS.primary,
-        paddingBottom: 30,
-        borderBottomLeftRadius: 25,
-        borderBottomRightRadius: 25,
-        ...Platform.select({
-            ios: {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.15,
-                shadowRadius: 12,
-            },
-            android: {
-                elevation: 8,
-            },
-        }),
+        backgroundColor: COLORS.background,
+        paddingBottom: 10,
     },
-    headerBar: {
+    headerTopBar: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: 15,
-        paddingBottom: 20,
+        paddingHorizontal: 16,
+        paddingTop: 10,
+        paddingBottom: 15,
     },
-    headerButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: COLORS.white,
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({
+            ios: {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.08,
+                shadowRadius: 4,
+            },
+            android: {
+                elevation: 3,
+            },
+        }),
     },
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: "700",
-        color: COLORS.white,
+    headerPageTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.black,
     },
 
     // Profile Card
     profileCard: {
+        marginHorizontal: 16,
+        borderRadius: 24,
+        backgroundColor: COLORS.primary,
+        overflow: 'hidden',
+        ...Platform.select({
+            ios: {
+                shadowColor: COLORS.primary,
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.35,
+                shadowRadius: 16,
+            },
+            android: {
+                elevation: 10,
+            },
+        }),
+    },
+    profileCardInner: {
         alignItems: 'center',
+        paddingVertical: 24,
         paddingHorizontal: 20,
     },
-    avatarContainer: {
+    avatarWrapper: {
         position: 'relative',
-        marginBottom: 15,
+        marginBottom: 12,
     },
-    avatarCircle: {
-        width: 90,
-        height: 90,
-        borderRadius: 45,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    avatarImg: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        borderWidth: 3,
+        borderColor: COLORS.white,
+    },
+    avatarPlaceholder: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 4,
+        borderWidth: 3,
         borderColor: COLORS.white,
     },
-    avatarImage: {
-        width: 90,
-        height: 90,
-        borderRadius: 45,
-        borderWidth: 4,
-        borderColor: COLORS.white,
-    },
-    avatarText: {
-        fontSize: 32,
+    avatarInitials: {
+        fontSize: 28,
         fontWeight: '700',
         color: COLORS.white,
     },
-    cameraButton: {
+    editIconBadge: {
         position: 'absolute',
-        bottom: 2,
-        right: 2,
+        bottom: 0,
+        right: 0,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
         backgroundColor: COLORS.accent,
-        width: 28,
-        height: 28,
-        borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
         borderColor: COLORS.white,
     },
-    userName: {
-        fontSize: 24,
+    profileName: {
+        fontSize: 20,
         fontWeight: '700',
         color: COLORS.white,
         marginBottom: 4,
+        textAlign: 'center',
     },
-    userEmail: {
-        fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.8)',
-        marginBottom: 12,
+    profileEmail: {
+        fontSize: 13,
+        color: 'rgba(255, 255, 255, 0.85)',
+        marginBottom: 16,
+        textAlign: 'center',
     },
+    editProfileButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.white,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 25,
+        gap: 6,
+    },
+    editProfileButtonText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.primary,
+    },
+
     badgeContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -868,6 +911,169 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
 
+    // Subscription Active Card
+    subscriptionActiveCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
+        padding: 20,
+        marginBottom: 30,
+        borderWidth: 2,
+        borderColor: COLORS.success + '40',
+        ...Platform.select({
+            ios: {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 5,
+            },
+        }),
+    },
+    subscriptionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    subscriptionIconWrapper: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.warning + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    subscriptionTitleWrapper: {
+        flex: 1,
+    },
+    subscriptionPlanName: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.black,
+        marginBottom: 4,
+    },
+    activeStatusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.success + '15',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        alignSelf: 'flex-start',
+    },
+    activeDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: COLORS.success,
+        marginRight: 6,
+    },
+    activeStatusText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.success,
+    },
+    subscriptionDetails: {
+        backgroundColor: COLORS.greyLight,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+    },
+    subscriptionDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    subscriptionDetailLabel: {
+        fontSize: 14,
+        color: COLORS.greyText,
+        marginLeft: 10,
+        flex: 1,
+    },
+    subscriptionDetailValue: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.black,
+    },
+    subscriptionProgress: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    progressBar: {
+        flex: 1,
+        height: 8,
+        backgroundColor: COLORS.greyLight,
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginRight: 12,
+    },
+    progressFill: {
+        height: '100%',
+        borderRadius: 4,
+    },
+    progressText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.greyText,
+        minWidth: 60,
+        textAlign: 'right',
+    },
+
+    // FCM Token Card
+    fcmCard: {
+        backgroundColor: COLORS.white,
+        borderRadius: 16,
+        padding: 16,
+        ...Platform.select({
+            ios: {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+            },
+            android: {
+                elevation: 2,
+            },
+        }),
+    },
+    fcmHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    fcmLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.black,
+        marginLeft: 12,
+    },
+    fcmTokenText: {
+        fontSize: 12,
+        color: COLORS.greyText,
+        backgroundColor: COLORS.greyLight,
+        padding: 12,
+        borderRadius: 8,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+        marginBottom: 12,
+    },
+    copyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.success,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+    },
+    copyButtonText: {
+        color: COLORS.white,
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+
     // Menu Card
     menuCard: {
         backgroundColor: COLORS.white,
@@ -967,122 +1173,6 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 15,
         fontWeight: '600',
-    },
-
-    // Subscription Card
-    subscriptionCard: {
-        backgroundColor: COLORS.white,
-        borderRadius: 20,
-        padding: 20,
-        borderWidth: 2,
-        borderColor: COLORS.success + '30',
-        ...Platform.select({
-            ios: {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.1,
-                shadowRadius: 12,
-            },
-            android: {
-                elevation: 5,
-            },
-        }),
-    },
-    subscriptionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    subscriptionBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.warning + '20',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-    },
-    subscriptionBadgeText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: COLORS.warning,
-        marginLeft: 6,
-        letterSpacing: 0.5,
-    },
-    subscriptionStatus: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: COLORS.success + '20',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    subscriptionPlanName: {
-        fontSize: 22,
-        fontWeight: '700',
-        color: COLORS.black,
-        marginBottom: 20,
-    },
-    subscriptionDetails: {
-        marginBottom: 16,
-    },
-    subscriptionDetailItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    subscriptionDetailText: {
-        marginLeft: 12,
-        flex: 1,
-    },
-    subscriptionDetailLabel: {
-        fontSize: 12,
-        color: COLORS.greyText,
-        marginBottom: 2,
-    },
-    subscriptionDetailValue: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: COLORS.black,
-    },
-    subscriptionRemainingCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.success + '10',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        borderRadius: 12,
-        marginBottom: 16,
-    },
-    subscriptionExpiringSoonCard: {
-        backgroundColor: COLORS.warning + '10',
-    },
-    subscriptionExpiredCard: {
-        backgroundColor: COLORS.redAccent + '10',
-    },
-    subscriptionRemainingText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: COLORS.success,
-        marginLeft: 8,
-    },
-    subscriptionExpiredText: {
-        color: COLORS.redAccent,
-    },
-    renewButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.primary,
-        paddingVertical: 14,
-        borderRadius: 12,
-    },
-    renewButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.white,
-        marginRight: 8,
     },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useFocusEffect } from '@react-navigation/native';
 import {
     View,
@@ -13,6 +13,7 @@ import {
     ScrollView,
     ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/Ionicons";
 import { DeviceEventEmitter } from 'react-native';
 // Import API services and helper functions
@@ -22,6 +23,20 @@ import propertyService from '../services/propertyapi';
 // Fallback image URL when a property has no photo link
 const DEFAULT_IMAGE_URL = 'https://via.placeholder.com/180x180.png?text=No+Image';
 
+// Helper to safely convert any value to string (handles location objects)
+const safeString = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    // Handle location/address objects with state, city, locality, pincode
+    if (value.locality || value.city || value.state || value.pincode) {
+      return [value.locality, value.city, value.state].filter(Boolean).join(', ') || fallback;
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+};
+
 const SavedScreen = ({ navigation }) => {
     const [search, setSearch] = useState("");
     // removed comparison feature state (not needed anymore)
@@ -29,6 +44,20 @@ const SavedScreen = ({ navigation }) => {
     const [loadingId, setLoadingId] = useState(null); 
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [userRole, setUserRole] = useState(null);  // Track user role
+
+    // Load user role on mount
+    useEffect(() => {
+        const loadUserRole = async () => {
+            try {
+                const role = await AsyncStorage.getItem('userRole');
+                setUserRole(role);
+            } catch (error) {
+                console.warn('Error loading user role:', error);
+            }
+        };
+        loadUserRole();
+    }, []);
 
     const loadSaved = useCallback(async () => {
         setLoading(true);
@@ -62,12 +91,24 @@ const SavedScreen = ({ navigation }) => {
 
                     // 4. **IMPROVED: Handle image path and format it with base URL**
                     console.log('[SavedScreen] Processing property:', p.description || p.title, {
+                        photos: p.photos,
                         photosAndVideo: p.photosAndVideo,
                         images: p.images,
                         image: p.image
                     });
                     
-                    if (p.photosAndVideo && p.photosAndVideo.length > 0) {
+                    // Check photos array first (most common field name)
+                    if (p.photos && Array.isArray(p.photos) && p.photos.length > 0) {
+                        const firstPhoto = p.photos[0];
+                        const rawPath = typeof firstPhoto === 'string' 
+                            ? firstPhoto 
+                            : (firstPhoto?.url || firstPhoto?.uri || firstPhoto);
+
+                        if (rawPath) {
+                            imageUrl = formatImageUrl(rawPath);
+                            console.log('[SavedScreen] Using photos:', rawPath, '→', imageUrl);
+                        }
+                    } else if (p.photosAndVideo && p.photosAndVideo.length > 0) {
                         const firstPhoto = p.photosAndVideo[0];
                         const rawPath = typeof firstPhoto === 'string' 
                             ? firstPhoto 
@@ -100,12 +141,14 @@ const SavedScreen = ({ navigation }) => {
                     return {
                         // Use _id as the primary unique identifier
                         id: p._id || p.id || p.propertyId || String(p._id || Date.now()),
-                        title: p.description || p.title || p.name || 'Untitled Property',
+                        title: safeString(p.description || p.title || p.name, 'Untitled Property'),
                         price: p.price || p.listPrice || p.sellingPrice || 'N/A', 
-                        location: primaryLocation,
+                        location: safeString(primaryLocation, 'Unknown Location'),
                         image: { uri: imageUrl },
-                        tag: primaryType,
+                        tag: safeString(primaryType, ''),
                         isSaved: true,
+                        // Store original data for navigation to details
+                        originalData: p,
                     };
                 });
                 setProperties(mapped);
@@ -194,14 +237,38 @@ const SavedScreen = ({ navigation }) => {
         item.tag.toLowerCase().includes(search.toLowerCase())
     );
 
+    // Handle navigation to property details
+    const handlePropertyPress = (item) => {
+        console.log('[SavedScreen] Navigating to property:', item.id);
+        console.log('[SavedScreen] Original data:', item.originalData);
+        
+        // Pass the original API data for full property details
+        const propertyData = item.originalData || item;
+        
+        navigation.navigate('PropertyDetailsScreen', { 
+            propertyId: item.id,
+            property: propertyData 
+        });
+    };
+
     const renderItem = ({ item }) => {
         console.log('[SavedScreen] Rendering item:', item.title, 'with image:', item.image);
         
+        // Ensure we have a valid image source
+        const imageSource = item.image && item.image.uri && item.image.uri !== DEFAULT_IMAGE_URL
+            ? item.image
+            : { uri: DEFAULT_IMAGE_URL };
+        
         return (
-            <View style={styles.cardRow}>
+            <TouchableOpacity 
+                style={styles.cardRow}
+                onPress={() => handlePropertyPress(item)}
+                activeOpacity={0.8}
+            >
                 <Image
-                    source={item.image || { uri: DEFAULT_IMAGE_URL }}
+                    source={imageSource}
                     style={styles.imageRow}
+                    defaultSource={{ uri: DEFAULT_IMAGE_URL }}
                     resizeMode="cover"
                     onError={(error) => {
                         console.log('[SavedScreen] Image load error for:', item.title, error.nativeEvent.error);
@@ -227,7 +294,7 @@ const SavedScreen = ({ navigation }) => {
                     </View>
                 </View>
             </View>
-        </View>
+        </TouchableOpacity>
         );
     };
 
@@ -236,9 +303,12 @@ const SavedScreen = ({ navigation }) => {
                 <Icon name="heart-outline" size={80} color="#EF4444" />
                 <Text style={styles.emptyTextTitle}>No property shortlisted</Text>
                 <Text style={styles.emptyTextSubtitle}>You haven't shortlisted any properties yet. Tap the heart on a listing to save it here.</Text>
+                {/* Hide Browse Properties button for Owners (Bug 9) */}
+                {userRole !== 'Owner' && userRole !== 'owner' && (
                 <TouchableOpacity style={styles.browseBtn} onPress={() => navigation.navigate('AllPropertiesScreen')}>
                     <Text style={styles.browseBtnText}>Browse Properties</Text>
                 </TouchableOpacity>
+                )}
             </View>
     );
 

@@ -29,6 +29,7 @@ import propertyService from '../services/propertyapi';
 import { debugPropertyAPIs } from '../debug/propertyDebug';
 import { checkAuthStatus } from '../utils/quickAuth';
 import { getNotificationCount, addTestNotifications } from '../utils/notificationManager';
+import { fetchAndProcessNotifications } from '../services/backgroundNotificationService';
 import { getStoredCredentials, clearUserCredentials } from '../utils/authManager';
 import { runCompleteNotificationTest } from '../utils/notificationTest';
 import { runChatDiagnostics } from '../utils/chatDiagnostics';
@@ -44,120 +45,6 @@ import { useSubscription } from '../context/SubscriptionContext';
 
 // Theme & Layout Constants
 const { width, height } = Dimensions.get("window");
-
-// Dummy Data
-const DUMMY_PROPERTIES = [
-    {
-        _id: '1',
-        description: 'Sky Dandelions Apartment',
-        propertyLocation: 'Jakarta, Indonesia',
-        price: 290,
-        rating: 4.9,
-        purpose: 'Rent',
-        propertyType: 'Residential',
-        residentialType: 'Apartment',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800', type: 'image' }],
-    },
-    {
-        _id: '2',
-        description: 'Pranay Villa',
-        propertyLocation: 'Ahmedabad, Gujarat',
-        price: 450,
-        rating: 4.8,
-        purpose: 'Sale',
-        propertyType: 'Residential',
-        residentialType: 'Independent House',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800', type: 'image' }],
-    },
-    {
-        _id: '3',
-        description: 'Modern Office Space',
-        propertyLocation: 'Mumbai, Maharashtra',
-        price: 850,
-        rating: 4.7,
-        purpose: 'Rent',
-        propertyType: 'Commercial',
-        commercialType: 'office',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800', type: 'image' }],
-    },
-    {
-        _id: '4',
-        description: 'Luxury Penthouse',
-        propertyLocation: 'Delhi, India',
-        price: 1200,
-        rating: 5.0,
-        purpose: 'Sale',
-        propertyType: 'Residential',
-        residentialType: 'Apartment',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800', type: 'image' }],
-    },
-    {
-        _id: '5',
-        description: 'Commercial Plaza',
-        propertyLocation: 'Bangalore, Karnataka',
-        price: 2500,
-        rating: 4.9,
-        purpose: 'Rent',
-        propertyType: 'Commercial',
-        commercialType: 'showroom',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800', type: 'image' }],
-    },
-    {
-        _id: '6',
-        description: 'Beach House Villa',
-        propertyLocation: 'Goa, India',
-        price: 680,
-        rating: 4.8,
-        purpose: 'Rent',
-        propertyType: 'Residential',
-        residentialType: 'Independent House',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800', type: 'image' }],
-    },
-    {
-        _id: '7',
-        description: 'Corporate Office',
-        propertyLocation: 'Pune, Maharashtra',
-        price: 1500,
-        rating: 4.6,
-        purpose: 'Sale',
-        propertyType: 'Commercial',
-        commercialType: 'office',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800', type: 'image' }],
-    },
-    {
-        _id: '8',
-        description: 'Garden Apartment',
-        propertyLocation: 'Chennai, Tamil Nadu',
-        price: 320,
-        rating: 4.7,
-        purpose: 'Rent',
-        propertyType: 'Residential',
-        residentialType: 'Apartment',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800', type: 'image' }],
-    },
-    {
-        _id: '9',
-        description: 'Retail Shop Space',
-        propertyLocation: 'Kolkata, West Bengal',
-        price: 450,
-        rating: 4.5,
-        purpose: 'Rent',
-        propertyType: 'Commercial',
-        commercialType: 'shop',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=800', type: 'image' }],
-    },
-    {
-        _id: '10',
-        description: 'Hill View Bungalow',
-        propertyLocation: 'Shimla, Himachal Pradesh',
-        price: 890,
-        rating: 5.0,
-        purpose: 'Sale',
-        propertyType: 'Residential',
-        residentialType: 'Independent House',
-        photosAndVideo: [{ uri: 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800', type: 'image' }],
-    }
-];
 
 // Helper functions to format API data
 const formatImageUrl = (url) => {
@@ -303,8 +190,13 @@ const ChatButton = ({ onPress, theme, hasUnreadMessages }) => (
 
 const Homescreen = ({ navigation }) => {
     // Subscription context
-    const { userHasPackage, setPropertyForSubscription } = useSubscription();
+    const { userHasPackage, setPropertyForSubscription, loadActiveSubscription, activeSubscription } = useSubscription();
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    
+    // Load subscription status on mount
+    useEffect(() => {
+        loadActiveSubscription();
+    }, [loadActiveSubscription]);
     
     // Debug function to check login status (for testing)
     const checkLoginStatus = async () => {
@@ -343,6 +235,20 @@ const Homescreen = ({ navigation }) => {
     const [hasUnreadMessages, setHasUnreadMessages] = useState(true);
     const [notificationCount, setNotificationCount] = useState(0);
     const [drawerVisible, setDrawerVisible] = useState(false);
+    const [userRole, setUserRole] = useState(null);
+
+    // Load user role on mount
+    useEffect(() => {
+        const loadUserRole = async () => {
+            try {
+                const role = await AsyncStorage.getItem('userRole');
+                setUserRole(role);
+            } catch (error) {
+                console.warn('Error loading user role:', error);
+            }
+        };
+        loadUserRole();
+    }, []);
 
     // Load properties from API
     const loadProperties = useCallback(async () => {
@@ -385,11 +291,11 @@ const Homescreen = ({ navigation }) => {
                     console.log('✅ Featured properties loaded:', approvedRecent.length);
                 } else {
                     console.warn('⚠️ Recent API returned success=false:', recentResponse.value.message);
-                    setFeaturedProperties(DUMMY_PROPERTIES);
+                    setFeaturedProperties([]); // No dummy data
                 }
             } else {
                 console.error('❌ Recent API call failed completely:', recentResponse.reason);
-                setFeaturedProperties(DUMMY_PROPERTIES);
+                setFeaturedProperties([]); // No dummy data
             }
             
             // Handle residential properties (requires authentication)
@@ -408,12 +314,12 @@ const Homescreen = ({ navigation }) => {
                     console.warn('⚠️ Residential API failed:', residentialResponse.value.message);
                     // If auth failed, use recent properties filtered by type
                     const fallbackResidential = featuredProperties.filter(p => p.propertyType === 'Residential');
-                    setResidentialProperties(fallbackResidential.length > 0 ? fallbackResidential : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
+                    setResidentialProperties(fallbackResidential); // No dummy data
                 }
             } else {
                 console.error('❌ Residential API call failed:', residentialResponse.reason);
                 const fallbackResidential = featuredProperties.filter(p => p.propertyType === 'Residential');
-                setResidentialProperties(fallbackResidential.length > 0 ? fallbackResidential : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
+                setResidentialProperties(fallbackResidential); // No dummy data
             }
             
             // Handle commercial properties (requires authentication)
@@ -432,20 +338,20 @@ const Homescreen = ({ navigation }) => {
                     console.warn('⚠️ Commercial API failed:', commercialResponse.value.message);
                     // If auth failed, use recent properties filtered by type
                     const fallbackCommercial = featuredProperties.filter(p => p.propertyType === 'Commercial');
-                    setCommercialProperties(fallbackCommercial.length > 0 ? fallbackCommercial : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
+                    setCommercialProperties(fallbackCommercial); // No dummy data
                 }
             } else {
                 console.error('❌ Commercial API call failed:', commercialResponse.reason);
                 const fallbackCommercial = featuredProperties.filter(p => p.propertyType === 'Commercial');
-                setCommercialProperties(fallbackCommercial.length > 0 ? fallbackCommercial : DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
+                setCommercialProperties(fallbackCommercial); // No dummy data
             }
             
         } catch (error) {
             console.error('❌ Error loading properties:', error);
-            // Fallback to dummy data on error
-            setFeaturedProperties(DUMMY_PROPERTIES);
-            setResidentialProperties(DUMMY_PROPERTIES.filter(p => p.propertyType === 'Residential'));
-            setCommercialProperties(DUMMY_PROPERTIES.filter(p => p.propertyType === 'Commercial'));
+            // No dummy data - show empty state on error
+            setFeaturedProperties([]);
+            setResidentialProperties([]);
+            setCommercialProperties([]);
         } finally {
             setIsLoadingProperties(false);
             
@@ -642,6 +548,8 @@ const Homescreen = ({ navigation }) => {
 
     const handleSubscriptionSuccess = () => {
         setShowSubscriptionModal(false);
+        // Refresh subscription status
+        loadActiveSubscription();
         // After subscription, user will have package and can view properties
         Alert.alert('Success', 'Subscription activated! You can now view property details.');
     };
@@ -678,25 +586,49 @@ const Homescreen = ({ navigation }) => {
         });
     };
 
-    const handlePropertyChat = (property) => {
-        // Navigate to chat with property owner
-        navigation.navigate('ChatDetailScreen', { 
-            propertyId: property._id || property.id,
-            ownerId: property.ownerId || property.userId,
-            propertyTitle: property.description || property.title || 'Property',
-            ownerName: property.ownerName || 'Property Owner'
-        });
+    const handlePropertyChat = async (property) => {
+        try {
+            // Navigate to chat with property owner
+            // ChatDetailScreen expects 'user' object with '_id' field
+            const ownerId = property.ownerId || property.userId || property.postedBy?._id || property.postedBy;
+            
+            if (!ownerId) {
+                console.warn('No owner ID found for property:', property._id);
+                Alert.alert('Error', 'Unable to start chat - owner information not available');
+                return;
+            }
+            
+            console.log('Starting chat with owner:', ownerId);
+            navigation.navigate('ChatDetailScreen', { 
+                user: {
+                    _id: ownerId,
+                    fullName: property.ownerName || property.postedBy?.fullName || 'Property Owner',
+                },
+                propertyId: property._id || property.id,
+                propertyTitle: property.description || property.title || 'Property',
+            });
+        } catch (error) {
+            console.error('Error starting chat:', error);
+            Alert.alert('Error', 'Unable to start chat. Please try again.');
+        }
     };
 
     const handleNotificationPress = () => {
         navigation.navigate('NotificationList');
     };
 
-    // Load notification count
+    // Load notification count from API
     const loadNotificationCount = async () => {
         try {
-            const count = await getNotificationCount();
-            setNotificationCount(count);
+            // First get from local storage for instant UI update
+            const localCount = await getNotificationCount();
+            setNotificationCount(localCount);
+            
+            // Then fetch from API to get latest count
+            const result = await fetchAndProcessNotifications(false);
+            if (result && typeof result.count === 'number') {
+                setNotificationCount(result.count);
+            }
         } catch (error) {
             console.error('Error loading notification count:', error);
         }
@@ -1474,34 +1406,35 @@ const styles = StyleSheet.create({
     
     // Modern Header Styles
     modernHeader: {
-        paddingTop: Platform.OS === 'ios' ? height * 0.01 : height * 0.03,
+        paddingTop: Platform.OS === 'ios' ? height * 0.01 : height * 0.02,
         paddingHorizontal: width * 0.04,
-        paddingBottom: height * 0.004,
-        borderBottomLeftRadius: 20,
-        borderBottomRightRadius: 20,
-        elevation: 8,
-        shadowColor: '#FDB022',
+        paddingBottom: height * 0.01,
+        backgroundColor: '#FFFFFF',
+        borderBottomLeftRadius: 24,
+        borderBottomRightRadius: 24,
+        elevation: 6,
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
     },
     
     headerTopRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: height * 0.006,
+        paddingVertical: height * 0.008,
     },
 
     menuButtonModern: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(253, 176, 34, 0.1)',
+        width: 46,
+        height: 46,
+        borderRadius: 14,
+        backgroundColor: '#FFF8EC',
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(253, 176, 34, 0.3)',
+        borderWidth: 1.5,
+        borderColor: '#FDB022',
     },
 
     logoContainer: {
@@ -1554,18 +1487,14 @@ const styles = StyleSheet.create({
     },
     
     notificationButtonModern: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        width: 46,
+        height: 46,
+        borderRadius: 14,
+        backgroundColor: '#FFF8EC',
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'rgba(255, 255, 255, 0.4)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#FDB022',
         elevation: 4,
     },
     
@@ -1778,21 +1707,26 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: theme.SPACING.l,
-        marginTop: 40,
-        marginBottom: 18,
+        marginTop: 28,
+        marginBottom: 16,
     },
     sectionTitle: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: "800",
         color: '#1F2937',
-        letterSpacing: -0.6,
+        letterSpacing: -0.3,
         flex: 1,
     },
     seeAllText: {
         color: '#FDB022',
         fontWeight: '700',
-        fontSize: 15,
-        letterSpacing: -0.3,
+        fontSize: 14,
+        letterSpacing: -0.2,
+        backgroundColor: '#FFF8EC',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 20,
+        overflow: 'hidden',
     },
     nearbyInfoText: {
         fontSize: 13,
@@ -1817,45 +1751,47 @@ const styles = StyleSheet.create({
     // Modern Get Started Styles
     getStartedSectionModern: {
         paddingHorizontal: 20,
-        marginTop: 25,
-        marginBottom: 20,
+        marginTop: 20,
+        marginBottom: 10,
     },
     
     getStartedTitleModern: {
-        fontSize: 24,
+        fontSize: 20,
         fontWeight: '800',
         color: '#1f2937',
-        marginBottom: 20,
-        letterSpacing: -0.5,
+        marginBottom: 16,
+        letterSpacing: -0.3,
     },
     
     quickActionsRowModern: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        gap: 12,
+        gap: 10,
         flexWrap: 'nowrap',
     },
     
     actionButtonModern: {
         flex: 1,
-        minHeight: 95,
-        maxHeight: 110,
-        marginHorizontal: 4,
+        minHeight: 90,
+        maxHeight: 100,
+        marginHorizontal: 3,
     },
     
     materialCard: {
         flex: 1,
-        backgroundColor: '#ffff',
-        borderRadius: 20,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 18,
         position: 'relative',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.12,
-        shadowRadius: 20,
+        shadowColor: '#FDB022',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
         alignItems: 'center',
         overflow: 'visible',
         marginTop: 12,
-        minHeight: 95,
+        minHeight: 90,
+        borderWidth: 1,
+        borderColor: '#FFF8EC',
     },
     
     floatingIconContainer: {
@@ -2010,16 +1946,16 @@ const styles = StyleSheet.create({
     nearbyCard: {
         width: (width - theme.SPACING.l * 2 - 12) / 2,
         marginBottom: 16,
-        borderRadius: 18,
+        borderRadius: 20,
         backgroundColor: '#FFFFFF',
         overflow: 'hidden',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
+        shadowColor: "#FDB022",
+        shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.12,
-        shadowRadius: 8,
-        elevation: 5,
+        shadowRadius: 12,
+        elevation: 6,
         borderWidth: 1,
-        borderColor: '#F9FAFB',
+        borderColor: '#FFF8EC',
     },
     nearbyMediaContainer: {
         position: 'relative',
@@ -2041,15 +1977,15 @@ const styles = StyleSheet.create({
     },
     nearbyImage: {
         width: '100%',
-        height: 120,
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
+        height: 130,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
         resizeMode: 'cover',
-        backgroundColor: '#E5E7EB',
+        backgroundColor: '#F3F4F6',
     },
     nearbyInfo: {
-        padding: 12,
-        paddingBottom: 14,
+        padding: 14,
+        paddingBottom: 16,
         backgroundColor: '#FFFFFF',
     },
     nearbyTitle: {
@@ -2057,7 +1993,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#0F172A',
         marginBottom: 6,
-        letterSpacing: -0.3,
+        letterSpacing: -0.2,
         lineHeight: 18,
     },
     locationRow: {

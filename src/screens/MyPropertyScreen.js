@@ -266,9 +266,25 @@ const MyPropertyScreen = ({ navigation, route }) => {
         { 
           text: "Delete", 
           style: "destructive",
-          onPress: () => {
-            setProperties(prev => prev.filter(p => p.id !== propertyId));
-            Alert.alert("Success", "Property deleted successfully");
+          onPress: async () => {
+            try {
+              setLoading(true);
+              // Call API to delete property from server
+              const response = await propertyService.deleteProperty(propertyId);
+              
+              if (response.success || response.status === 200) {
+                // Remove from local state after successful API deletion
+                setProperties(prev => prev.filter(p => p.id !== propertyId));
+                Alert.alert("Success", "Property deleted successfully");
+              } else {
+                throw new Error(response.message || 'Failed to delete property');
+              }
+            } catch (error) {
+              console.error('Delete property error:', error);
+              Alert.alert("Error", error.message || "Failed to delete property. Please try again.");
+            } finally {
+              setLoading(false);
+            }
           }
         }
       ]

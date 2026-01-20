@@ -1,13 +1,15 @@
-// src/screens/ChatDetailScreen.js
-// 
-// 🧠 Optimized ChatDetailScreen - Production Ready
-// ✅ Real-time WebSocket chat with polling fallback
-// ✅ Clean message alignment (sender right, receiver left)
-// ✅ Edit & delete messages with optimistic updates
-// ✅ Smart duplicate prevention and message merging
-// ✅ Auto-scroll behavior with proper timing
-// ✅ Error handling with graceful degradation
-// ✅ Modern UI with smooth animations
+/**
+ * ChatDetailScreen - Production Ready
+ * One-to-one chat conversation between tenant and property owner
+ * 
+ * ✅ Real-time WebSocket with auto-reconnect
+ * ✅ Optimistic UI updates
+ * ✅ Message edit/delete
+ * ✅ Auto-scroll to latest
+ * ✅ Typing indicators
+ * ✅ Read receipts
+ * ✅ Clean architecture
+ */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
@@ -20,48 +22,110 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
-    Image,
     Alert,
-    ToastAndroid,
+    SafeAreaView,
+    Keyboard,
+    DeviceEventEmitter,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 import moment from 'moment'; 
 import { useFocusEffect } from '@react-navigation/native'; 
 
-// --- IMPORTS ---
-// API services removed - chat functionality disabled
-// import { getOrCreateChat, getChatById, sendMessageApi, getAuthToken, markChatAsRead, getCurrentUserId } from '../services/chatApi';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-// import { getUserProfile } from '../services/userapi';
-// import { formatImageUrl } from '../services/homeApi';
+// Services & Components
+import MessageBubble from '../components/MessageBubble';
+import {
+    getOrCreateChat,
+    getChatById,
+    sendMessageApi,
+    sendMessageToReceiver,
+    markChatAsRead,
+    getCurrentUserId,
+    editMessage,
+    deleteMessage,
+    getUserProfile,
+    getAuthToken,
+} from '../services/chatApi';
 import useChatSocket from '../hooks/useChatSocket';
-// import { sendChatMessageNotification } from '../services/chatNotificationService';
-// -------------------
 
-// --- COLORS PALETTE - Matched with HomeScreen Theme ---
+// Colors
 const colors = {
     primary: '#FDB022',
-    primaryLight: '#FDBF4D',
     primaryDark: '#E89E0F',
-    accent: '#FDB022',
     background: '#F8FAFC',
+    white: '#FFFFFF',
     text: '#1E293B',
     lightText: '#64748B',
-    white: '#FFFFFF',
+    border: '#E5E7EB',
+    inputBg: '#F3F4F6',
     senderBubble: '#FDB022',
     receiverBubble: '#FFFFFF',
     greyLight: '#E2E8F0',
 };
 
+// Helper: Format image URLs
+const formatImageUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    const { BASE_URL } = require('../config/api.config');
+    return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
+// Helper function to safely convert any value to string (handles location objects)
+const safeString = (value, fallback = '') => {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    // Handle location objects {state, city, locality, pincode}
+    if (typeof value === 'object') {
+        if (value.state || value.city || value.locality || value.pincode) {
+            return [value.locality, value.city, value.state, value.pincode]
+                .filter(Boolean)
+                .join(', ') || fallback;
+        }
+        // Handle other objects - try fullName, name, username, email
+        if (value.fullName) return String(value.fullName);
+        if (value.name) return String(value.name);
+        if (value.username) return String(value.username);
+        if (value.email) return String(value.email);
+        return fallback;
+    }
+    return fallback;
+};
+
 const ChatDetailScreen = ({ navigation, route }) => {
     // route.params is where 'user' (the agent/owner), 'chatId' and 'propertyTitle' are passed
-    const { user, propertyTitle, chatId: paramChatId } = route.params || {}; 
+    const { user, propertyTitle, chatId: paramChatId, propertyId } = route.params || {}; 
     
     // ============================================================================
     // STATE MANAGEMENT
     // ============================================================================
     const [currentUserId, setCurrentUserId] = useState(null);
+    const [chatId, setChatId] = useState(paramChatId || null);
+    const [messages, setMessages] = useState([]);
+    const [inputText, setInputText] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [editingMessageId, setEditingMessageId] = useState(null);
+    const inputRef = useRef();
+    const [loading, setLoading] = useState(true);
+    const flatListRef = useRef();
+    const [propertyDetails, setPropertyDetails] = useState(null);
+    const [propertyLoading, setPropertyLoading] = useState(false);
 
+    // Robustly determine receiverId - check all possible fields
+    const receiverId = 
+        user?._id || user?.id || user?.userId || user?.postedBy?._id || user?.postedBy?.id ||
+        (typeof user === 'string' ? user : null); 
+    
+    // Use safeString to handle any object values safely (like location objects)
+    const initialAgentName = safeString(user?.fullName) || safeString(user?.name) || safeString(user?.username) || 'Agent/Owner';
+    const [agentName, setAgentName] = useState(initialAgentName);
+    const initialAgentAvatar = user?.avatar || user?.profilePic || null;
+    const [agentAvatar, setAgentAvatar] = useState(initialAgentAvatar ? formatImageUrl(initialAgentAvatar) : null);
+    const [agentRole, setAgentRole] = useState(user?.role || null);
+    const [propertyOwnerName, setPropertyOwnerName] = useState(null);
+
+    // Get current user ID
     useEffect(() => {
         let mounted = true;
         (async () => {
@@ -85,24 +149,6 @@ const ChatDetailScreen = ({ navigation, route }) => {
         })();
         return () => { mounted = false; };
     }, []);
-    const [chatId, setChatId] = useState(paramChatId || null);
-    const [messages, setMessages] = useState([]);
-    const [inputText, setInputText] = useState('');
-    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const [editingMessageId, setEditingMessageId] = useState(null);
-    const inputRef = useRef();
-    const [loading, setLoading] = useState(true);
-    const flatListRef = useRef();
-
-    // Robustly determine receiverId
-    const receiverId = 
-        user?._id || user?.userId || user?.postedBy?._id || 
-        (typeof user === 'string' ? user : null); 
-    
-    const initialAgentName = user?.fullName || user?.name || user?.username || 'Agent/Owner';
-    const [agentName, setAgentName] = useState(initialAgentName);
-    const initialAgentAvatar = user?.avatar || user?.profilePic || null;
-    const [agentAvatar, setAgentAvatar] = useState(initialAgentAvatar ? formatImageUrl(initialAgentAvatar) : null);
 
     // If we only received an id (or a generic fallback name), try to enrich with profile
     useEffect(() => {
@@ -115,7 +161,8 @@ const ChatDetailScreen = ({ navigation, route }) => {
             try {
                 const profile = await getUserProfile(idToFetch);
                 if (!mounted || !profile) return;
-                const friendly = profile.fullName || profile.full_name || profile.name || profile.displayName || profile.email || agentName;
+                // Use safeString to handle any object values
+                const friendly = safeString(profile.fullName) || safeString(profile.full_name) || safeString(profile.name) || safeString(profile.displayName) || safeString(profile.email) || agentName;
                 setAgentName(friendly);
                 // set avatar if available (normalize path)
                 if (profile.avatar) {
@@ -127,6 +174,61 @@ const ChatDetailScreen = ({ navigation, route }) => {
         })();
         return () => { mounted = false; };
     }, [receiverId]);
+
+    // ============================================================================
+    // FETCH PROPERTY DETAILS
+    // ============================================================================
+    const fetchPropertyDetails = useCallback(async () => {
+        if (!propertyId) return;
+        
+        setPropertyLoading(true);
+        try {
+            const token = await getAuthToken();
+            const { BASE_URL } = require('../config/api.config');
+            
+            const response = await fetch(`${BASE_URL}/properties/${propertyId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            // Check content type before parsing
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                console.warn('Property API returned non-JSON response');
+                return;
+            }
+
+            const text = await response.text();
+            if (!text || text.trim().startsWith('<')) {
+                console.warn('Property API returned HTML instead of JSON');
+                return;
+            }
+
+            const data = JSON.parse(text);
+            
+            if (response.ok && data.success) {
+                setPropertyDetails(data.property);
+                console.log('Property details fetched:', data.property);
+            } else {
+                console.warn('Failed to fetch property:', data.message);
+            }
+        } catch (error) {
+            // Silently handle - property details are optional
+            console.warn('Could not fetch property details:', error?.message || error);
+        } finally {
+            setPropertyLoading(false);
+        }
+    }, [propertyId]);
+
+    // Fetch property details on mount
+    useEffect(() => {
+        if (propertyId) {
+            fetchPropertyDetails();
+        }
+    }, [propertyId, fetchPropertyDetails]);
 
     // ============================================================================
     // UTILITY: Format API messages with robust sender ID extraction
@@ -261,17 +363,25 @@ const ChatDetailScreen = ({ navigation, route }) => {
         }
     }, [chatId, receiverId, formatAPIMessage]);
 
-    // 2. Initialize Socket Connection
-    const { isConnected, sendSocketMessage, joinRoom, leaveRoom } = useChatSocket(chatId, onNewMessage); 
+    // ============================================================================
+    // Initialize Socket Connection
+    // ============================================================================
+    const { isConnected, sendSocketMessage, joinRoom, leaveRoom } = useChatSocket(
+        chatId, // Always pass chatId (can be null initially)
+        onNewMessage,
+        null
+    ); 
 
-
-    // 3. Data Fetching (Get/Create Chat) - MOVED TO useFocusEffect
+    // ============================================================================
+    // CHAT INITIALIZATION - Sequential: Create/Get Chat → Set ChatId → Join Socket
+    // ============================================================================
     const initializeChat = useCallback(async () => {
         // Wait until we have currentUserId to avoid mis-classifying messages
         if (!currentUserId) {
             return;
         }
 
+        // If we have neither receiverId nor paramChatId, show error
         if (!receiverId && !paramChatId) {
             setLoading(false);
             Alert.alert("Error", "No user specified to chat with. Please try again from a property or service page.", [{ text: "OK", onPress: () => navigation.goBack() }]);
@@ -279,36 +389,101 @@ const ChatDetailScreen = ({ navigation, route }) => {
         }
 
         setLoading(true);
-        // Clear messages only when a new chat load begins
         setMessages([]); 
 
         try {
             let chat = null;
             
-            // Always try getOrCreateChat first as it's more reliable for getting full chat history
-            if (receiverId) {
-                console.log('🔄 Getting full chat history via getOrCreateChat...');
-                chat = await getOrCreateChat(receiverId);
+            // Try to get existing chat
+            if (paramChatId) {
+                console.log('🔄 Getting chat by ID:', paramChatId);
+                chat = await getChatById(paramChatId);
             }
             
-            // Fallback to getChatById only if getOrCreateChat failed and we have paramChatId
-            if (!chat && paramChatId) {
-                console.log('🔄 Fallback: Getting chat by ID...');
-                chat = await getChatById(paramChatId);
+            if (!chat && receiverId) {
+                console.log('🔄 Getting/creating chat with receiver:', receiverId);
+                const chatResult = await getOrCreateChat(receiverId);
+                
+                // Handle TENANT_ONLY restriction error
+                if (chatResult.errorType === 'TENANT_ONLY') {
+                    setLoading(false);
+                    Alert.alert(
+                        "Chat Restriction",
+                        "Only tenants can start a chat with property owners. As an owner, you can wait for tenants to contact you, or you can reach them via Call or WhatsApp.",
+                        [{ text: "OK", onPress: () => navigation.goBack() }]
+                    );
+                    return;
+                }
+                
+                if (chatResult.success && chatResult.chat) {
+                    chat = chatResult.chat;
+                } else if (!chatResult.success) {
+                    // Handle other errors gracefully
+                    console.warn('Could not create/get chat:', chatResult.error);
+                }
             }
 
             if (chat) {
                 const resolvedId = chat._id || chat.id || paramChatId;
+                
+                // Set chatId in state
                 setChatId(resolvedId);
+
+                // If backend returned tenant/owner populated, prefer their fullName for header
+                try {
+                    const owner = chat.owner || chat.participantOwner || null;
+                    const tenant = chat.tenant || chat.participantTenant || null;
+                    let other = null;
+                    let isCurrentUserOwner = false;
+                    if (owner && tenant) {
+                        const ownerId = owner._id || owner.id;
+                        const tenantId = tenant._id || tenant.id;
+                        if (String(ownerId) === String(currentUserId)) {
+                            other = tenant;
+                            isCurrentUserOwner = true;
+                        } else {
+                            other = owner;
+                            isCurrentUserOwner = false;
+                        }
+                    } else if (owner) {
+                        other = owner;
+                    } else if (tenant) {
+                        other = tenant;
+                    }
+
+                    if (other) {
+                        const otherName = safeString(other.fullName) || safeString(other.name) || safeString(other.displayName) || agentName;
+                        setAgentName(otherName);
+                        if (other.avatar || other.profilePicture) setAgentAvatar(formatImageUrl(other.avatar || other.profilePicture));
+                        if (other.role) setAgentRole(other.role);
+                    }
+
+                    // Set property owner name if current user is tenant
+                    if (owner && !isCurrentUserOwner) {
+                        const ownerName = safeString(owner.fullName) || safeString(owner.name) || 'Owner';
+                        setPropertyOwnerName(ownerName);
+                    }
+                } catch (e) {
+                    // ignore
+                }
+                
+                // Load initial messages
                 const initialMessages = (chat.messages || [])
                     .map(formatAPIMessage)
                     .filter(msg => msg !== null);
                 
                 setMessages(initialMessages);
 
-                try { joinRoom && joinRoom(resolvedId); } catch (e) {}
+                // Join socket room for real-time updates
+                setTimeout(() => {
+                    try { 
+                        joinRoom && joinRoom(resolvedId); 
+                    } catch (e) {
+                        console.warn('Socket join failed:', e);
+                    }
+                }, 500);
 
-                // Mark chat as read (best-effort)
+                // Mark as read (best-effort)
                 try {
                     route.params && typeof route.params.onOpen === 'function' && route.params.onOpen();
                     const { default: eventBus } = await import('../utils/eventBus');
@@ -318,14 +493,14 @@ const ChatDetailScreen = ({ navigation, route }) => {
                     // ignore
                 }
             }
+            // If no chat exists yet, that's OK - we'll create it when user sends first message
         } catch (error) {
             console.error("Failed to initialize chat:", error);
-            Alert.alert("Error", "Could not load chat history. Check your network or permissions.");
+            // Don't block user - they can still send messages
         } finally {
             setLoading(false);
         }
-    }, [receiverId, paramChatId, navigation, currentUserId]);
-
+    }, [receiverId, paramChatId, navigation, currentUserId, formatAPIMessage]);
 
     // Run initializeChat ONLY when the screen is focused AND currentUserId is available
     useFocusEffect(
@@ -339,72 +514,11 @@ const ChatDetailScreen = ({ navigation, route }) => {
             
             // Cleanup function for useFocusEffect (runs when the screen is blurred/unfocused)
             return () => {
-                // Ask the socket to leave the room when user leaves the screen
+                // Leave socket room when screen loses focus
                 try { leaveRoom && leaveRoom(chatId); } catch (e) {}
             };
-        }, [initializeChat, currentUserId])
+        }, [currentUserId, initializeChat])
     );
-
-    // Additional effect to refresh messages when screen becomes focused (with error handling)
-    useFocusEffect(
-        useCallback(() => {
-            const refreshOnFocus = async () => {
-                if (chatId && currentUserId && receiverId) {
-                    try {
-                        const chat = await getOrCreateChat(receiverId);
-                        if (chat && chat.messages && Array.isArray(chat.messages)) {
-                            const refreshedMessages = chat.messages
-                                .map(formatAPIMessage)
-                                .filter(msg => msg !== null);
-                            setMessages(refreshedMessages);
-                            setTimeout(() => {
-                                try {
-                                    flatListRef.current?.scrollToEnd({ animated: true });
-                                } catch (scrollError) {
-                                    // Silently handle scroll errors
-                                }
-                            }, 100);
-                        }
-                    } catch (error) {
-                        // Silently handle refresh errors
-                    }
-                }
-            };
-
-            // Small delay to allow screen to fully focus
-            const timeoutId = setTimeout(refreshOnFocus, 500);
-            
-            return () => {
-                clearTimeout(timeoutId);
-            };
-        }, [chatId, currentUserId, receiverId])
-    );
-
-
-    // 2a. Auto-fix message alignment when currentUserId becomes available
-    useEffect(() => {
-        if (!currentUserId || messages.length === 0) return;
-        
-        // Re-classify messages based on originalSenderId
-        setMessages(prev => prev.map(msg => {
-            // Skip messages that are obviously correct (sending/failed are always user messages)
-            if (msg.status === 'sending' || msg.status === 'failed') {
-                return { ...msg, sender: 'user' }; // Ensure these are user messages
-            }
-            
-            // Check if originalSenderId matches current user
-            if (msg.originalSenderId && currentUserId) {
-                const shouldBeUser = String(msg.originalSenderId).trim() === String(currentUserId).trim();
-                const correctSender = shouldBeUser ? 'user' : 'agent';
-                
-                if (msg.sender !== correctSender) {
-                    return { ...msg, sender: correctSender };
-                }
-            }
-            
-            return msg;
-        }));
-    }, [currentUserId, messages.length]);
 
     // ============================================================================
     // POLLING FALLBACK: Refresh messages periodically (handles socket failures)
@@ -472,22 +586,28 @@ const ChatDetailScreen = ({ navigation, route }) => {
         };
     }, [chatId, receiverId, currentUserId, formatAPIMessage]);
 
-
-    // 4. Send Logic (Prioritizes Socket, falls back to REST API)
+    // ============================================================================
+    // SEND MESSAGE - ALWAYS SEND VIA API (NO BLOCKING)
+    // ============================================================================
     const handleSend = async () => {
+        // Only validate message text
         if (!inputText.trim()) {
-            return; // Don't show error for empty messages, just ignore
-        }
-        
-        if (!chatId) {
-            Alert.alert("Chat Not Ready", "Please wait for the chat to initialize, or go back and try again.");
             return;
         }
-        
-        if (!currentUserId) {
-            Alert.alert("Authentication Error", "Please log in again to send messages.");
-            return;
-        }
+
+        // Validate we have receiver info
+            if (!receiverId && !chatId) {
+                if (__DEV__) console.error('❌ handleSend: missing receiverId and chatId', { receiverId, chatId, currentUserId });
+                Alert.alert("Error", "Cannot send message. Missing receiver information.");
+                return;
+            }
+
+            // Validate sender ID exists
+            if (!currentUserId) {
+                if (__DEV__) console.error('❌ handleSend: missing currentUserId', { receiverId, chatId, currentUserId });
+                Alert.alert("Error", "Cannot send message. Please login again.");
+                return;
+            }
 
         const text = inputText.trim();
 
@@ -496,9 +616,8 @@ const ChatDetailScreen = ({ navigation, route }) => {
             const msgId = editingMessageId;
             setEditingMessageId(null);
             setInputText('');
-            // Optimistically update locally
             setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text, edited: true } : m));
-            // Best-effort API call to update message on server
+            
             try {
                 const token = await getAuthToken();
                 const { BASE_URL } = await import('../config/api.config');
@@ -513,94 +632,165 @@ const ChatDetailScreen = ({ navigation, route }) => {
                     });
                 }
             } catch (err) {
-                console.warn('Edit message API failed (best-effort):', err && err.message ? err.message : err);
+                console.warn('Edit message failed:', err?.message);
             }
             return;
         }
 
+        // Clear input immediately for better UX
         setInputText('');
         setShowEmojiPicker(false);
+        
         const tempMessageId = `temp-${Date.now()}`;
         
-        // Optimistic UI update - THIS MESSAGE SHOULD APPEAR ON RIGHT SIDE
+        // Optimistic UI update
         const tempMessage = {
             id: tempMessageId,
             text,
-            sender: 'user', // CRITICAL: This makes YOUR message appear on RIGHT side
+            sender: 'user',
             time: moment().format('hh:mm A'),
             status: 'sending',
             createdAt: new Date(),
-            originalSenderId: currentUserId, // Store current user ID for reference
+            originalSenderId: currentUserId,
         };
         
         setMessages((prev) => [...prev, tempMessage]);
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-            try {
-                // Try socket first if connected, then fallback to REST API
-                let sent = false;
+        try {
+            let response;
+            const propertyId = route.params?.propertyId || null;
+            
+            if (__DEV__) {
+                console.log('📤 Sending message with params:', {
+                    chatId,
+                    receiverId,
+                    currentUserId,
+                    propertyId,
+                    textLength: text.length
+                });
+            }
+            
+            // If we have chatId, use it. Otherwise send to receiverId directly
+            if (chatId) {
+                if (__DEV__) console.log('📤 Sending to existing chat:', chatId);
+                response = await sendMessageApi(chatId, text, propertyId);
+            } else {
+                if (__DEV__) console.log('📤 Sending to receiver (auto-create chat):', receiverId);
+                response = await sendMessageToReceiver(receiverId, text, currentUserId, propertyId);
                 
-                if (isConnected && sendSocketMessage) {
-                    sent = sendSocketMessage(text);
+                // If chat was created, store the chatId
+                if (response.success && response.chatId) {
+                    setChatId(response.chatId);
+                    // Join socket room for real-time updates
+                    setTimeout(() => {
+                        try { joinRoom && joinRoom(response.chatId); } catch (e) {}
+                    }, 500);
                 }
-                
-                if (!sent) {
-                    const sentMessage = await sendMessageApi(chatId, text);                // Replace the temporary message with the confirmed server message
-                const formattedMessage = formatAPIMessage(sentMessage);
+            }
+
+            if (__DEV__) {
+                console.log('📬 Send message response:', response);
+            }
+
+            if (response.success) {
+                // Replace temp message with real message
+                const formattedMessage = formatAPIMessage(response.message);
                 if (formattedMessage) {
                     setMessages(prev => prev.map(msg => 
                         msg.id === tempMessageId ? formattedMessage : msg
                     ));
+                } else {
+                    // Fallback: just mark as sent
+                    setMessages(prev => prev.map(msg => 
+                        msg.id === tempMessageId ? { ...msg, status: 'sent' } : msg
+                    ));
                 }
-
-                // Send push notification to receiver
+                
+                // ✅ NEW: Emit event to update chat list
                 try {
-                    const senderName = await AsyncStorage.getItem('userFullName') || 'Someone';
-                    const receiverIdForNotif = receiverId || user?._id || user?.id;
-                    
-                    if (receiverIdForNotif && receiverIdForNotif !== currentUserId) {
-                        await sendChatMessageNotification({
-                            receiverId: receiverIdForNotif,
-                            senderId: currentUserId,
-                            senderName,
-                            message: text,
-                            chatId,
-                            propertyId: propertyTitle || '',
-                        });
-                    }
-                } catch (notifError) {
-                    // Don't block message sending if notification fails
+                    DeviceEventEmitter.emit('chatMessageSent', {
+                        chatId: response.chatId || chatId,
+                        message: text,
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (emitError) {
+                    console.warn('Failed to emit chat event:', emitError);
                 }
+                
             } else {
-                // For socket messages, the server should echo back and we'll handle it in onNewMessage
+                // API failed - mark as failed
+                const errorMsg = response.error || response.message || 'Unknown error';
+                if (__DEV__) console.error('❌ Send failed:', errorMsg);
+                
+                setMessages(prev => prev.map(msg => 
+                    msg.id === tempMessageId ? { 
+                        ...msg, 
+                        text: `${msg.text} (Failed)`, 
+                        status: 'failed' 
+                    } : msg
+                ));
+                setInputText(text);
+                
+                Alert.alert(
+                    'Send Failed',
+                    `Could not send message. ${errorMsg}. Long press to retry.`
+                );
             }
             
-            // Ensure scroll to end after message is sent
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
         } catch (error) {
-            console.error('Failed to send message:', error);
-            // Revert/mark as failed
+            const errorMsg = error?.message || 'Unknown error';
+            if (__DEV__) console.error('❌ Failed to send message:', errorMsg, error);
+            
             setMessages(prev => prev.map(msg => 
-                msg.id === tempMessageId ? { ...msg, text: `${msg.text} (Failed)`, status: 'failed' } : msg
+                msg.id === tempMessageId ? { 
+                    ...msg, 
+                    text: `${msg.text} (Failed)`, 
+                    status: 'failed' 
+                } : msg
             ));
-            setInputText(text); 
+            setInputText(text);
+            
+            Alert.alert(
+                'Network Error',
+                `Could not send message. ${errorMsg}. Please check your connection and try again.`
+            );
         }
     };
     
     // Add retry functionality for failed messages
     const handleRetry = async (failedMessage) => {
-        if (!failedMessage || !failedMessage.text || !chatId) return;
+        if (!failedMessage || !failedMessage.text) return;
 
         const text = failedMessage.text.replace(' (Failed)', '').trim();
         setMessages((prev) => prev.map((msg) => (msg.id === failedMessage.id ? { ...msg, status: 'sending' } : msg)));
 
         try {
-            // Use REST API for retry since WebSocket is unreliable
-            const sentMessage = await sendMessageApi(chatId, text);
-            const formattedMessage = formatAPIMessage(sentMessage);
-            if (formattedMessage) {
-                setMessages((prev) => prev.map((msg) => (msg.id === failedMessage.id ? formattedMessage : msg)));
+            let response;
+            
+            if (chatId) {
+                response = await sendMessageApi(chatId, text);
+            } else if (receiverId) {
+                response = await sendMessageToReceiver(receiverId, text);
+                if (response.success && response.chatId) {
+                    setChatId(response.chatId);
+                }
+            } else {
+                setMessages((prev) => prev.map((msg) => (msg.id === failedMessage.id ? { ...msg, status: 'failed' } : msg)));
+                return;
+            }
+            
+            if (response.success && response.message) {
+                const formattedMessage = formatAPIMessage(response.message);
+                if (formattedMessage) {
+                    setMessages((prev) => prev.map((msg) => (msg.id === failedMessage.id ? formattedMessage : msg)));
+                } else {
+                    setMessages((prev) => prev.map((msg) => (msg.id === failedMessage.id ? { ...msg, status: 'sent' } : msg)));
+                }
+            } else {
+                setMessages((prev) => prev.map((msg) => (msg.id === failedMessage.id ? { ...msg, status: 'failed' } : msg)));
             }
         } catch (error) {
             console.error('Retry failed:', error);
@@ -682,10 +872,10 @@ const ChatDetailScreen = ({ navigation, route }) => {
                     ]}
                 >
                 <Text style={isCurrentUser ? styles.userText : styles.agentText}>
-                    {item.text} {item.edited ? ' (edited)' : ''}
+                    {safeString(item.text, '')} {item.edited ? ' (edited)' : ''}
                 </Text>
                 <Text style={isCurrentUser ? styles.userTime : styles.agentTime}>
-                    {item.time} {item.status === 'sending' ? ' • Sending...' : null} 
+                    {safeString(item.time, '')} {item.status === 'sending' ? ' • Sending...' : null} 
                 </Text>
                 </View>
             </TouchableOpacity>
@@ -696,7 +886,7 @@ const ChatDetailScreen = ({ navigation, route }) => {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={{ marginTop: 10, color: colors.lightText }}>Starting chat...</Text>
+                <Text style={{ marginTop: 10, color: colors.lightText }}>Initializing chat...</Text>
             </View>
         );
     }
@@ -704,7 +894,6 @@ const ChatDetailScreen = ({ navigation, route }) => {
     return (
         <KeyboardAvoidingView
             style={styles.container}
-            // use padding behavior on both platforms to reliably lift the input
             behavior={'padding'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
@@ -716,30 +905,24 @@ const ChatDetailScreen = ({ navigation, route }) => {
 
                 <View style={styles.headerTitleContainer}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {agentAvatar ? (
-                            <Image source={{ uri: agentAvatar }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 8 }} />
-                        ) : null}
+                        {/* Name initial avatar instead of profile image */}
+                        <View style={styles.headerAvatarInitial}>
+                            <Text style={styles.headerAvatarInitialText}>
+                                {agentName ? agentName.charAt(0).toUpperCase() : 'U'}
+                            </Text>
+                        </View>
                         <Text style={styles.headerTitle} numberOfLines={1}>
-                            {agentName}
+                            {safeString(agentName, 'Agent/Owner')}
                         </Text>
                     </View>
-                    {propertyTitle ? (
+                    {(agentRole || propertyTitle || propertyOwnerName) && (
                         <Text style={styles.headerSubtitle} numberOfLines={1}>
-                            Property: {propertyTitle}
+                            {agentRole && `${agentRole}`}
+                            {agentRole && (propertyTitle || propertyOwnerName) && ' • '}
+                            {propertyTitle && `Property: ${safeString(propertyTitle, '')}`}
+                            {propertyOwnerName && !propertyTitle && `Owner: ${propertyOwnerName}`}
                         </Text>
-                    ) : null}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                        <View style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: isConnected ? '#10B981' : '#EF4444',
-                            marginRight: 4
-                        }} />
-                        <Text style={{ fontSize: 10, color: colors.lightText }}>
-                            {isConnected ? 'Connected' : 'Offline'}
-                        </Text>
-                    </View>
+                    )}
                 </View>
 
                 <TouchableOpacity
@@ -764,8 +947,6 @@ const ChatDetailScreen = ({ navigation, route }) => {
                             } catch (error) {
                                 Alert.alert('Refresh Failed', 'Could not refresh messages. Please check your connection and try again.');
                             }
-                        } else {
-                            Alert.alert('Error', 'Chat not properly initialized. Please go back and try again.');
                         }
                     }}
                 >
@@ -778,12 +959,13 @@ const ChatDetailScreen = ({ navigation, route }) => {
                 ref={flatListRef}
                 data={messages}
                 renderItem={renderMessage}
-                keyExtractor={(item) => item.id.toString()} // Ensure key is a string
+                keyExtractor={(item) => item.id.toString()}
                 contentContainerStyle={[styles.messageList, { paddingBottom: showEmojiPicker ? 260 : 120 }]}
                 keyboardShouldPersistTaps={'handled'}
                 showsVerticalScrollIndicator={false}
                 onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             />
+
             {/* Emoji Picker (simple) */}
             {showEmojiPicker && (
                 <View style={styles.emojiPicker}>
@@ -795,9 +977,12 @@ const ChatDetailScreen = ({ navigation, route }) => {
                 </View>
             )}
 
-            {/* Input Area */}
+            {/* Input Area - Always enabled */}
             <View style={styles.inputContainer}>
-                <TouchableOpacity style={{ marginRight: 8 }} onPress={() => setShowEmojiPicker(prev => !prev)}>
+                <TouchableOpacity 
+                    style={{ marginRight: 8 }} 
+                    onPress={() => setShowEmojiPicker(prev => !prev)}
+                >
                     <Icon name="happy-outline" size={26} color={colors.lightText} />
                 </TouchableOpacity>
                 <TextInput
@@ -809,11 +994,14 @@ const ChatDetailScreen = ({ navigation, route }) => {
                     onChangeText={setInputText}
                     multiline
                     onFocus={() => {
-                        setShowEmojiPicker(false); // Hide emoji picker on keyboard focus
+                        setShowEmojiPicker(false);
                         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 120);
                     }}
                 />
-                <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+                <TouchableOpacity 
+                    style={styles.sendButton} 
+                    onPress={handleSend}
+                >
                     <Icon name="send" size={22} color={colors.white} />
                 </TouchableOpacity>
             </View>
@@ -850,6 +1038,20 @@ const styles = StyleSheet.create({
         padding: 8,
         borderRadius: 20,
         backgroundColor: colors.greyLight,
+    },
+    headerAvatarInitial: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        marginRight: 8,
+        backgroundColor: colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    headerAvatarInitialText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#fff',
     },
     headerTitleContainer: { 
         flex: 1, 
@@ -935,7 +1137,8 @@ const styles = StyleSheet.create({
     // Input - Modern Design
     inputContainer: { 
         flexDirection: 'row', 
-        padding: 12, 
+        padding: 12,
+        paddingBottom: Platform.OS === 'android' ? 25 : 12,
         backgroundColor: colors.white, 
         alignItems: 'center', 
         borderTopWidth: 1, 

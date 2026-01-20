@@ -1,199 +1,263 @@
-// src/hooks/useChatSocket.js
+/**
+ * useChatSocket Hook - Production Ready
+ * Manages WebSocket connection for real-time chat
+ * 
+ * Features:
+ * - Single socket instance (no duplicates)
+ * - Auto authentication with JWT
+ * - Auto reconnect on disconnect
+ * - Proper cleanup on unmount
+ * - Event listener management
+ * 
+ * Socket Events (from backend):
+ * - newMessage: New message received
+ * - messageRead: Message marked as read
+ * - messageEdited: Message was edited
+ * - messageDeleted: Message was deleted
+ * - userTyping: Other user is typing
+ */
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import { SOCKET_URL } from '../config/api.config';
-// API service removed
-// import { getAuthToken } from '../services/chatApi'; 
+import { getAuthToken } from '../services/chatApi';
+import { AppState } from 'react-native';
+
+// Global socket instance to prevent duplicates
+let globalSocket = null;
+let socketRefCount = 0;
 
 /**
- * Custom hook to manage WebSocket connection and real-time chat messages.
+ * Custom hook to manage chat socket connection
+ * @param {string} chatId - Chat room ID to join
+ * @param {function} onNewMessage - Callback when new message arrives
+ * @param {function} onMessageUpdate - Callback when message is edited/deleted/read
+ * @returns {object} { socket, isConnected, joinRoom, leaveRoom, emit }
  */
-const useChatSocket = (chatId, onNewMessage, onRawEvent) => {
-  const socketRef = useRef(null);
-  const onNewMessageRef = useRef(onNewMessage);
-  const onRawEventRef = useRef(onRawEvent);
+const useChatSocket = (chatId, onNewMessage, onMessageUpdate) => {
   const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState(null);
+  const onNewMessageRef = useRef(onNewMessage);
+  const onMessageUpdateRef = useRef(onMessageUpdate);
+  const appStateRef = useRef(AppState.currentState);
+  const currentChatIdRef = useRef(chatId);
 
-  // keep the latest handler in a ref so event listeners always call the latest
+  // Keep callbacks updated
   useEffect(() => { onNewMessageRef.current = onNewMessage; }, [onNewMessage]);
-  useEffect(() => { onRawEventRef.current = onRawEvent; }, [onRawEvent]);
+  useEffect(() => { onMessageUpdateRef.current = onMessageUpdate; }, [onMessageUpdate]);
+  useEffect(() => { currentChatIdRef.current = chatId; }, [chatId]);
 
+  // Initialize socket connection
   useEffect(() => {
     let mounted = true;
+    socketRefCount++;
 
-    // Initialize socket connection
     const initSocket = async () => {
       try {
+        // Validate socket URL
         if (!SOCKET_URL) {
-          console.warn('⚠️ SOCKET_URL not configured in api.config.js');
+          console.error('❌ SOCKET_URL not configured in api.config.js');
+          setError('Socket URL not configured');
           return;
         }
-        console.log('🔌 Attempting socket connection to:', SOCKET_URL);
-        
+
+        // Get auth token
         const token = await getAuthToken();
         if (!token) {
           console.warn('⚠️ No auth token available for socket connection');
+          setError('Authentication required');
           return;
         }
 
-        const socketInstance = io(SOCKET_URL, {
-          transports: ['websocket', 'polling'],
-          timeout: 10000,
-          forceNew: true,
-          auth: {
-            token: token
-          },
-          query: {
-            token: token
-          }
-        });
-
-        socketRef.current = socketInstance;
-
-        // Connection event handlers
-        socketInstance.on('connect', () => {
-          if (!mounted) return;
-          console.log('✅ Socket connected successfully');
-          setIsConnected(true);
+        // Reuse existing socket or create new one
+        if (!globalSocket || !globalSocket.connected) {
+          console.log('🔌 Initializing socket connection to:', SOCKET_URL);
           
-          // Join the specific chat room if chatId is provided
-          if (chatId) {
-            console.log('🔔 Auto-joining chat room:', chatId);
-            try {
-              socketInstance.emit('joinChat', { chatId });
-              socketInstance.emit('join', { chatId });
-            } catch (e) {
-              console.warn('Failed to join chat room:', e);
+          globalSocket = io(SOCKET_URL, {
+            transports: ['websocket', 'polling'],
+            timeout: 10000,
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            auth: { token },
+            query: { token }
+          });
+
+          // Connection event handlers
+          globalSocket.on('connect', () => {
+            if (!mounted) return;
+            console.log('✅ Socket connected successfully');
+            setIsConnected(true);
+            setError(null);
+
+            // Auto-join chat room if chatId exists
+            if (currentChatIdRef.current) {
+              console.log('🔔 Auto-joining chat room:', currentChatIdRef.current);
+              globalSocket.emit('joinChat', { chatId: currentChatIdRef.current });
             }
-          }
-        });
+          });
 
-        socketInstance.on('disconnect', (reason) => {
-          if (!mounted) return;
-          console.log('🔌 Socket disconnected:', reason);
-          setIsConnected(false);
-        });
+          globalSocket.on('disconnect', (reason) => {
+            if (!mounted) return;
+            console.log('🔌 Socket disconnected:', reason);
+            setIsConnected(false);
+            
+            if (reason === 'io server disconnect') {
+              // Server disconnected, manually reconnect
+              globalSocket.connect();
+            }
+          });
 
-        socketInstance.on('connect_error', (error) => {
-          if (!mounted) return;
-          console.warn('❌ Socket connection error:', error.message);
-          setIsConnected(false);
-        });
+          globalSocket.on('connect_error', (err) => {
+            if (!mounted) return;
+            console.warn('❌ Socket connection error:', err.message);
+            setIsConnected(false);
+            setError(err.message);
+          });
 
-        // Message event handlers
-        socketInstance.on('newMessage', (data) => {
-          if (!mounted) return;
-          console.log('📨 Received newMessage via socket:', data);
-          if (onNewMessageRef.current) {
-            onNewMessageRef.current(data);
-          }
-          if (onRawEventRef.current) {
-            onRawEventRef.current(`newMessage: ${JSON.stringify(data)}`);
-          }
-        });
+          globalSocket.on('error', (err) => {
+            if (!mounted) return;
+            console.error('❌ Socket error:', err);
+            setError(err.message || 'Socket error');
+          });
 
-        socketInstance.on('message', (data) => {
-          if (!mounted) return;
-          console.log('📨 Received message via socket:', data);
-          if (onNewMessageRef.current) {
-            onNewMessageRef.current(data);
-          }
-          if (onRawEventRef.current) {
-            onRawEventRef.current(`message: ${JSON.stringify(data)}`);
-          }
-        });
+          // Message event handlers
+          globalSocket.on('newMessage', (data) => {
+            if (!mounted) return;
+            console.log('📨 New message received:', data);
+            if (onNewMessageRef.current) {
+              onNewMessageRef.current(data);
+            }
+          });
 
-        socketInstance.on('chatMessage', (data) => {
-          if (!mounted) return;
-          console.log('📨 Received chatMessage via socket:', data);
-          if (onNewMessageRef.current) {
-            onNewMessageRef.current(data);
-          }
-          if (onRawEventRef.current) {
-            onRawEventRef.current(`chatMessage: ${JSON.stringify(data)}`);
-          }
-        });
+          globalSocket.on('messageRead', (data) => {
+            if (!mounted) return;
+            console.log('📖 Message read:', data);
+            if (onMessageUpdateRef.current) {
+              onMessageUpdateRef.current({ type: 'read', data });
+            }
+          });
 
+          globalSocket.on('messageEdited', (data) => {
+            if (!mounted) return;
+            console.log('✏️ Message edited:', data);
+            if (onMessageUpdateRef.current) {
+              onMessageUpdateRef.current({ type: 'edited', data });
+            }
+          });
+
+          globalSocket.on('messageDeleted', (data) => {
+            if (!mounted) return;
+            console.log('🗑️ Message deleted:', data);
+            if (onMessageUpdateRef.current) {
+              onMessageUpdateRef.current({ type: 'deleted', data });
+            }
+          });
+
+          globalSocket.on('userTyping', (data) => {
+            if (!mounted) return;
+            console.log('⌨️ User typing:', data);
+            if (onMessageUpdateRef.current) {
+              onMessageUpdateRef.current({ type: 'typing', data });
+            }
+          });
+        } else {
+          console.log('♻️ Reusing existing socket connection');
+          setIsConnected(globalSocket.connected);
+          
+          // Join chat room if chatId exists
+          if (chatId && globalSocket.connected) {
+            console.log('🔔 Joining chat room:', chatId);
+            globalSocket.emit('joinChat', { chatId });
+          }
+        }
       } catch (error) {
-        console.error('❌ Failed to initialize socket:', error);
-        setIsConnected(false);
+        console.error('❌ Socket initialization error:', error);
+        setError(error.message);
       }
     };
 
     initSocket();
 
-    // Cleanup function
+    // Handle app state changes (background/foreground)
+    const handleAppStateChange = (nextAppState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground - rejoin chat room
+        console.log('📱 App came to foreground - rejoining chat');
+        if (globalSocket && globalSocket.connected && currentChatIdRef.current) {
+          globalSocket.emit('joinChat', { chatId: currentChatIdRef.current });
+        }
+      }
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Cleanup
     return () => {
       mounted = false;
-      if (socketRef.current) {
-        console.log('🧹 Cleaning up socket connection');
-        socketRef.current.disconnect();
-        socketRef.current = null;
+      socketRefCount--;
+
+      if (subscription?.remove) {
+        subscription.remove();
       }
-      setIsConnected(false);
+
+      // Only disconnect if no other components are using the socket
+      if (socketRefCount === 0 && globalSocket) {
+        console.log('🔌 Disconnecting socket (no more listeners)');
+        globalSocket.disconnect();
+        globalSocket = null;
+      }
     };
   }, [chatId]);
 
-  // 4. Function to send a message via the socket
-  const sendSocketMessage = useCallback((text) => {
-    if (!socketRef.current || !isConnected || !chatId) {
-      console.log('📨 Socket not connected, cannot send real-time message');
-      return false;
+  // Join a chat room
+  const joinRoom = useCallback((roomChatId) => {
+    if (globalSocket && globalSocket.connected) {
+      console.log('🔔 Joining chat room:', roomChatId);
+      globalSocket.emit('joinChat', { chatId: roomChatId });
+      currentChatIdRef.current = roomChatId;
+    } else {
+      console.warn('⚠️ Cannot join room - socket not connected');
     }
-
-    try {
-      const messageData = {
-        chatId: chatId,
-        text: text,
-        timestamp: new Date().toISOString()
-      };
-
-      console.log('📤 Sending message via socket:', messageData);
-      
-      // Try multiple event names as different servers might use different ones
-      socketRef.current.emit('sendMessage', messageData);
-      socketRef.current.emit('message', messageData);
-      socketRef.current.emit('chatMessage', messageData);
-      
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to send socket message:', error);
-      return false;
-    }
-  }, [chatId, isConnected]);
-
-  // Explicitly join a chat room (some servers require an explicit join after connection)
-  const joinRoom = useCallback((roomId) => {
-    try {
-      if (socketRef.current && roomId) {
-        try { socketRef.current.emit('joinChat', { chatId: roomId }); } catch (e) {}
-        try { socketRef.current.emit('join', { chatId: roomId }); } catch (e) {}
-        try { socketRef.current.emit('subscribe', { chatId: roomId }); } catch (e) {}
-        console.log('🔔 joinRoom emitted for', roomId);
-        return true;
-      }
-    } catch (e) {
-      console.warn('joinRoom failed', e && e.message ? e.message : e);
-    }
-    return false;
   }, []);
 
-  const leaveRoom = useCallback((roomId) => {
-    try {
-      if (socketRef.current && roomId) {
-        try { socketRef.current.emit('leaveChat', { chatId: roomId }); } catch (e) {}
-        try { socketRef.current.emit('leave', { chatId: roomId }); } catch (e) {}
-        console.log('🔕 leaveRoom emitted for', roomId);
-        return true;
-      }
-    } catch (e) {
-      console.warn('leaveRoom failed', e && e.message ? e.message : e);
+  // Leave a chat room
+  const leaveRoom = useCallback((roomChatId) => {
+    if (globalSocket && globalSocket.connected) {
+      console.log('👋 Leaving chat room:', roomChatId);
+      globalSocket.emit('leaveChat', { chatId: roomChatId });
     }
-    return false;
   }, []);
 
-  return { isConnected, sendSocketMessage, joinRoom, leaveRoom };
+  // Emit custom event
+  const emit = useCallback((event, data) => {
+    if (globalSocket && globalSocket.connected) {
+      globalSocket.emit(event, data);
+    } else {
+      console.warn('⚠️ Cannot emit - socket not connected');
+    }
+  }, []);
+
+  // Send typing indicator
+  const sendTypingIndicator = useCallback((typing = true) => {
+    if (globalSocket && globalSocket.connected && currentChatIdRef.current) {
+      globalSocket.emit('typing', { 
+        chatId: currentChatIdRef.current,
+        typing 
+      });
+    }
+  }, []);
+
+  return {
+    socket: globalSocket,
+    isConnected,
+    error,
+    joinRoom,
+    leaveRoom,
+    emit,
+    sendTypingIndicator
+  };
 };
 
 export default useChatSocket;

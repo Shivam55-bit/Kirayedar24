@@ -106,19 +106,25 @@ const PropertyInquiryFormScreen = ({ navigation }) => {
       })
       .then((data) => {
         setLoading(false);
+        console.log('✅ Inquiry submitted successfully:', data);
+        
+        // Clear form first
+        setName("");
+        setPhoneNumber("");
+        setAddress("");
+        setPropertyType("");
+        setMessage("");
+        
         Alert.alert(
-          "Success",
-          "Your inquiry has been submitted successfully! The admin will contact you soon.",
+          "✅ Success!",
+          "Your inquiry has been submitted successfully!\n\n" +
+          "📧 A confirmation email has been sent to the property owner.\n\n" +
+          "📞 You will be contacted soon.\n\n" +
+          "Thank you for using our service!",
           [
             {
               text: "OK",
               onPress: () => {
-                // Clear form
-                setName("");
-                setPhoneNumber("");
-                setAddress("");
-                setPropertyType("");
-                setMessage("");
                 navigation.goBack();
               }
             }
@@ -127,10 +133,14 @@ const PropertyInquiryFormScreen = ({ navigation }) => {
       })
       .catch((error) => {
         setLoading(false);
-        console.error('API Error:', error);
+        console.error('❌ API Error:', error);
+        
+        // More detailed error message
+        const errorMsg = error.message || 'Unable to submit inquiry. Please check your internet connection.';
+        
         Alert.alert(
-          "Error",
-          `Failed to submit inquiry: ${error.message}`,
+          "❌ Submission Failed",
+          `${errorMsg}\n\nPlease try again or contact support if the problem persists.`,
           [
             {
               text: "Retry",

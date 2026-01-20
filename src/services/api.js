@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, API_TIMEOUT } from '../config/api.config';
 
 // Helper function to make requests with auto token handling
-const makeRequest = async (endpoint, options = {}) => {
+export const makeRequest = async (endpoint, options = {}) => {
   if (!BASE_URL) {
     console.error('❌ BASE_URL is not configured. Please update src/config/api.config.js');
     return {
@@ -83,7 +83,13 @@ const makeRequest = async (endpoint, options = {}) => {
     }
     
     if (!response.ok) {
-      console.error('❌ API Error:', { status: response.status, data });
+      // Use console.warn for expected business logic errors (like 403 permission errors)
+      // to avoid showing red error overlay in development
+      if (response.status === 403 || response.status === 401) {
+        console.warn('⚠️ API Permission/Auth Error:', { status: response.status, message: data?.message || 'Permission denied' });
+      } else {
+        console.warn('⚠️ API Error:', { status: response.status, data });
+      }
     }
     
     return {
@@ -226,10 +232,20 @@ export const logout = async () => {
 };
 
 export const sendFCMTokenToBackend = async (userId, fcmToken) => {
-  return makeRequest('/api/save-token', {
+  console.log('📤 Sending FCM token to backend...', { userId, fcmToken: fcmToken?.substring(0, 30) + '...' });
+  
+  // Backend expects fcmTokens as array (multiple device support)
+  const response = await makeRequest('/users/fcm-token', {
     method: 'POST',
-    body: JSON.stringify({ userId, fcmToken })
+    body: JSON.stringify({ 
+      userId, 
+      fcmToken,           // Single token for backward compatibility
+      fcmTokens: [fcmToken] // Array format for new backend
+    })
   });
+  
+  console.log('📥 FCM token backend response:', response);
+  return response;
 };
 
 export const refreshToken = async () => {
@@ -276,14 +292,6 @@ export const verifySubscriptionPayment = async (payload = {}) => {
 export const getSubscriptionPackages = async () => {
   console.log('[api] getSubscriptionPackages called');
   return makeRequest('/api/subscription', {
-    method: 'GET'
-  });
-};
-
-// Get user's active subscription
-export const getUserSubscription = async () => {
-  console.log('[api] getUserSubscription called');
-  return makeRequest('/api/tenant-subscription/active', {
     method: 'GET'
   });
 };
@@ -425,74 +433,4 @@ export const extractPincode = (cityData) => {
   
   // Try different possible field names for pincode
   return cityData?.pincode || cityData?.postal_code || cityData?.zip || cityData?.pin || null;
-};
-
-// ==================== NOTIFICATION APIs ====================
-
-/**
- * Get paginated list of notifications
- * @param {number} page - Page number (default 1)
- * @param {number} limit - Items per page (default 20)
- */
-export const getNotificationList = async (page = 1, limit = 20) => {
-  return makeRequest(`/api/notification/list?page=${page}&limit=${limit}`, {
-    method: 'GET'
-  });
-};
-
-/**
- * Get unread notification count
- */
-export const getUnreadNotificationCount = async () => {
-  return makeRequest('/api/notification/unread-count', {
-    method: 'GET'
-  });
-};
-
-/**
- * Mark a specific notification as read
- * @param {string} notificationId - ID of the notification
- */
-export const markNotificationAsRead = async (notificationId) => {
-  return makeRequest(`/api/notification/${notificationId}/read`, {
-    method: 'POST'
-  });
-};
-
-/**
- * Mark notification as read using PATCH method
- * @param {string} notificationId - ID of the notification
- */
-export const patchMarkNotificationAsRead = async (notificationId) => {
-  return makeRequest(`/api/notification/mark-read/${notificationId}`, {
-    method: 'PATCH'
-  });
-};
-
-/**
- * Mark all notifications as read
- */
-export const markAllNotificationsAsRead = async () => {
-  return makeRequest('/api/notification/read-all', {
-    method: 'POST'
-  });
-};
-
-/**
- * Delete a specific notification
- * @param {string} notificationId - ID of the notification
- */
-export const deleteNotification = async (notificationId) => {
-  return makeRequest(`/api/notification/${notificationId}`, {
-    method: 'DELETE'
-  });
-};
-
-/**
- * Delete all notifications
- */
-export const deleteAllNotifications = async () => {
-  return makeRequest('/api/notification/delete-all', {
-    method: 'DELETE'
-  });
 };

@@ -41,38 +41,59 @@ const EditProfileScreen = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // Load user profile from API
-      const response = await getCurrentUserProfile();
-      
-      if (response.success && response.user) {
-        const userData = response.user;
-        setFullName(userData.fullName || '');
-        setEmail(userData.email || '');
-        setPhone(userData.phone || '');
-        setState(userData.state || '');
-        setCity(userData.city || '');
-        setStreet(userData.street || '');
-        setPinCode(userData.pinCode || '');
-        setPassword(''); // Never pre-fill password
-        setProfilePicture(userData.profilePicture || null);
-      } else {
-        // Fallback to AsyncStorage
+      // First try to load from AsyncStorage as fallback
+      let storedUserData = null;
+      try {
         const storedUser = await AsyncStorage.getItem('userData');
         if (storedUser) {
-          const user = JSON.parse(storedUser);
-          setFullName(user.fullName || user.name || '');
-          setEmail(user.email || '');
-          setPhone(user.phone || '');
-          setState(user.state || '');
-          setCity(user.city || '');
-          setStreet(user.street || '');
-          setPinCode(user.pinCode || '');
-          setProfilePicture(user.profilePicture || null);
+          storedUserData = JSON.parse(storedUser);
         }
+      } catch (storageError) {
+        console.log('Error reading from storage:', storageError);
+      }
+      
+      // Try to load user profile from API
+      let userData = null;
+      try {
+        const response = await getCurrentUserProfile();
+        console.log('Profile API Response:', JSON.stringify(response, null, 2));
+        
+        if (response && response.success) {
+          // Handle different response structures
+          if (response.user) {
+            userData = response.user;
+          } else if (response.data && response.data.user) {
+            userData = response.data.user;
+          } else if (response.data) {
+            userData = response.data;
+          }
+        }
+      } catch (apiError) {
+        console.log('API Error:', apiError);
+      }
+      
+      // Use API data or fall back to stored data
+      const user = userData || storedUserData;
+      
+      if (user) {
+        // Safely extract address fields
+        const address = user.address || {};
+        
+        setFullName(user.fullName || user.name || '');
+        setEmail(user.email || '');
+        setPhone(user.phone || user.mobile || '');
+        setState(user.state || address.state || '');
+        setCity(user.city || address.city || '');
+        setStreet(user.street || address.street || '');
+        setPinCode(user.pinCode || user.pincode || address.pinCode || address.pincode || '');
+        setPassword(''); // Never pre-fill password
+        setProfilePicture(user.profilePicture || user.avatar || null);
+      } else {
+        console.log('No user data found');
       }
     } catch (error) {
-      console.error('Error loading profile:', error);
-      Alert.alert('Error', 'Failed to load profile data');
+      console.error('Error loading profile:', error.message);
+      Alert.alert('Error', 'Failed to load profile data. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -213,9 +213,7 @@ const SellScreen = ({ navigation }) => {
           />
           <View style={styles.cardOverlay} />
           <View style={styles.cardTopRow}>
-            <View style={[styles.typeChip, { backgroundColor: getPurposeColor(item.purpose) }]}>
-              <Text style={styles.typeChipText}>{item.purpose}</Text>
-            </View>
+            {/* Purpose badge removed as per user requirement */}
             <View style={[styles.statusChip, { backgroundColor: getStatusColor(item.status) }]}>
               <Text style={styles.statusChipText}>{item.status}</Text>
             </View>
@@ -315,7 +313,7 @@ const SellScreen = ({ navigation }) => {
 
         <View style={styles.filtersSection}>
           <View style={styles.filterChips}>
-            {["All", "Sell", "Rent / Lease", "Paying Guest"].map((f) => (
+            {["All", "Rent / Lease", "Paying Guest"].map((f) => (
               <TouchableOpacity key={f} style={[styles.filterChip, filter === f && styles.filterChipActive]} onPress={() => setFilter(f)}>
                 <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>{f}</Text>
               </TouchableOpacity>

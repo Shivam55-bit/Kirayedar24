@@ -21,6 +21,8 @@ import { authService } from "../services/authApi";
 import { getAllStates, getCitiesByState, getPincodeByCity, getAreasByCity, getPincodeByArea } from "../utils/locationData";
 import AuthFlowManager from "../utils/AuthFlowManager";
 import CustomAlert from '../components/CustomAlert';
+import { sendFCMTokenToBackend } from '../services/api';
+import { getStoredFCMToken, getFCMToken } from '../utils/fcmService';
 
 const { width } = Dimensions.get("window");
 
@@ -258,6 +260,14 @@ const SignupScreen = ({ navigation, route }) => {
     try {
       if (isCompleteRegistration) {
         // Complete registration for OTP verified user
+        // Get FCM token first
+        let fcmToken = await getStoredFCMToken();
+        if (!fcmToken) {
+          console.log('📲 No stored FCM token, generating new one...');
+          fcmToken = await getFCMToken();
+        }
+        console.log('📤 FCM Token for registration:', fcmToken?.substring(0, 30) + '...');
+        
         const userData = {
           fullName: form.fullName.trim(),
           email: form.email.trim(),
@@ -266,7 +276,8 @@ const SignupScreen = ({ navigation, route }) => {
           city: form.city.trim(),
           street: form.post.trim(),
           pinCode: form.pinCode.trim(),
-          role: form.userType
+          role: form.userType,
+          fcmToken: fcmToken || ''  // Include FCM token in signup request
         };
         
         const response = await authService.completeRegistration(userData);
@@ -276,6 +287,9 @@ const SignupScreen = ({ navigation, route }) => {
           const isStored = await AuthFlowManager.handleRegistrationSuccess(response);
           
           if (isStored) {
+            // FCM token already sent in signup request, no need to send separately
+            console.log('✅ Registration complete, FCM token was included in signup request');
+            
             showToast("Registration completed successfully! Welcome! 🎉", "success");
             setTimeout(() => {
               // Navigate directly to Home
@@ -292,6 +306,14 @@ const SignupScreen = ({ navigation, route }) => {
         }
       } else {
         // Regular signup
+        // Get FCM token first
+        let fcmToken = await getStoredFCMToken();
+        if (!fcmToken) {
+          console.log('📲 No stored FCM token, generating new one...');
+          fcmToken = await getFCMToken();
+        }
+        console.log('📤 FCM Token for signup:', fcmToken?.substring(0, 30) + '...');
+        
         const userData = {
           fullName: form.fullName.trim(),
           email: form.email.trim(),
@@ -301,7 +323,8 @@ const SignupScreen = ({ navigation, route }) => {
           street: form.post.trim(),
           pinCode: form.pinCode.trim(),
           password: form.password,
-          role: form.userType
+          role: form.userType,
+          fcmToken: fcmToken || ''  // Include FCM token in signup request
         };
         
         const response = await authService.signup(userData);

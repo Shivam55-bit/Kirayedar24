@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import { saveProperty, getSavedProperties } from '../services/api';
+import { getPropertyById } from '../services/propertyService';
 
 // import {
 //   formatImageUrl,
@@ -64,6 +65,26 @@ const colors = {
   muted: "#6B7280",
 };
 
+// Helper function to safely convert any value to string (handles location objects)
+const safeString = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  // Handle location objects {state, city, locality, pincode}
+  if (typeof value === 'object') {
+    if (value.state || value.city || value.locality || value.pincode) {
+      return [value.locality, value.city, value.state, value.pincode]
+        .filter(Boolean)
+        .join(', ') || fallback;
+    }
+    // Handle name objects
+    if (value.fullName) return String(value.fullName);
+    if (value.name) return String(value.name);
+    return fallback;
+  }
+  return fallback;
+};
+
 // --- Amenity Icons ---
 const getAmenityIcon = (name) => {
   switch (name) {
@@ -86,6 +107,11 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   console.log('🏠 Property city value:', routeProperty?.city);
   console.log('🏠 Property locality value:', routeProperty?.locality);
   console.log('🏠 Property address object:', routeProperty?.address);
+  console.log('🏠 Property availableFrom:', routeProperty?.availableFrom);
+  console.log('🏠 Property societyFeatures:', routeProperty?.societyFeatures);
+  console.log('🏠 Property societyMaintenance:', routeProperty?.societyMaintenance);
+  console.log('🏠 Property availableFor:', routeProperty?.availableFor);
+  console.log('🏠 Property parking:', routeProperty?.parking);
   
   // Utility to get address fields from nested address object or flat structure
   const getAddressField = (property, field) => {
@@ -103,20 +129,20 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
       const value = property.address[field];
       if (value) {
         console.log(`✅ Found "${field}" in address object:`, value);
-        return value;
+        return safeString(value, null);
       }
     }
     
     // Fallback to flat structure (old format)
     if (property[field]) {
       console.log(`✅ Found "${field}" in flat structure:`, property[field]);
-      return property[field];
+      return safeString(property[field], null);
     }
     
     // Special mapping for locality - can also be propertyLocation in old format
     if (field === 'locality' && property.propertyLocation) {
       console.log(`✅ Found locality as propertyLocation:`, property.propertyLocation);
-      return property.propertyLocation;
+      return safeString(property.propertyLocation, null);
     }
     
     console.log(`❌ "${field}" not found anywhere`);
@@ -189,29 +215,71 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
-    if (property) return;
+    // Check if we have complete property data
+    const hasCompleteData = property && (
+      property.photos?.length > 0 || 
+      property.photosAndVideo?.length > 0 || 
+      property.images?.length > 0 ||
+      property.description ||
+      property.propertyType
+    );
+    
+    // If property data is incomplete but we have propertyId, fetch full details
+    const propertyId = property?._id || property?.id || itemId;
+    
+    if (!hasCompleteData && propertyId) {
+      const fetchPropertyDetails = async () => {
+        setLoading(true);
+        try {
+          console.log('📥 Fetching full property details for ID:', propertyId);
+          const response = await getPropertyById(propertyId);
+          console.log('📦 Property API Response:', response);
+          
+          if (response.success && response.data) {
+            setProperty(response.data);
+            console.log('✅ Property details loaded successfully');
+          } else if (response.property) {
+            setProperty(response.property);
+            console.log('✅ Property details loaded successfully (from response.property)');
+          } else {
+            console.warn('⚠️ Property not found or incomplete response');
+          }
+        } catch (err) {
+          console.error("❌ Property fetch failed:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      fetchPropertyDetails();
+      return;
+    }
+    
+    // Fallback: try to find in recent/nearby properties
+    if (!property && itemId) {
+      const fetchAndFind = async () => {
+        setLoading(true);
+        try {
+          const [recent, nearby] = await Promise.all([
+            getRecentProperties(20),
+            getNearbyProperties(0, 0),
+          ]);
 
-    const fetchAndFind = async () => {
-      setLoading(true);
-      try {
-        const [recent, nearby] = await Promise.all([
-          getRecentProperties(20),
-          getNearbyProperties(0, 0),
-        ]);
+          const all = [...(recent || []), ...(nearby || [])];
+          const found = all.find((p) => p._id === itemId || p.id === itemId);
+          if (found) setProperty(found);
+        } catch (err) {
+          console.warn("Property lookup failed", err);
+        } finally {
+          setLoading(false);
+        }
+      };
 
-        const all = [...(recent || []), ...(nearby || [])];
-        const found = all.find((p) => p._id === itemId || p.id === itemId);
-        if (found) setProperty(found);
-      } catch (err) {
-        console.warn("Property lookup failed", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (itemId) fetchAndFind();
-    else setLoading(false);
-  }, [itemId]);
+      fetchAndFind();
+    } else {
+      setLoading(false);
+    }
+  }, [itemId, property?._id]);
 
   // Check if property is already saved
   useEffect(() => {
@@ -450,11 +518,11 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   };
 
   // Improved title extraction
-  const title = property.title || property.description?.substring(0, 50) || property.propertyLocation || "Property";
+  const title = safeString(property.title) || safeString(property.description?.substring(0, 50)) || safeString(property.propertyLocation) || "Property";
   const price =
     typeof property.price === "number"
       ? formatPrice(property.price)
-      : property.price || "N/A";
+      : safeString(property.price, 'N/A');
 
   const keyDetails = [
     { label: property.bedrooms ? `${property.bedrooms} Bed` : (property.specificType || property.propertyType), icon: "bed-outline" },
@@ -631,7 +699,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             <Text style={styles.priceText}>{price}</Text>
             {(property.propertyLocation || getAddressField(property, 'locality') || getAddressField(property, 'city')) && (
               <Text style={styles.locationText} numberOfLines={1}>
-                📍 {property.propertyLocation || 
+                📍 {safeString(property.propertyLocation) || 
                     `${getAddressField(property, 'locality') || ''}${getAddressField(property, 'locality') && getAddressField(property, 'city') ? ', ' : ''}${getAddressField(property, 'city') || ''}`}
               </Text>
             )}
@@ -691,6 +759,33 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <View style={styles.featuresSection}>
             <Text style={styles.featuresTitle}>Property Details</Text>
             <View style={styles.featuresGrid}>
+              {/* Property Type */}
+              {property.propertyType && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Property Type</Text>
+                  <Text style={styles.featureValue}>
+                    {property.propertyType}
+                  </Text>
+                </View>
+              )}
+              {/* Specific Type (Apartment, Villa, etc.) */}
+              {(property.specificType || property.residentialType || property.commercialType) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Type</Text>
+                  <Text style={styles.featureValue}>
+                    {property.specificType || property.residentialType || property.commercialType}
+                  </Text>
+                </View>
+              )}
+              {/* Purpose (Sell/Rent) */}
+              {property.purpose && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Purpose</Text>
+                  <Text style={styles.featureValue}>
+                    {property.purpose}
+                  </Text>
+                </View>
+              )}
               {property.bedrooms && (
                 <View style={styles.featureItem}>
                   <Text style={styles.featureLabel}>Bedrooms</Text>
@@ -713,6 +808,15 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                   {property.areaSqFt ? `${property.areaSqFt} sqft` : (property.areaDetails ? `${property.areaDetails} sqft` : 'N/A')}
                 </Text>
               </View>
+              {/* Space Available (for Commercial) */}
+              {property.spaceAvailable && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Space Available</Text>
+                  <Text style={styles.featureValue}>
+                    {property.spaceAvailable} sqft
+                  </Text>
+                </View>
+              )}
               {(property.floorNumber || property.floor) && (
                 <View style={styles.featureItem}>
                   <Text style={styles.featureLabel}>Floor</Text>
@@ -721,11 +825,47 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                   </Text>
                 </View>
               )}
+              {/* Furnishing Status */}
+              {(property.furnishingStatus || property.furnishing) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Furnishing</Text>
+                  <Text style={styles.featureValue}>
+                    {property.furnishingStatus || property.furnishing}
+                  </Text>
+                </View>
+              )}
               {(property.parking || property.parkingAvailable) && (
                 <View style={styles.featureItem}>
                   <Text style={styles.featureLabel}>Parking</Text>
                   <Text style={styles.featureValue}>
                     {property.parking || property.parkingAvailable}
+                  </Text>
+                </View>
+              )}
+              {(() => {
+                console.log('🔍 Checking availableFrom field:', {
+                  raw: property.availableFrom,
+                  exists: !!property.availableFrom,
+                  type: typeof property.availableFrom
+                });
+                return property.availableFrom ? (
+                  <View style={styles.featureItem}>
+                    <Text style={styles.featureLabel}>Available From</Text>
+                    <Text style={styles.featureValue}>
+                      {new Date(property.availableFrom).toLocaleDateString('en-GB', { 
+                        day: 'numeric', 
+                        month: 'short', 
+                        year: 'numeric' 
+                      })}
+                    </Text>
+                  </View>
+                ) : null;
+              })()}
+              {property.availableFor && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Available For</Text>
+                  <Text style={styles.featureValue}>
+                    {property.availableFor}
                   </Text>
                 </View>
               )}
@@ -753,6 +893,14 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                   </Text>
                 </View>
               )}
+              {property.contactNumber && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>Contact Number</Text>
+                  <Text style={styles.featureValue}>
+                    {property.contactNumber}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -763,26 +911,35 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
               <View style={styles.featureItem}>
                 <Text style={styles.featureLabel}>State</Text>
                 <Text style={styles.featureValue}>
-                  {getAddressField(property, 'state') || property.state || 'N/A'}
+                  {getAddressField(property, 'state') || safeString(property.state, 'N/A')}
                 </Text>
               </View>
+              {/* District */}
+              {(getAddressField(property, 'district') || property.district) && (
+                <View style={styles.featureItem}>
+                  <Text style={styles.featureLabel}>District</Text>
+                  <Text style={styles.featureValue}>
+                    {getAddressField(property, 'district') || safeString(property.district, '')}
+                  </Text>
+                </View>
+              )}
               <View style={styles.featureItem}>
                 <Text style={styles.featureLabel}>City</Text>
                 <Text style={styles.featureValue}>
-                  {getAddressField(property, 'city') || property.city || 'N/A'}
+                  {getAddressField(property, 'city') || safeString(property.city, 'N/A')}
                 </Text>
               </View>
               <View style={styles.featureItem}>
                 <Text style={styles.featureLabel}>Locality</Text>
                 <Text style={styles.featureValue}>
-                  {getAddressField(property, 'locality') || property.propertyLocation || 'N/A'}
+                  {getAddressField(property, 'locality') || safeString(property.propertyLocation, 'N/A')}
                 </Text>
               </View>
               {(getAddressField(property, 'post') || property.post) && (
                 <View style={styles.featureItem}>
                   <Text style={styles.featureLabel}>Post Office</Text>
                   <Text style={styles.featureValue}>
-                    {getAddressField(property, 'post') || property.post}
+                    {getAddressField(property, 'post') || safeString(property.post, '')}
                   </Text>
                 </View>
               )}
@@ -790,37 +947,102 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                 <View style={styles.featureItem}>
                   <Text style={styles.featureLabel}>Pincode</Text>
                   <Text style={styles.featureValue}>
-                    {getAddressField(property, 'pincode') || property.pincode}
+                    {getAddressField(property, 'pincode') || safeString(property.pincode, '')}
                   </Text>
                 </View>
               )}
             </View>
           </View>
 
-          {/* Society Features */}
-          {(property.societyMaintenance || (property.societyFeatures && property.societyFeatures.length > 0)) && (
-            <View style={styles.featuresSection}>
-              <Text style={styles.featuresTitle}>Society Details</Text>
-              {property.societyMaintenance && (
-                <View style={styles.societyMaintenanceRow}>
-                  <Icon name="cash-outline" size={18} color={colors.primary} />
-                  <Text style={styles.societyMaintenanceText}>
-                    Maintenance: {property.societyMaintenance}
-                  </Text>
+          {/* Society Features - Enhanced Display */}
+          {(() => {
+            // Parse societyFeatures from multiple possible formats
+            let featuresArray = [];
+            
+            // Try to get features from property.societyFeatures
+            if (property.societyFeatures) {
+              if (typeof property.societyFeatures === 'string') {
+                try {
+                  // Try parsing as JSON
+                  featuresArray = JSON.parse(property.societyFeatures);
+                } catch (e) {
+                  // If not JSON, try splitting by comma
+                  featuresArray = property.societyFeatures.split(',').map(f => f.trim()).filter(Boolean);
+                }
+              } else if (Array.isArray(property.societyFeatures)) {
+                featuresArray = property.societyFeatures;
+              }
+            }
+            
+            // Also check if features are in nested address or other objects
+            if (featuresArray.length === 0 && property.address?.societyFeatures) {
+              if (Array.isArray(property.address.societyFeatures)) {
+                featuresArray = property.address.societyFeatures;
+              }
+            }
+            
+            const maintenance = property.societyMaintenance || property.address?.societyMaintenance;
+            
+            console.log('🏢 Society Features Complete Debug:', {
+              rawFeatures: property.societyFeatures,
+              parsedArray: featuresArray,
+              arrayLength: featuresArray.length,
+              maintenance: maintenance,
+              addressObject: property.address,
+              shouldShow: !!(maintenance || featuresArray.length > 0)
+            });
+            
+            // Show section if EITHER maintenance OR features exist
+            const shouldShow = !!(maintenance || featuresArray.length > 0);
+            
+            if (!shouldShow) {
+              console.log('❌ Society section hidden - no data found');
+              return null;
+            }
+            
+            console.log('✅ Society section will be displayed');
+            
+            return (
+              <View style={styles.featuresSection}>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12}}>
+                  <Icon name="business-outline" size={20} color={colors.primary} />
+                  <Text style={[styles.featuresTitle, {marginLeft: 8, marginBottom: 0}]}>Society Details</Text>
                 </View>
-              )}
-              {property.societyFeatures && property.societyFeatures.length > 0 && (
-                <View style={styles.societyFeaturesWrap}>
-                  {property.societyFeatures.map((feature, index) => (
-                    <View key={index} style={styles.societyFeatureChip}>
-                      <Icon name="checkmark-circle" size={14} color={colors.primary} />
-                      <Text style={styles.societyFeatureText}>{feature}</Text>
+                
+                {maintenance && (
+                  <View style={styles.societyMaintenanceRow}>
+                    <Icon name="cash-outline" size={18} color={colors.primary} />
+                    <Text style={styles.societyMaintenanceText}>
+                      Maintenance: ₹{maintenance}
+                    </Text>
+                  </View>
+                )}
+                
+                {featuresArray.length > 0 && (
+                  <View>
+                    <Text style={{fontSize: 13, color: colors.muted, marginBottom: 8, fontWeight: '600'}}>
+                      Available Facilities:
+                    </Text>
+                    <View style={styles.societyFeaturesWrap}>
+                      {featuresArray.map((feature, index) => (
+                        <View key={index} style={styles.societyFeatureChip}>
+                          <Icon name="checkmark-circle" size={14} color="#22C55E" />
+                          <Text style={styles.societyFeatureText}>{feature}</Text>
+                        </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
+                  </View>
+                )}
+                
+                {/* Show debug info in development */}
+                {__DEV__ && (
+                  <Text style={{fontSize: 10, color: '#999', marginTop: 8}}>
+                    Debug: {featuresArray.length} features found
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
 
           {/* Property Status and Type */}
           <View style={styles.propertyMetaRow}>
@@ -881,10 +1103,11 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
 
       </ScrollView>
 
-      {/* Bottom Bar */}
+      {/* Bottom Bar - Respects owner's contact preferences */}
       <View style={styles.bottomBarWrap}>
         <View style={styles.bottomBar}>
-          {/* Call Button */}
+          {/* Call Button - Only show if owner allows phone contact */}
+          {(property.contactPreferences?.phone !== false && property.contactPreferences?.phone !== 'false') && (
           <TouchableOpacity
             style={[styles.actionBtn, styles.callBtn]}
             onPress={handleCallPress}
@@ -892,8 +1115,10 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             <Icon name="call" size={16} color={colors.white} />
             <Text style={styles.actionText}>Call</Text>
           </TouchableOpacity>
+          )}
 
-          {/* WhatsApp Button */}
+          {/* WhatsApp Button - Only show if owner allows whatsapp contact */}
+          {(property.contactPreferences?.whatsapp !== false && property.contactPreferences?.whatsapp !== 'false') && (
           <TouchableOpacity
             style={[styles.actionBtn, styles.whatsappBtn]}
             onPress={() => {
@@ -908,8 +1133,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
               }
               
               const message = `Hi! I'm interested in your property: ${property.title || property.description || 'Property'}. Price: ${price}`;
-              const whatsappUrl = `whatsapp://send?phone=91${phoneNumber}&text=${encodeURIComponent(message)}`;
-              
+              const whatsappUrl = `whatsapp://send?phone=91${phoneNumber}&text=${encodeURIComponent(message)}`;              
               Linking.canOpenURL(whatsappUrl).then((supported) => {
                 if (supported) {
                   Linking.openURL(whatsappUrl);
@@ -926,32 +1150,75 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             <Icon name="logo-whatsapp" size={16} color={colors.white} />
             <Text style={styles.actionText}>WhatsApp</Text>
           </TouchableOpacity>
+          )}
 
-          {/* Chat Button */}
+          {/* Chat Button - Only show if owner allows chat contact */}
+          {(property.contactPreferences?.chat !== false && property.contactPreferences?.chat !== 'false') && (
           <TouchableOpacity
             style={[styles.actionBtn, styles.chatBtn]}
             onPress={() => {
-              const chatUser = property.postedBy || property.userId || property.owner; 
+              // Extract ownerId from property data (try all possible fields)
+              let ownerId = null;
+              let ownerData = null;
+              
+              // Try to get full owner object first
+              if (property.postedBy && typeof property.postedBy === 'object') {
+                ownerData = property.postedBy;
+                ownerId = property.postedBy._id || property.postedBy.id;
+              } else if (property.postedBy) {
+                ownerId = property.postedBy;
+              } else if (property.userId && typeof property.userId === 'object') {
+                ownerData = property.userId;
+                ownerId = property.userId._id || property.userId.id;
+              } else if (property.userId) {
+                ownerId = property.userId;
+              } else if (property.owner && typeof property.owner === 'object') {
+                ownerData = property.owner;
+                ownerId = property.owner._id || property.owner.id;
+              } else if (property.owner) {
+                ownerId = property.owner;
+              } else if (property.user && typeof property.user === 'object') {
+                ownerData = property.user;
+                ownerId = property.user._id || property.user.id;
+              } else if (property.user) {
+                ownerId = property.user;
+              } else if (property.createdBy && typeof property.createdBy === 'object') {
+                ownerData = property.createdBy;
+                ownerId = property.createdBy._id || property.createdBy.id;
+              } else if (property.createdBy) {
+                ownerId = property.createdBy;
+              }
 
-              if (!chatUser) {
+              console.log('💬 Chat button pressed:', {
+                propertyId: property._id || property.id,
+                ownerId: ownerId,
+                ownerData: ownerData,
+                propertyTitle: property.title
+              });
+
+              // Validate ownerId exists
+              if (!ownerId) {
                 Alert.alert(
-                  'Contact Not Available',
-                  'Chat is not available for this property.',
+                  'Chat Not Available',
+                  'Owner information is not available for this property. Please contact support.',
                   [{ text: 'OK' }]
                 );
                 return;
               }
 
+              // Navigate to ChatDetailScreen with user object (for compatibility)
               navigation.navigate("ChatDetailScreen", {
-                user: chatUser,
+                user: ownerData || { _id: ownerId, id: ownerId },
                 propertyId: property._id || property.id,
                 propertyTitle: property.title || "Property",
+                chatId: null, // Will be created/fetched in ChatDetailScreen
               });
             }}
           >
             <Icon name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
             <Text style={[styles.actionText, { color: colors.primary }]}>Chat</Text>
           </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -1403,9 +1670,11 @@ const styles = StyleSheet.create({
     position: "absolute", 
     left: 0, 
     right: 0, 
-    bottom: Platform.OS === 'ios' ? 30 : 20, 
+    bottom: Platform.OS === 'ios' ? 34 : 30, 
     alignItems: "center",
     paddingHorizontal: 20,
+    // Extra padding for devices with gesture navigation
+    paddingBottom: Platform.OS === 'android' ? 10 : 0,
   },
   bottomBar: {
     width: '100%',

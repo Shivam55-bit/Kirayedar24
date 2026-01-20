@@ -1,835 +1,496 @@
+/**
+ * ChatListScreen - Production Ready
+ * Displays all user chats with real-time updates
+ * 
+ * Features:
+ * - Fetch all chats on mount
+ * - Real-time message updates via WebSocket
+ * - Pull-to-refresh
+ * - Swipe-to-delete
+ * - Sorted by latest message
+ * - Unread count badges
+ * - Empty state
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
-import moment from 'moment';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
-  Image,
-  Alert,
   ActivityIndicator,
-  AppState,
+  RefreshControl,
+  Alert,
+  SafeAreaView,
+  TouchableOpacity,
+  ToastAndroid,
   Platform,
+  DeviceEventEmitter,
+  Modal,
+  Pressable,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
-import { useFocusEffect } from '@react-navigation/native';
-// Real chat API integration enabled
-// import { chatService } from '../services/chatApi.js'; // REMOVED
-import AsyncStorage from '@react-native-async-storage/async-storage';
-// import { getUserProfile } from '../services/userapi';
-// import { formatImageUrl } from '../services/homeApi';
-import useChatSocket from '../hooks/useChatSocket';
-import eventBus from '../utils/eventBus';
 
-// --- COLORS - Matched with HomeScreen Theme ---
+// Components & Services
+import ChatItem from '../components/ChatItem';
+import { getUserChats, deleteChat, deleteAllChats, getCurrentUserId } from '../services/chatApi';
+import useChatSocket from '../hooks/useChatSocket';
+
+// Colors
 const colors = {
-  primary: '#FDB022',        // Orange
-  primaryLight: '#FDBF4D',   // Lighter orange
-  primaryDark: '#E89E0F',    // Darker orange
-  accent: '#FDB022',
+  primary: '#FDB022',
+  primaryLight: '#FDBF4D',
+  primaryDark: '#E89E0F',
   background: '#F8FAFC',
-  cardBackground: '#FFFFFF',
+  white: '#FFFFFF',
   text: '#1E293B',
   lightText: '#64748B',
-  white: '#FFFFFF',
+  border: '#E5E7EB',
   unread: '#EF4444',
-  greyLight: '#E2E8F0',
 };
-
-// Local state will hold chats loaded from backend
 
 const ChatListScreen = ({ navigation }) => {
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [appState, setAppState] = useState(AppState.currentState);
-  const [notifee, setNotifee] = useState(null);
-  const [messaging, setMessaging] = useState(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [deletingChatIds, setDeletingChatIds] = useState(new Set());
 
+  // Get current user ID
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const id = await AsyncStorage.getItem('userId');
-        if (mounted && id) setCurrentUserId(id);
-      } catch (e) {
-        console.warn('Failed to read userId from storage', e && e.message ? e.message : e);
-      }
-    })();
-    return () => { mounted = false; };
+    const fetchUserId = async () => {
+      const userId = await getCurrentUserId();
+      setCurrentUserId(userId);
+    };
+    fetchUserId();
   }, []);
 
-  // Setup Notifications (only for mobile platforms)
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-
-    let mounted = true;
-
-    const setupNotifications = async () => {
-      try {
-        // Dynamically import notifee for mobile platforms
-        const notifeeModule = await import('@notifee/react-native').catch(() => null);
-        const messagingModule = await import('@react-native-firebase/messaging').catch(() => null);
-        
-        if (!mounted) return;
-
-        // Only set if modules loaded successfully
-        if (notifeeModule) setNotifee(notifeeModule.default);
-        if (messagingModule) setMessaging(messagingModule.default);
-
-        // Only proceed with notifications if notifee is available
-        if (!notifeeModule) {
-          console.log('ℹ️ Notifee not available - notifications disabled');
-          return;
-        }
-
-        // Create notification channel for Android
-        if (Platform.OS === 'android') {
-          await notifeeModule.default.createChannel({
-            id: 'chat-messages',
-            name: 'Chat Messages',
-            description: 'Notifications for new chat messages',
-            sound: 'default',
-            importance: notifeeModule.AndroidImportance.HIGH,
-            vibration: true,
-          });
-          console.log('📱 Chat notification channel created');
-        }
-
-        // Handle notification tap events
-        notifeeModule.default.onForegroundEvent(({ type, detail }) => {
-          if (type === notifeeModule.EventType.PRESS && detail.notification) {
-            const { chatId, senderId, senderName } = detail.notification.data || {};
-            if (chatId) {
-              navigation.navigate('ChatDetailScreen', {
-                chatId,
-                user: { _id: senderId, fullName: senderName },
-              });
-            }
-          }
-        });
-
-        console.log('✅ Notification system initialized');
-      } catch (error) {
-        console.warn('⚠️ Notification setup failed (non-critical):', error?.message || error);
-      }
-    };
-
-    setupNotifications();
-
-    return () => {
-      mounted = false;
-    };
-  }, [navigation]);
-
-  const loadChats = useCallback(async () => {
-    setLoading(true);
+  // Fetch chats
+  const fetchChats = async (showLoader = true) => {
     try {
-      // Mock chat list (API removed)
-      const response = {
-        success: true,
-        chats: []
-      };
+      if (showLoader) setLoading(true);
       
-      if (response.success && response.chats) {
-        // Normalize server chat objects to UI items
-        const normalized = (response.chats || []).map((c) => {
-          const id = c._id || c.id || (c.chatId || '') + '';
-          // determine other participant
-          let other = null;
-          // server may return a `user` object for the other participant
-          if (Array.isArray(c.participants)) {
-            other = c.participants.find(p => p._id !== currentUserId) || c.participants[0];
-          } else if (c.participant) {
-            other = c.participant;
-          } else if (c.user) {
-            other = c.user;
-          }
-          
-          // Helper: mask email local-part or phone if no name available
-          const maskEmail = (email) => {
-            if (!email) return null;
-            const parts = String(email).split('@');
-            if (parts.length === 2) return parts[0];
-            return email;
-          };
-
-          const maskPhone = (phone) => {
-            if (!phone) return null;
-            const s = String(phone).replace(/\D/g, '');
-            if (s.length <= 4) return s;
-            return s.slice(-4).padStart(s.length, '*');
-          };
-
-        // Try many likely name fields from various server shapes
-        const nameCandidates = [
-          other?.fullName,
-          other?.full_name,
-          other?.name,
-          (other?.firstName && other?.lastName) ? `${other.firstName} ${other.lastName}` : null,
-          (other?.first_name && other?.last_name) ? `${other.first_name} ${other.last_name}` : null,
-          other?.displayName,
-          other?.username,
-          c.name,
-          c.chatName,
-          c.title,
-          c.otherUser?.name,
-          c.user?.name,
-          c.sender?.name,
-          c.receiver?.name,
-        ].filter(Boolean);
-
-        let name = nameCandidates.length ? nameCandidates[0] : null;
-        if (!name) {
-          // fallback to masked email or phone from participant
-          name = maskEmail(other?.email) || maskEmail(c.email) || maskPhone(other?.phone) || maskPhone(other?.mobile) || 'User';
-        }
-
-        // Normalize avatar URL so relative server paths show correctly in RN <Image>
-        const rawAvatar = other?.avatar || other?.profilePic || other?.photo || other?.image || other?.profile_pic || null;
-        const avatar = rawAvatar ? formatImageUrl(rawAvatar) : 'https://placehold.co/100x100/CCCCCC/888888?text=User';
-        const lastMessage = c.lastMessage?.text || c.lastMessage || c.last_message || (c.messages && c.messages[c.messages.length-1]?.text) || '';
-        const time = c.lastMessageTime || c.last_message_time || c.updatedAt || (c.lastMessage && c.lastMessage.createdAt) || c.updated_at || '';
-        const property = c.meta?.propertyTitle || c.propertyName || c.property || '';
-
-        return { id, name, avatar, lastMessage, time, property, raw: c, other };
-      });
-
-      setChats(normalized);
-
-        // Enrich items that lack a friendly display name by fetching the user's profile
-        const needProfile = normalized.filter(n => {
-          // if name is the generic fallback or looks masked, try to fetch full profile
-          return (!n.name || n.name === 'User' || /\*|@/.test(n.name)) && n.other && (n.other._id || n.other.id);
-        });
-        if (needProfile.length > 0) {
-          try {
-            const profiles = await Promise.all(
-              needProfile.map(async (item) => {
-                const id = item.other._id || item.other.id;
-                try {
-                  const profile = await getUserProfile(id);
-                  return { id: item.id, profile };
-                } catch (e) {
-                  console.warn('Failed to fetch profile for', id, e && e.message);
-                  return null;
-                }
-              })
-            );
-            const mapById = {};
-            profiles.forEach(p => { if (p && p.id) mapById[p.id] = p.profile; });
-            if (Object.keys(mapById).length) {
-              setChats(prev => prev.map(ch => {
-                const prof = mapById[ch.id];
-                if (!prof) return ch;
-                const newName = prof.fullName || prof.full_name || prof.name || prof.displayName || prof.firstName || prof.first_name || prof.email || ch.name;
-                const newAvatarRaw = prof.avatar || prof.profilePic || prof.photo || ch.avatar;
-                const newAvatar = newAvatarRaw ? formatImageUrl(newAvatarRaw) : ch.avatar;
-                return { ...ch, name: newName, avatar: newAvatar };
-              }));
-            }
-          } catch (e) {
-            console.warn('Profile enrichment failed:', e && e.message);
-          }
-        }
-      } // Close if (response.success && response.chats) block
-    } catch (err) {
-      console.error('Failed to load chats:', err);
-      setChats([]);
+      const result = await getUserChats();
+      
+      if (result.success) {
+        setChats(result.chats || []);
+      } else {
+        console.error('Failed to fetch chats:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching chats:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [currentUserId]);
+  };
 
-  // Real-time updates: subscribe to global socket and update unread counts / last message
-  const onNewMessage = useCallback((message) => {
-    try {
-      console.log('📨 New message received in ChatListScreen:', message);
-      // Try many shapes to find chatId
-      const incomingChatId = message.chatId || message.chat?._id || message.chat?.id || message.chat_id || message.chatId || (message.room || null);
-      const text = message.text || message.message || message.body || '';
-      const time = message.timestamp || message.createdAt || new Date().toISOString();
-      const senderId = message.senderId || message.sender?._id || message.from;
-      const senderName = message.senderName || message.sender?.fullName || message.sender?.name || 'Someone';
-
-      if (!incomingChatId) {
-        // Unknown chat id, refresh whole list
-        console.log('🔄 Unknown chat ID, refreshing chat list');
-        loadChats();
-        return;
-      }
-
-      // Show notification if app is in background or message is from another user
-      if (appState !== 'active' && senderId !== currentUserId) {
-        showLocalNotification({
-          chatId: incomingChatId,
-          senderName,
-          senderId,
-          message: text,
-        });
-      }
-
-      setChats(prev => {
-        let found = false;
-        const updated = prev.map(ch => {
-          // match against normalized id AND raw server ids
-          const rawId = ch.raw && (ch.raw._id || ch.raw.id || ch.raw.chatId || ch.raw._chatId);
-          if (String(ch.id) === String(incomingChatId) || String(rawId) === String(incomingChatId)) {
-            found = true;
-            const newLast = text || ch.lastMessage;
-            console.log('✅ Updated existing chat:', ch.name);
-            // Update last message/time and move to top
-            return { ...ch, lastMessage: newLast, time };
-          }
-          return ch;
-        });
-
-        if (!found) {
-          // If this chat is not present in local state, trigger full reload
-          console.log('🔄 Chat not found in list, refreshing...');
-          loadChats();
-        }
-
-        // Sort by time - most recent first
-        return updated.sort((a, b) => new Date(b.time) - new Date(a.time));
-      });
-    } catch (e) {
-      console.warn('onNewMessage handler failed:', e && e.message ? e.message : e);
-    }
-  }, [loadChats, appState, currentUserId]);
-
-  // Function to show local notification
-  const showLocalNotification = useCallback(async (data) => {
-    if (!notifee || Platform.OS === 'web') return;
-
-    const { senderName, message, chatId, senderId } = data;
-    
-    try {
-      await notifee.displayNotification({
-        title: `💬 ${senderName}`,
-        body: message.substring(0, 100),
-        android: {
-          channelId: 'chat-messages',
-          importance: 4, // HIGH
-          sound: 'default',
-          pressAction: {
-            id: 'default',
-          },
-          vibrationPattern: [300, 500, 300],
-        },
-        ios: {
-          sound: 'default',
-        },
-        data: { chatId, senderId, senderName },
-      });
-      
-      console.log('🔔 Local notification shown for:', senderName);
-    } catch (error) {
-      console.warn('⚠️ Failed to show notification:', error?.message || error);
-    }
-  }, [notifee]);
-
-  // Connect to global socket for real-time updates
-  useChatSocket(null, onNewMessage);
-
-  // Monitor app state changes
+  // Initial fetch on mount
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      console.log('📱 App state changed:', appState, '->', nextAppState);
-      setAppState(nextAppState);
-      
-      // Refresh chats when app comes to foreground
-      if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('🔄 App became active, refreshing chats...');
-        loadChats();
-      }
-    });
+    fetchChats();
+  }, []);
 
-    return () => {
-      subscription?.remove();
-    };
-  }, [appState, loadChats]);
-
-  // Setup FCM for background notifications
-  useEffect(() => {
-    if (Platform.OS === 'web' || !messaging) return;
-
-    let mounted = true;
-
-    const setupFCM = async () => {
-      try {
-        // Verify messaging is properly initialized
-        if (!messaging || typeof messaging.onNotificationOpenedApp !== 'function') {
-          console.log('ℹ️ Firebase messaging not properly initialized - skipping FCM setup');
-          return;
-        }
-
-        // Handle notification when app is in background
-        const unsubscribeBackground = messaging.onNotificationOpenedApp(remoteMessage => {
-          console.log('🔔 Notification opened app from background:', remoteMessage);
-          
-          const { chatId, senderId, senderName } = remoteMessage.data || {};
-          if (chatId && mounted) {
-            navigation.navigate('ChatDetailScreen', {
-              chatId,
-              user: { _id: senderId, fullName: senderName },
-            });
-          }
-        });
-
-        // Handle notification when app was completely closed
-        messaging
-          .getInitialNotification()
-          .then(remoteMessage => {
-            if (remoteMessage && mounted) {
-              console.log('🔔 Notification opened app from quit state:', remoteMessage);
-              
-              const { chatId, senderId, senderName } = remoteMessage.data || {};
-              if (chatId) {
-                setTimeout(() => {
-                  navigation.navigate('ChatDetailScreen', {
-                    chatId,
-                    user: { _id: senderId, fullName: senderName },
-                  });
-                }, 1000);
-              }
-            }
-          });
-
-        // Handle foreground messages
-        const unsubscribeForeground = messaging.onMessage(async remoteMessage => {
-          console.log('📨 FCM message received in foreground:', remoteMessage);
-          
-          const { title, body } = remoteMessage.notification || {};
-          const { chatId, senderId, senderName, message } = remoteMessage.data || {};
-
-          // Show local notification when in foreground
-          if (chatId && senderId !== currentUserId && mounted) {
-            showLocalNotification({
-              chatId,
-              senderId,
-              senderName: title || senderName || 'Someone',
-              message: body || message || 'New message',
-            });
-          }
-
-          // Refresh chat list
-          if (mounted) loadChats();
-        });
-
-        return () => {
-          unsubscribeBackground();
-          unsubscribeForeground();
-        };
-      } catch (error) {
-        console.warn('⚠️ FCM setup failed (non-critical):', error?.message || error);
-      }
-    };
-
-    const cleanup = setupFCM();
-
-    return () => {
-      mounted = false;
-      if (cleanup && typeof cleanup.then === 'function') {
-        cleanup.then(fn => fn && typeof fn === 'function' && fn());
-      }
-    };
-  }, [navigation, currentUserId, loadChats, showLocalNotification, messaging]);
-
-  // Add polling mechanism for chat list updates
-  useEffect(() => {
-    let intervalId;
-    let mounted = true;
-
-    const pollChats = async () => {
-      if (!mounted) return;
-      try {
-        console.log('🔄 Polling for chat list updates...');
-        const list = await getChats();
-        if (!mounted) return;
-        
-        const normalized = (list || []).map((c) => {
-          const id = c._id || c.id || (c.chatId || '') + '';
-          // determine other participant
-          let other = null;
-          // server may return a `user` object for the other participant
-          if (Array.isArray(c.participants)) {
-            other = c.participants.find(p => p._id !== currentUserId) || c.participants[0];
-          } else if (c.participant) {
-            other = c.participant;
-          } else if (c.user) {
-            other = c.user;
-          }
-
-          // Helper: mask email local-part or phone if no name available
-          const maskEmail = (email) => {
-            if (!email) return null;
-            const parts = String(email).split('@');
-            if (parts.length === 2) return parts[0];
-            return email;
-          };
-
-          const maskPhone = (phone) => {
-            if (!phone) return null;
-            const s = String(phone).replace(/\D/g, '');
-            if (s.length <= 4) return s;
-            return s.slice(-4).padStart(s.length, '*');
-          };
-
-          // Try many likely name fields from various server shapes
-          const nameCandidates = [
-            other?.fullName,
-            other?.full_name,
-            other?.name,
-            (other?.firstName && other?.lastName) ? `${other.firstName} ${other.lastName}` : null,
-            (other?.first_name && other?.last_name) ? `${other.first_name} ${other.last_name}` : null,
-            other?.displayName,
-            other?.username,
-            c.name,
-            c.chatName,
-            c.title,
-            c.otherUser?.name,
-            c.user?.name,
-            c.sender?.name,
-            c.receiver?.name,
-          ].filter(Boolean);
-
-          let name = nameCandidates.length ? nameCandidates[0] : null;
-          if (!name) {
-            // fallback to masked email or phone from participant
-            name = maskEmail(other?.email) || maskEmail(c.email) || maskPhone(other?.phone) || maskPhone(other?.mobile) || 'User';
-          }
-
-          // Normalize avatar URL so relative server paths show correctly in RN <Image>
-          const rawAvatar = other?.avatar || other?.profilePic || other?.photo || other?.image || other?.profile_pic || null;
-          const avatar = rawAvatar ? formatImageUrl(rawAvatar) : 'https://placehold.co/100x100/CCCCCC/888888?text=User';
-          const lastMessage = c.lastMessage?.text || c.lastMessage || c.last_message || (c.messages && c.messages[c.messages.length-1]?.text) || '';
-          const time = c.lastMessageTime || c.last_message_time || c.updatedAt || (c.lastMessage && c.lastMessage.createdAt) || c.updated_at || '';
-          const property = c.meta?.propertyTitle || c.propertyName || c.property || '';
-
-          return { id, name, avatar, lastMessage, time, property, raw: c, other };
-        });
-
-        setChats(prev => {
-          // Only update if there are actual changes
-          if (JSON.stringify(prev.map(p => ({ id: p.id, lastMessage: p.lastMessage, time: p.time }))) !== 
-              JSON.stringify(normalized.map(n => ({ id: n.id, lastMessage: n.lastMessage, time: n.time })))) {
-            console.log('📨 Chat list updated via polling');
-            return normalized;
-          }
-          return prev;
-        });
-      } catch (err) {
-        console.warn('Polling error (non-critical):', err?.message || err);
-      }
-    };
-
-    // Start polling every 3 seconds for chat list updates
-    if (currentUserId) {
-      intervalId = setInterval(pollChats, 3000);
-    }
-
-    return () => {
-      mounted = false;
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [currentUserId]);
-
-  // Previously we cleared unread counts on 'chatOpened'. Message counting was removed,
-  // so we no longer track/clear unread counts here.
-
-  // load when screen focused
+  // Refetch when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log('📺 ChatListScreen focused, loading chats...');
-      loadChats();
-    }, [loadChats])
+      fetchChats(false);
+    }, [])
   );
 
-  // Additional effect to refresh on app state changes
-  useEffect(() => {
-    const handleChatOpened = () => {
-      console.log('📺 Chat opened event received, refreshing list...');
-      setTimeout(() => loadChats(), 1000); // Small delay to allow server to process
-    };
+  // Real-time updates via WebSocket
+  const handleNewMessage = useCallback((data) => {
+    if (__DEV__) console.log('📨 New message in ChatListScreen:', data);
+    
+    // Update chat list with new message
+    setChats(prevChats => {
+      const chatId = data.chatId || data.chat?._id;
+      if (!chatId) return prevChats;
 
-    try {
-      eventBus.on && eventBus.on('chatOpened', handleChatOpened);
-    } catch (e) {
-      console.warn('EventBus not available:', e);
+      const existingChatIndex = prevChats.findIndex(chat => chat._id === chatId);
+      
+      if (existingChatIndex !== -1) {
+        // Update existing chat
+        const updatedChats = [...prevChats];
+        const chat = updatedChats[existingChatIndex];
+        
+        updatedChats[existingChatIndex] = {
+          ...chat,
+          lastMessage: {
+            text: data.text || data.message?.text,
+            sender: data.sender || data.message?.sender,
+            timestamp: data.timestamp || data.message?.timestamp || new Date().toISOString(),
+          },
+          updatedAt: new Date().toISOString(),
+          unreadCount: data.sender !== currentUserId 
+            ? (chat.unreadCount || 0) + 1 
+            : chat.unreadCount,
+        };
+
+        // Sort by latest
+        return updatedChats.sort((a, b) => 
+          new Date(b.updatedAt) - new Date(a.updatedAt)
+        );
+      } else {
+        // New chat - refetch to get full data
+        fetchChats(false);
+        return prevChats;
+      }
+    });
+  }, [currentUserId]);
+
+  // ✅ NEW: Listen for message sent events to update chat list
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('chatMessageSent', (data) => {
+      if (__DEV__) console.log('📨 Message sent event received:', data);
+      // Refetch chats to update list
+      fetchChats(false);
+    });
+    
+    return () => subscription.remove();
+  }, []);
+
+  // Initialize WebSocket (null chatId = listen to all chats)
+  useChatSocket(null, handleNewMessage, null);
+
+  // Pull to refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchChats(false);
+  };
+
+  // Navigate to chat detail
+  const handleChatPress = (chat) => {
+    // Derive the other participant (not the current user) and pass it as `user`
+    const participants = chat.participants || [];
+    let otherParticipant = null;
+
+    for (const p of participants) {
+      const pId = p?._id || p?.id || p;
+      if (String(pId) !== String(currentUserId)) {
+        otherParticipant = (typeof p === 'object') ? p : { _id: pId, id: pId };
+        break;
+      }
     }
 
-    return () => {
-      try {
-        eventBus.off && eventBus.off('chatOpened', handleChatOpened);
-      } catch (e) {
-        // ignore
-      }
-    };
-  }, [loadChats]);
-  const renderChatItem = ({ item }) => {
-    // format time nicely
-    const timeStr = item.time ? moment(item.time).format('DD MMM, hh:mm A') : '';
-    return (
-      <TouchableOpacity
-        style={styles.chatItem}
-        onPress={() =>
-          navigation.navigate('ChatDetailScreen', {
-            chatId: item.id,
-            user: item.other?._id ? item.other : item.other || item.raw?.otherUser || item.id,
-            propertyTitle: item.property,
-          })
-        }
-        onLongPress={() => {
-          Alert.alert(
-            'Delete conversation',
-            'Are you sure you want to delete this conversation? This cannot be undone.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: async () => {
-                  try {
-                    setChats(prev => prev.filter(it => it.id !== item.id));
-                    const res = await deleteChat(item.id);
-                    if (!res || (res && res.success === false)) {
-                      console.warn('deleteChat failed, reloading list', res);
-                      loadChats();
-                    }
-                  } catch (err) {
-                    console.error('Failed to delete chat', err);
-                    loadChats();
-                  }
-                },
-              },
-            ],
-            { cancelable: true }
-          );
-        }}
-      >
-        <Image source={{ uri: item.avatar }} style={styles.avatar} />
+    if (!otherParticipant && participants.length > 0) {
+      const p = participants[0];
+      otherParticipant = (typeof p === 'object') ? p : { _id: p, id: p };
+    }
 
-        <View style={styles.chatContent}>
-          <View style={styles.nameRow}>
-            <Text style={styles.chatName} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <Text style={styles.chatTime}>{timeStr}</Text>
-          </View>
+    navigation.navigate('ChatDetailScreen', {
+      chatId: chat._id,
+      user: otherParticipant,
+      propertyTitle: chat.propertyTitle || chat.property?.title || 'Property',
+      propertyId: chat.propertyId || chat.property?._id,
+    });
+  };
 
-          <View style={styles.messageRow}>
-            <Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
+  // Show Toast (cross-platform)
+  const showToast = (message) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('', message);
+    }
+  };
+
+  // Delete single chat
+  const handleDeleteChat = (chat) => {
+    // Double-delete protection
+    if (deletingChatIds.has(chat._id)) {
+      console.log('⚠️ Chat already being deleted:', chat._id);
+      return;
+    }
+
+    Alert.alert(
+      'Delete Chat',
+      'Are you sure you want to delete this conversation?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Mark as deleting
+              setDeletingChatIds(prev => new Set(prev).add(chat._id));
+
+              // Optimistic UI update
+              setChats(prevChats => prevChats.filter(c => c._id !== chat._id));
+
+              const result = await deleteChat(chat._id);
+              
+              if (result.success) {
+                showToast(result.message || 'Chat deleted successfully');
+              } else {
+                // Revert on failure
+                showToast(result.error || 'Failed to delete chat');
+                fetchChats(false); // Refetch to restore
+              }
+            } catch (error) {
+              console.error('Delete chat error:', error);
+              showToast('Network error. Please try again.');
+              fetchChats(false); // Refetch to restore
+            } finally {
+              // Remove from deleting set
+              setDeletingChatIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(chat._id);
+                return newSet;
+              });
+            }
+          },
+        },
+      ]
     );
   };
 
+  // Delete all chats
+  const handleDeleteAllChats = () => {
+    if (chats.length === 0) {
+      showToast('No chats to delete');
+      return;
+    }
+
+    Alert.alert(
+      'Delete All Chats',
+      `Are you sure you want to delete all ${chats.length} chats? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setMenuVisible(false);
+              setLoading(true);
+
+              const result = await deleteAllChats();
+              
+              if (result.success) {
+                setChats([]);
+                showToast(result.message || 'All chats deleted successfully');
+              } else {
+                showToast(result.error || 'Failed to delete all chats');
+              }
+            } catch (error) {
+              console.error('Delete all chats error:', error);
+              showToast('Network error. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Render empty state
+  const renderEmpty = () => {
+    if (loading) return null;
+
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon name="chatbubbles-outline" size={80} color={colors.lightText} />
+        <Text style={styles.emptyTitle}>No Chats Yet</Text>
+        <Text style={styles.emptySubtitle}>
+          Start a conversation by clicking "Chat" on any property
+        </Text>
+        <TouchableOpacity
+          style={styles.browseButton}
+          onPress={() => navigation.navigate('Home')}
+        >
+          <Text style={styles.browseButtonText}>Browse Properties</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Render chat item
+  const renderChatItem = ({ item }) => (
+    <ChatItem
+      chat={item}
+      onPress={handleChatPress}
+      onDelete={handleDeleteChat}
+      currentUserId={currentUserId}
+    />
+  );
 
   return (
-    <View style={styles.container}>
-      {/* Modern Orange Gradient Header */}
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
       <LinearGradient
-        colors={['#FDBF4D', '#FDB022', '#E89E0F']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        colors={[colors.primary, colors.primaryDark]}
         style={styles.header}
       >
+        <Text style={styles.headerTitle}>Chats</Text>
+        
+        {/* Menu Button */}
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
+          style={styles.menuButton}
+          onPress={() => setMenuVisible(true)}
         >
-          <Icon name="arrow-back-outline" size={28} color={colors.white} />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Messages</Text>
-
-        <TouchableOpacity 
-          style={styles.refreshButton}
-          onPress={async () => {
-            console.log('🔄 Manual refresh triggered');
-            try {
-              await loadChats();
-            } catch (error) {
-              console.error('Manual refresh failed:', error);
-              Alert.alert('Error', 'Failed to refresh chats. Please try again.');
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Icon name="refresh-outline" size={26} color={colors.white} />
+          <Icon name="ellipsis-vertical" size={24} color={colors.white} />
         </TouchableOpacity>
       </LinearGradient>
 
+      {/* Custom Dropdown Menu */}
+      <Modal
+        transparent={true}
+        visible={menuVisible}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() => setMenuVisible(false)}
+        >
+          <View style={styles.menuDropdown}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleDeleteAllChats}
+            >
+              <Icon name="trash-outline" size={20} color={colors.unread} />
+              <Text style={styles.menuItemText}>Delete All Chats</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* Chat List */}
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }} />
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loaderText}>Loading chats...</Text>
+        </View>
       ) : (
         <FlatList
           data={chats}
           renderItem={renderChatItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={() => (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: '#64748B' }}>No conversations yet</Text>
-            </View>
-          )}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={chats.length === 0 ? styles.emptyList : null}
+          ListEmptyComponent={renderEmpty}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
-export default ChatListScreen;
-
-// --- STYLES - Modern Design ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    elevation: 8,
-    shadowColor: '#FDB022',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  backButton: {
-    padding: 10,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: '800',
-    color: colors.white,
-    letterSpacing: -0.5,
-  },
-  refreshButton: {
-    padding: 10,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-
-  listContent: {
-    paddingTop: 10,
-    paddingHorizontal: 10,
-    paddingBottom: 20,
-  },
-
-  chatItem: {
-    flexDirection: 'row',
-    backgroundColor: colors.cardBackground,
-    padding: 16,
-    marginVertical: 6,
-    marginHorizontal: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#FDB022',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    marginRight: 16,
-    borderWidth: 3,
-    borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  chatContent: { flex: 1 },
-  chatHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  chatName: {
-    fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
-    maxWidth: '70%',
-    letterSpacing: -0.3,
+    color: colors.white,
   },
-  chatTime: { 
-    fontSize: 12, 
+  menuButton: {
+    padding: 4,
+  },
+  menuContent: {
+    backgroundColor: colors.white,
+    marginTop: 8,
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderText: {
+    marginTop: 12,
+    fontSize: 14,
     color: colors.lightText,
+  },
+  emptyList: {
+    flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: colors.lightText,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  browseButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 24,
+  },
+  browseButtonText: {
+    color: colors.white,
+    fontSize: 15,
     fontWeight: '600',
   },
-  chatProperty: {
-    fontSize: 13,
-    color: colors.primary,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  lastMessageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  lastMessage: { 
-    fontSize: 14, 
-    color: colors.lightText, 
+  menuOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+  },
+  menuDropdown: {
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    marginTop: 60,
+    marginRight: 16,
+    paddingVertical: 8,
+    minWidth: 180,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuItemText: {
+    fontSize: 15,
+    color: colors.unread,
+    marginLeft: 12,
     fontWeight: '500',
   },
-  unreadMessage: {
-    fontSize: 14,
-    color: colors.text,
-    fontWeight: '600',
-    flex: 1,
-  },
-  unreadBadge: {
-    backgroundColor: colors.unread,
-    borderRadius: 15,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    minWidth: 24,
-    alignItems: 'center',
-    marginLeft: 10,
-  },
-  unreadText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  separator: { height: 8, backgroundColor: 'transparent' },
-  deleteButton: {
-    position: 'absolute',
-    right: 18,
-    top: 18,
-    padding: 6,
-    borderRadius: 18,
-  },
 });
+
+export default ChatListScreen;

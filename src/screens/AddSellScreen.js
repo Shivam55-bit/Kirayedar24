@@ -17,7 +17,6 @@ import {
   Modal,
   FlatList,
 } from "react-native";
-import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
@@ -328,11 +327,7 @@ const ContactOptionToggle = React.memo(({ label, enabled, onToggle, icon }) => (
   </View>
 ));
 
-const AddSellScreen = () => {
-  // Get navigation and route from hooks
-  const navigation = useNavigation();
-  const route = useRoute();
-  
+const AddSellScreen = ({ navigation, route }) => {
   // Multi-step form navigation - ALWAYS call these hooks first in the same order
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 3;
@@ -357,7 +352,7 @@ const AddSellScreen = () => {
   const [floorNumber, setFloorNumber] = useState("");
   const [totalFloors, setTotalFloors] = useState("");
   const [contactNumber, setContactNumber] = useState("");
-  const [purpose, setPurpose] = useState("Sell");
+  const [purpose, setPurpose] = useState("Rent");
   const [parking, setParking] = useState("Available");
   const [furnishing, setFurnishing] = useState("Semi-Furnished");
   const [kitchenType, setKitchenType] = useState("Simple");
@@ -522,7 +517,7 @@ const AddSellScreen = () => {
           setPrice(found.price ? String(found.price) : '');
           setContactNumber(found.contactNumber || '');
           setPropertyType(found.propertyType || 'Residential');
-          setPurpose(found.purpose || 'Sell');
+          setPurpose(found.purpose || 'Rent');
           setFurnishing(found.furnishingStatus || 'Semi-Furnished');
           setParking(found.parking || 'Available');
           setKitchenType(found.kitchenType || 'Simple');
@@ -657,7 +652,7 @@ const AddSellScreen = () => {
       testFormData.append('price', 50000);
       testFormData.append('propertyType', 'Residential');
       testFormData.append('residentialType', 'Apartment');
-      testFormData.append('purpose', 'Sell');
+      testFormData.append('purpose', 'Rent');
       testFormData.append('contactNumber', '9876543210');
       testFormData.append('bedrooms', 2);
       testFormData.append('bathrooms', 1);
@@ -725,8 +720,9 @@ const AddSellScreen = () => {
       Alert.alert('Missing Information', 'Please enter Locality/Area');
       return false;
     }
-    if (!pincode?.trim() || !/^\d{6}$/.test(pincode.trim())) {
-      Alert.alert('Invalid PIN Code', 'Please enter a valid 6-digit PIN code');
+    // Pincode is optional - only validate format if provided
+    if (pincode?.trim() && !/^\d{6}$/.test(pincode.trim())) {
+      Alert.alert('Invalid PIN Code', 'PIN code must be 6 digits if provided');
       return false;
     }
     return true;
@@ -1332,9 +1328,8 @@ const AddSellScreen = () => {
             }
             formData.append('availabilityStatus', availability);
             formData.append('availableFrom', availableFrom.toISOString().split('T')[0]);
-            if (purpose !== 'Sell') {
-              formData.append('availableFor', availableFor);
-            }
+            // Purpose is always 'Rent', so availableFor is always included
+            formData.append('availableFor', availableFor);
             if (propertyType === 'Residential') {
               formData.append('societyMaintenance', societyMaintenance);
               if (societyFeatures.length > 0) {
@@ -1651,8 +1646,8 @@ const AddSellScreen = () => {
             />
             
             <InputField
-              label="PIN Code*"
-              placeholder="Enter PIN code"
+              label="PIN Code"
+              placeholder="Enter PIN code (optional)"
               placeholderTextColor="#999"
               keyboardType="numeric"
               maxLength={6}
@@ -2748,7 +2743,9 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 30,
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#eee",

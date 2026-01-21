@@ -93,3 +93,4 @@ crash_log.txt
 # Sensitive files - Never commit these!
 backend/serviceAccountKey.json
 **/serviceAccountKey.json
+android/app/key.properties

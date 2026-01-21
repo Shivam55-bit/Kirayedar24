@@ -338,10 +338,13 @@ const styles = StyleSheet.create({
   bottomContainer: {
     backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 5,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     elevation: 10,
+    paddingBottom: 45,
+    borderTopRightRadius: 12,
+    borderTopLeftRadius: 12,
   },
   
   checkboxContainer: {

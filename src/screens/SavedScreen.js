@@ -17,7 +17,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/Ionicons";
 import { DeviceEventEmitter } from 'react-native';
 // Import API services and helper functions
-import { formatImageUrl, formatPrice } from '../services/propertyHelpers'; 
+import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionModal from '../components/SubscriptionModal'; 
 import propertyService from '../services/propertyapi';
 
 // Fallback image URL when a property has no photo link
@@ -38,6 +40,10 @@ const safeString = (value, fallback = '') => {
 };
 
 const SavedScreen = ({ navigation }) => {
+    // Subscription context
+    const { userHasPackage, setPropertyForSubscription, loadActiveSubscription } = useSubscription();
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    
     const [search, setSearch] = useState("");
     // removed comparison feature state (not needed anymore)
     const [properties, setProperties] = useState([]); 
@@ -242,6 +248,13 @@ const SavedScreen = ({ navigation }) => {
         console.log('[SavedScreen] Navigating to property:', item.id);
         console.log('[SavedScreen] Original data:', item.originalData);
         
+        // Check if user has active subscription
+        if (!userHasPackage) {
+            setPropertyForSubscription(item.originalData || item);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
         // Pass the original API data for full property details
         const propertyData = item.originalData || item;
         
@@ -249,6 +262,13 @@ const SavedScreen = ({ navigation }) => {
             propertyId: item.id,
             property: propertyData 
         });
+    };
+
+    const handleSubscriptionSuccess = () => {
+        setShowSubscriptionModal(false);
+        // Refresh subscription status
+        loadActiveSubscription();
+        // After subscription, user will have package and can view properties
     };
 
     const renderItem = ({ item }) => {
@@ -343,6 +363,13 @@ const SavedScreen = ({ navigation }) => {
             />
 
             {/* Comparison feature removed */}
+            
+            {/* Subscription Modal */}
+            <SubscriptionModal
+                visible={showSubscriptionModal}
+                onClose={() => setShowSubscriptionModal(false)}
+                onSuccess={handleSubscriptionSuccess}
+            />
         </View>
     );
 };

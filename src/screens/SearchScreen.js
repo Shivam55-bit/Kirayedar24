@@ -15,9 +15,14 @@ import {
     ActivityIndicator,
     Modal,
     ScrollView,
+    Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { DeviceEventEmitter } from 'react-native';
 import { getRecentProperties } from '../services/propertyService';
+import propertyService from '../services/propertyapi';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionModal from '../components/SubscriptionModal';
 
 const { width } = Dimensions.get('window');
 
@@ -65,7 +70,7 @@ const getFirstImageUrl = (photosAndVideo) => {
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
 
 // ---- Animated Property Card ----
-const PropertyCard = ({ property, navigation }) => {
+const PropertyCard = ({ property, onPress, toggleFavorite, favorites, loadingSaveProperty }) => {
     const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
 
     React.useEffect(() => {
@@ -82,16 +87,12 @@ const PropertyCard = ({ property, navigation }) => {
     };
 
     const handleCardPress = () => {
-        navigation.navigate('PropertyDetailsScreen', { 
-            property: property,
-            propertyId: property.id 
-        });
+        onPress(property);
     };
 
     const handleHeartPress = (e) => {
         e.stopPropagation();
-        // Handle favorite functionality here
-        console.log('Added to favorites:', property.title);
+        toggleFavorite(property.id || property._id);
     };
 
     return (
@@ -117,8 +118,17 @@ const PropertyCard = ({ property, navigation }) => {
                     activeOpacity={0.7}
                     accessibilityLabel="Add to favorites"
                     onPress={handleHeartPress}
+                    disabled={loadingSaveProperty === (property.id || property._id)}
                 >
-                    <Icon name="heart-outline" size={18} color="#fff" />
+                    {loadingSaveProperty === (property.id || property._id) ? (
+                        <ActivityIndicator size="small" color="#EF4444" />
+                    ) : (
+                        <Icon 
+                            name={favorites.includes(property.id || property._id) ? "heart" : "heart-outline"} 
+                            size={18} 
+                            color={favorites.includes(property.id || property._id) ? "#EF4444" : "#fff"} 
+                        />
+                    )}
                 </TouchableOpacity>
 
                 {/* Price tag */}
@@ -167,18 +177,6 @@ const PropertyCard = ({ property, navigation }) => {
                 {/* Action buttons */}
                 <View style={cardStyles.actionRow}>
                     <TouchableOpacity 
-                        style={cardStyles.contactButton}
-                        onPress={(e) => {
-                            e.stopPropagation();
-                            // Handle call functionality
-                            console.log('Calling for property:', property.title);
-                        }}
-                    >
-                        <Icon name="call-outline" size={14} color="#FDB022" />
-                        <Text style={cardStyles.contactText}>Call</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity 
                         style={cardStyles.viewButton}
                         onPress={handleCardPress}
                     >
@@ -192,10 +190,18 @@ const PropertyCard = ({ property, navigation }) => {
 };
 
 const SearchScreen = ({ navigation }) => {
+    // Subscription context
+    const { userHasPackage, setPropertyForSubscription, loadActiveSubscription } = useSubscription();
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [properties, setProperties] = useState([]);
     const [error, setError] = useState(null);
+    
+    // Favorites state
+    const [favorites, setFavorites] = useState([]);
+    const [loadingSaveProperty, setLoadingSaveProperty] = useState(null);
     
     // Filter state
     const [showFilterModal, setShowFilterModal] = useState(false);
@@ -227,7 +233,61 @@ const SearchScreen = ({ navigation }) => {
     // Fetch properties from API on mount
     useEffect(() => {
         loadProperties();
+        loadSavedProperties();
     }, []);
+
+    // Load saved properties
+    const loadSavedProperties = useCallback(async () => {
+        try {
+            const response = await propertyService.getSavedProperties();
+            if (response.success && response.savedProperties && Array.isArray(response.savedProperties)) {
+                const savedIds = response.savedProperties
+                    .filter(p => p !== null && p !== undefined)
+                    .map(p => p._id || p.id)
+                    .filter(Boolean);
+                setFavorites(savedIds);
+                console.log('✅ Loaded saved properties:', savedIds.length);
+            }
+        } catch (error) {
+            console.error('Error loading saved properties:', error);
+        }
+    }, []);
+
+    // Toggle favorite property
+    const toggleFavorite = async (propertyId) => {
+        if (loadingSaveProperty === propertyId) return; // Prevent multiple clicks
+        
+        const isCurrentlySaved = favorites.includes(propertyId);
+        setLoadingSaveProperty(propertyId);
+        
+        try {
+            let response;
+            if (isCurrentlySaved) {
+                // Remove from saved
+                response = await propertyService.removeSavedProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => prev.filter((f) => f !== propertyId));
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'removed' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to remove property from saved list');
+                }
+            } else {
+                // Save property
+                response = await propertyService.saveProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => [...prev, propertyId]);
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'added' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to save property');
+                }
+            }
+        } catch (error) {
+            console.error('Toggle favorite error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setLoadingSaveProperty(null);
+        }
+    };
 
     const loadProperties = async () => {
         try {
@@ -411,6 +471,28 @@ const SearchScreen = ({ navigation }) => {
         setSearchQuery(text);
     };
 
+    const handleSubscriptionSuccess = () => {
+        setShowSubscriptionModal(false);
+        // Refresh subscription status
+        loadActiveSubscription();
+        // After subscription, user will have package and can view properties
+    };
+
+    const handlePropertyPress = (property) => {
+        // Check if user has active subscription
+        if (!userHasPackage) {
+            setPropertyForSubscription(property);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
+        // User has subscription, navigate to details
+        navigation.navigate('PropertyDetailsScreen', { 
+            property: property,
+            propertyId: property.id 
+        });
+    };
+
     const renderEmptyState = () => {
         if (isLoading) {
             return (
@@ -528,7 +610,7 @@ const SearchScreen = ({ navigation }) => {
             <FlatList
                 data={filtered}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <PropertyCard property={item} navigation={navigation} />}
+                renderItem={({ item }) => <PropertyCard property={item} onPress={handlePropertyPress} toggleFavorite={toggleFavorite} favorites={favorites} loadingSaveProperty={loadingSaveProperty} />}
                 contentContainerStyle={styles.listContainer}
                 ListEmptyComponent={renderEmptyState}
                 showsVerticalScrollIndicator={false}
@@ -714,6 +796,13 @@ const SearchScreen = ({ navigation }) => {
                     </View>
                 </View>
             </Modal>
+            
+            {/* Subscription Modal */}
+            <SubscriptionModal
+                visible={showSubscriptionModal}
+                onClose={() => setShowSubscriptionModal(false)}
+                onSuccess={handleSubscriptionSuccess}
+            />
         </SafeAreaView>
     );
 };
@@ -871,25 +960,8 @@ const cardStyles = StyleSheet.create({
         flexDirection: 'row',
         gap: 12,
     },
-    contactButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#FFF4E6',
-        paddingVertical: 10,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#FDB022',
-    },
-    contactText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#FDB022',
-        marginLeft: 4,
-    },
     viewButton: {
-        flex: 1.5,
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',

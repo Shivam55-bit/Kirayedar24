@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Instructions to request account deletion. This page helps users contact support to delete their account.">
+  <title>Delete Account</title>
+  <style>body{font-family:Arial,Helvetica,sans-serif;max-width:800px;margin:40px auto;padding:0 16px;line-height:1.6}label{display:block;margin:8px 0}</style>
+</head>
+<body>
+  <h1>Delete Account</h1>
+  <p>This is a placeholder page explaining how users can request account deletion. Implement the deletion flow on your backend and replace this content with exact instructions.</p>
+  <h2>Request Account Deletion</h2>
+  <p>Use the form below to compose an email to our support team. We'll need your account email and a short reason so we can verify and proceed.</p>
+
+  <form id="deleteForm" onsubmit="return sendMail()">
+    <label>Your account email
+      <input type="email" id="userEmail" required placeholder="you@example.com" style="width:100%;padding:8px;margin-top:4px">
+    </label>
+    <label>Reason (optional)
+      <textarea id="reason" placeholder="Reason for deletion" style="width:100%;padding:8px;margin-top:4px"></textarea>
+    </label>
+    <button type="submit" style="padding:10px 16px">Compose email to support</button>
+  </form>
+
+  <p style="margin-top:16px"><a href="/privacy-policy.html">Privacy Policy</a></p>
+
+  <script>
+    function sendMail(){
+      var to = 'support@kirayedar24.com';
+      var user = encodeURIComponent(document.getElementById('userEmail').value.trim());
+      var reason = encodeURIComponent(document.getElementById('reason').value.trim());
+      if(!user) return false;
+      var subject = encodeURIComponent('Account Deletion Request');
+      var body = 'Please delete the account for: ' + user + '\n\nReason: ' + reason + '\n\nPlease verify the request and respond with next steps.';
+      window.location.href = 'mailto:' + to + '?subject=' + subject + '&body=' + encodeURIComponent(body);
+      return false;
+    }
+  </script>
+
+  <hr>
+  <p style="font-size:0.9rem;color:#666;">Last updated: January 21, 2026</p>
+</body>
+</html>

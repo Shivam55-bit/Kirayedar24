@@ -18,7 +18,7 @@ import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from "../services/authApi";
-import { getAllStates, getCitiesByState, getPincodeByCity, getAreasByCity, getPincodeByArea } from "../utils/locationData";
+import { getCitiesByState, getPincodeByCity, getAreasByCity, getPincodeByArea } from "../utils/locationData";
 import AuthFlowManager from "../utils/AuthFlowManager";
 import CustomAlert from '../components/CustomAlert';
 import { sendFCMTokenToBackend } from '../services/api';
@@ -47,15 +47,13 @@ const SignupScreen = ({ navigation, route }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-  const [postDropdownOpen, setPostDropdownOpen] = useState(false);
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
   const [availableCities, setAvailableCities] = useState([]);
-  const [availablePosts, setAvailablePosts] = useState([]);
-  const [availableAreas, setAvailableAreas] = useState([]);
   const [allStates, setAllStates] = useState([]);
+  const [statesLoading, setStatesLoading] = useState(false);
+  const [districtsLoading, setDistrictsLoading] = useState(false);
   const [stateSearch, setStateSearch] = useState("");
   const [citySearch, setCitySearch] = useState("");
-  const [postSearch, setPostSearch] = useState("");
 
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
@@ -66,22 +64,93 @@ const SignupScreen = ({ navigation, route }) => {
     iconColor: '#FDB022'
   });
 
+  // Function to fetch states from API
+  const fetchStatesFromAPI = async () => {
+    try {
+      setStatesLoading(true);
+      console.log('🌐 Fetching states from API...');
+      const response = await fetch('https://n5.bhoomitechzone.us/api/location/states');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('📍 States API response:', data);
+      
+      // API returns data in the format: { success: true, data: [...] }
+      let states = [];
+      if (data.success && data.data && Array.isArray(data.data)) {
+        states = data.data;
+      } else {
+        throw new Error('Invalid API response format');
+      }
+      
+      console.log('📍 Total states loaded from API:', states.length);
+      console.log('📍 First 10 states:', states.slice(0, 10));
+      setAllStates(states);
+      
+    } catch (error) {
+      console.error('❌ Error fetching states from API:', error);
+      // Fallback to static data if API fails
+      console.log('⚠️ Falling back to static state data');
+      const { getAllStates } = await import("../utils/locationData");
+      const states = getAllStates();
+      setAllStates(states);
+    } finally {
+      setStatesLoading(false);
+    }
+  };
+
+  // Function to fetch districts from API
+  const fetchDistrictsFromAPI = async (stateName) => {
+    try {
+      setDistrictsLoading(true);
+      console.log('🌐 Fetching districts for state:', stateName);
+      const response = await fetch(`https://n5.bhoomitechzone.us/api/location/districts/${stateName}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('🏙️ Districts API response:', data);
+      
+      // API returns data in the format: { success: true, data: [...] }
+      let districts = [];
+      if (data.success && data.data && Array.isArray(data.data)) {
+        districts = data.data;
+      } else {
+        throw new Error('Invalid API response format');
+      }
+      
+      console.log('🏙️ Total districts loaded from API:', districts.length);
+      console.log('🏙️ First 5 districts:', districts.slice(0, 5));
+      setAvailableCities(districts);
+      
+    } catch (error) {
+      console.error('❌ Error fetching districts from API:', error);
+      // Fallback to static data if API fails
+      console.log('⚠️ Falling back to static district data');
+      const { getCitiesByState } = await import("../utils/locationData");
+      const districts = getCitiesByState(stateName);
+      setAvailableCities(districts);
+    } finally {
+      setDistrictsLoading(false);
+    }
+  };
+
   // Load all states on mount
   useEffect(() => {
-    const states = getAllStates();
-    console.log('📍 Total states loaded:', states.length);
-    console.log('📍 First 10 states:', states.slice(0, 10));
-    setAllStates(states);
+    fetchStatesFromAPI();
   }, []);
 
   // Update cities when state changes
   useEffect(() => {
     if (form.state) {
-      const cities = getCitiesByState(form.state);
-      console.log(`🏙️ Cities for ${form.state}:`, cities.length, cities.slice(0, 5));
-      setAvailableCities(cities);
+      fetchDistrictsFromAPI(form.state);
       // Reset city, post, area and pincode when state changes
-      if (form.city && !cities.includes(form.city)) {
+      if (form.city) {
         setForm(prev => ({ ...prev, city: "", post: "", street: "", pinCode: "" }));
       }
     } else {
@@ -93,13 +162,9 @@ const SignupScreen = ({ navigation, route }) => {
   // Update posts when city changes
   useEffect(() => {
     if (form.city) {
-      const areas = getAreasByCity(form.city);
-      console.log(`📮 Posts for ${form.city}:`, areas.length);
-      setAvailablePosts(areas);
       // Reset post, area and pincode when city changes
       setForm(prev => ({ ...prev, post: "", street: "", pinCode: "" }));
     } else {
-      setAvailablePosts([]);
       setForm(prev => ({ ...prev, post: "", street: "", pinCode: "" }));
     }
   }, [form.city]);
@@ -118,7 +183,7 @@ const SignupScreen = ({ navigation, route }) => {
     Alert.alert(type === "success" ? "Success" : "Error", message);
   };
 
-  const Dropdown = ({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder, searchText, setSearchText }) => {
+  const Dropdown = ({ options, selectedValue, onSelect, isOpen, setIsOpen, placeholder, searchText, setSearchText, loading = false, loadingText = "Loading..." }) => {
     const filteredOptions = options.filter(option => 
       option.toLowerCase().includes(searchText.toLowerCase())
     );
@@ -127,22 +192,26 @@ const SignupScreen = ({ navigation, route }) => {
       <View style={styles.dropdownContainer}>
         <TouchableOpacity
           style={[styles.inputBox, isOpen && styles.inputBoxOpen]}
-          onPress={() => setIsOpen(!isOpen)}
+          onPress={() => !loading && setIsOpen(!isOpen)}
           activeOpacity={0.8}
         >
           <Icon name="location" size={20} color="#f39c12" />
           <Text style={[styles.dropdownButtonText, !selectedValue && styles.placeholderDropdownText]} numberOfLines={1}>
-            {selectedValue || placeholder}
+            {loading ? loadingText : (selectedValue || placeholder)}
           </Text>
-          <Icon 
-            name={isOpen ? "chevron-up" : "chevron-down"} 
-            size={20} 
-            color={isOpen ? "#f39c12" : "#666"} 
-          />
+          {loading ? (
+            <ActivityIndicator size="small" color="#f39c12" />
+          ) : (
+            <Icon 
+              name={isOpen ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color={isOpen ? "#f39c12" : "#666"} 
+            />
+          )}
         </TouchableOpacity>
         
         <Modal
-          visible={isOpen}
+          visible={isOpen && !loading}
           transparent={true}
           animationType="fade"
           onRequestClose={() => setIsOpen(false)}
@@ -237,7 +306,7 @@ const SignupScreen = ({ navigation, route }) => {
     } else {
       // Regular signup validation
       if (!form.fullName || !form.email || !form.phone || !form.password || 
-          !form.state || !form.city || !form.post || !form.pinCode || !form.userType) {
+          !form.state || !form.city || !form.post || !form.userType) {
         console.log('❌ Regular signup validation failed:', {
           fullName: !!form.fullName,
           email: !!form.email,
@@ -479,6 +548,7 @@ const SignupScreen = ({ navigation, route }) => {
           <TextInput
             style={styles.input}
             placeholder="Enter your phone number"
+            maxLength={10}
             placeholderTextColor="#9ca3af"
             keyboardType="phone-pad"
             value={form.phone}
@@ -497,12 +567,13 @@ const SignupScreen = ({ navigation, route }) => {
             setStateDropdownOpen(val);
             if (val) {
               setCityDropdownOpen(false);
-              setPostDropdownOpen(false);
             }
           }}
           placeholder="Select your state"
           searchText={stateSearch}
           setSearchText={setStateSearch}
+          loading={statesLoading}
+          loadingText="Loading states..."
         />
 
         {/* City Field */}
@@ -515,31 +586,27 @@ const SignupScreen = ({ navigation, route }) => {
             setCityDropdownOpen(val);
             if (val) {
               setStateDropdownOpen(false);
-              setPostDropdownOpen(false);
             }
           }}
           placeholder={form.state ? "Select your city/district" : "Select state first"}
           searchText={citySearch}
           setSearchText={setCitySearch}
+          loading={districtsLoading && form.state}
+          loadingText="Loading districts..."
         />
 
         {/* Post Office Field */}
-        <Dropdown
-          options={availablePosts.map(area => area.name)}
-          selectedValue={form.post}
-          onSelect={(value) => setForm({ ...form, post: value })}
-          isOpen={postDropdownOpen}
-          setIsOpen={(val) => {
-            setPostDropdownOpen(val);
-            if (val) {
-              setStateDropdownOpen(false);
-              setCityDropdownOpen(false);
-            }
-          }}
-          placeholder={form.city ? "Select post office" : "Select city first"}
-          searchText={postSearch}
-          setSearchText={setPostSearch}
-        />
+        <View style={styles.inputBox}>
+          <Icon name="location" size={20} color="#f39c12" />
+          <TextInput
+            style={styles.input}
+            placeholder={form.city ? "Enter your City/area" : "Select District first"}
+            placeholderTextColor="#9ca3af"
+            value={form.post}
+            onChangeText={(text) => setForm({ ...form, post: text })}
+            editable={!!form.city}
+          />
+        </View>
 
         {/* Pin Code Field */}
         <View>
@@ -547,7 +614,7 @@ const SignupScreen = ({ navigation, route }) => {
             <Icon name="pin" size={20} color="#f39c12" />
             <TextInput
               style={styles.input}
-              placeholder="Pin code (auto-filled or enter manually)"
+              placeholder=" Enter Pin code (optional)"
               placeholderTextColor="#9ca3af"
               keyboardType="numeric"
               maxLength={6}

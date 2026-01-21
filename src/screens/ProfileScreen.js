@@ -453,7 +453,7 @@ const ProfileScreen = ({ navigation }) => {
                 ) : null}
 
                 {/* FCM Token Test Section */}
-                <View style={styles.section}>
+                {/* <View style={styles.section}>
                     <Text style={styles.sectionTitle}>FCM Token (Test)</Text>
                     <View style={styles.fcmCard}>
                         <View style={styles.fcmHeader}>
@@ -484,7 +484,7 @@ const ProfileScreen = ({ navigation }) => {
                             <Text style={styles.copyButtonText}>Copy Token</Text>
                         </TouchableOpacity>
                     </View>
-                </View>
+                </View> */}
 
                 {/* Settings Menu */}
                 <View style={styles.section}>

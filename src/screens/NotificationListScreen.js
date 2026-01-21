@@ -14,6 +14,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   DeviceEventEmitter,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -34,6 +36,9 @@ const NotificationListScreen = ({ navigation }) => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
 
   const isMounted = useRef(true);
   const loadingRef = useRef(false);
@@ -128,8 +133,12 @@ const NotificationListScreen = ({ navigation }) => {
       }
     }
     
-    // Default: Show alert with notification content
-    Alert.alert(item.title || 'Notification', item.body || '');
+    // Default: Show styled modal with title and message
+    const title = item.title || 'Notification';
+    const message = item.body || item.message || 'No message';
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalVisible(true);
   };
 
   const handleDelete = (item) => {
@@ -261,6 +270,44 @@ const NotificationListScreen = ({ navigation }) => {
           onEndReachedThreshold={0.4}
         />
       )}
+
+      {/* ============ STYLED NOTIFICATION MODAL ============ */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setModalVisible(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={() => {}}>
+            {/* Close Button */}
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={() => setModalVisible(false)}
+            >
+              <Icon name="close-circle" size={28} color="#f39c12" />
+            </TouchableOpacity>
+
+            {/* Title */}
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+
+            {/* Message */}
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+
+            {/* Close Button */}
+            <TouchableOpacity
+              style={styles.modalBtn}
+              onPress={() => setModalVisible(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalBtnText}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -360,5 +407,62 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  /* ============ MODAL STYLES ============ */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    borderWidth: 2,
+    borderColor: '#f39c12',
+    shadowColor: '#f39c12',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+
+  closeBtn: {
+    alignSelf: 'flex-end',
+    marginBottom: 12,
+  },
+
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 12,
+    lineHeight: 24,
+  },
+
+  modalMessage: {
+    fontSize: 16,
+    color: '#555',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+
+  modalBtn: {
+    backgroundColor: '#f39c12',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+
+  modalBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

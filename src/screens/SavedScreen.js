@@ -246,18 +246,33 @@ const SavedScreen = ({ navigation }) => {
     // Handle navigation to property details
     const handlePropertyPress = (item) => {
         console.log('[SavedScreen] Navigating to property:', item.id);
-        console.log('[SavedScreen] Original data:', item.originalData);
+        console.log('[SavedScreen] User role:', userRole);
+        console.log('[SavedScreen] User has package:', userHasPackage);
         
-        // Check if user has active subscription
+        // Check if user is owner (case-insensitive)
+        const isOwner = userRole && userRole.toLowerCase() === 'owner';
+        
+        // Owners bypass subscription check
+        if (isOwner) {
+            console.log('[SavedScreen] Owner can view property without subscription');
+            const propertyData = item.originalData || item;
+            navigation.navigate('PropertyDetailsScreen', { 
+                propertyId: item.id,
+                property: propertyData 
+            });
+            return;
+        }
+        
+        // Non-owners need subscription
         if (!userHasPackage) {
+            console.log('[SavedScreen] Non-owner without package - showing subscription modal');
             setPropertyForSubscription(item.originalData || item);
             setShowSubscriptionModal(true);
             return;
         }
         
-        // Pass the original API data for full property details
+        // Non-owner WITH subscription
         const propertyData = item.originalData || item;
-        
         navigation.navigate('PropertyDetailsScreen', { 
             propertyId: item.id,
             property: propertyData 

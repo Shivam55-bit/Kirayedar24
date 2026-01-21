@@ -1003,27 +1003,33 @@ const HomeScreenOwner = ({ navigation }) => {
                                 
                                 {/* Action Buttons */}
                                 <View style={styles.propertyActionButtons}>
-                                    <TouchableOpacity 
-                                        style={styles.actionButton}
-                                        onPress={() => handlePhoneCall(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon name="call" size={16} color="#FFFFFF" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.actionButton, { backgroundColor: '#25D366' }]}
-                                        onPress={() => handleWhatsApp(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon name="logo-whatsapp" size={16} color="#FFFFFF" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
-                                        onPress={() => handlePropertyChat(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon name="chatbubble-outline" size={16} color="#FFFFFF" />
-                                    </TouchableOpacity>
+                                    {(item.contactPreferences?.phone !== false) && (
+                                        <TouchableOpacity 
+                                            style={styles.actionButton}
+                                            onPress={() => handlePhoneCall(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Icon name="call" size={16} color="#FFFFFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {(item.contactPreferences?.whatsapp !== false) && (
+                                        <TouchableOpacity 
+                                            style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                                            onPress={() => handleWhatsApp(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Icon name="logo-whatsapp" size={16} color="#FFFFFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {(item.contactPreferences?.chat !== false) && (
+                                        <TouchableOpacity 
+                                            style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                                            onPress={() => handlePropertyChat(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Icon name="chatbubble-outline" size={16} color="#FFFFFF" />
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             </View>
                         </TouchableOpacity>
@@ -1140,29 +1146,35 @@ const HomeScreenOwner = ({ navigation }) => {
                                     {formatPrice(item.price)}
                                 </Text>
                                 
-                                {/* Action Buttons */}
+                                {/* Action Buttons - Show based on contact preferences */}
                                 <View style={styles.propertyActionButtons}>
-                                    <TouchableOpacity 
-                                        style={styles.actionButton}
-                                        onPress={() => handlePhoneCall(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon name="call" size={14} color="#FFFFFF" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.actionButton, { backgroundColor: '#25D366' }]}
-                                        onPress={() => handleWhatsApp(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
-                                        onPress={() => handlePropertyChat(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
-                                    </TouchableOpacity>
+                                    {(item.contactPreferences?.phone !== false) && (
+                                        <TouchableOpacity 
+                                            style={styles.actionButton}
+                                            onPress={() => handlePhoneCall(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Icon name="call" size={14} color="#FFFFFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {(item.contactPreferences?.whatsapp !== false) && (
+                                        <TouchableOpacity 
+                                            style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                                            onPress={() => handleWhatsApp(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
+                                        </TouchableOpacity>
+                                    )}
+                                    {(item.contactPreferences?.chat !== false) && (
+                                        <TouchableOpacity 
+                                            style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                                            onPress={() => handlePropertyChat(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             </View>
                         </TouchableOpacity>
@@ -1241,29 +1253,35 @@ const HomeScreenOwner = ({ navigation }) => {
                                         </View>
                                         <Text style={styles.nearbyPrice}>{formatPrice(item.price)}</Text>
                                         
-                                        {/* Action Buttons */}
+                                        {/* Action Buttons - Show based on contact preferences */}
                                         <View style={styles.propertyActionButtons}>
-                                            <TouchableOpacity 
-                                                style={styles.actionButton}
-                                                onPress={() => handlePhoneCall(item)}
-                                                activeOpacity={0.7}
-                                            >
-                                                <Icon name="call" size={14} color="#FFFFFF" />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity 
-                                                style={[styles.actionButton, { backgroundColor: '#25D366' }]}
-                                                onPress={() => handleWhatsApp(item)}
-                                                activeOpacity={0.7}
-                                            >
-                                                <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity 
-                                                style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
-                                                onPress={() => handlePropertyChat(item)}
-                                                activeOpacity={0.7}
-                                            >
-                                                <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
-                                            </TouchableOpacity>
+                                            {(item.contactPreferences?.phone !== false) && (
+                                                <TouchableOpacity 
+                                                    style={styles.actionButton}
+                                                    onPress={() => handlePhoneCall(item)}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Icon name="call" size={14} color="#FFFFFF" />
+                                                </TouchableOpacity>
+                                            )}
+                                            {(item.contactPreferences?.whatsapp !== false) && (
+                                                <TouchableOpacity 
+                                                    style={[styles.actionButton, { backgroundColor: '#25D366' }]}
+                                                    onPress={() => handleWhatsApp(item)}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Icon name="logo-whatsapp" size={14} color="#FFFFFF" />
+                                                </TouchableOpacity>
+                                            )}
+                                            {(item.contactPreferences?.chat !== false) && (
+                                                <TouchableOpacity 
+                                                    style={[styles.actionButton, { backgroundColor: '#6B7280' }]}
+                                                    onPress={() => handlePropertyChat(item)}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Icon name="chatbubble-outline" size={14} color="#FFFFFF" />
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
                                     </View>
                                 </TouchableOpacity>

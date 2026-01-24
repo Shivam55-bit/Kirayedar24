@@ -285,25 +285,31 @@ const LoginScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             {/* Terms and Conditions Checkbox */}
-            <TouchableOpacity 
-              style={styles.termsContainer}
-              onPress={() => navigation.navigate('TermsScreen', {
-                onAccept: () => setAcceptedTerms(true)
-              })}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                {acceptedTerms && (
-                  <Icon name="checkmark" size={16} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.termsText}>
-                I accept the{' '}
-                <Text style={styles.termsLink}>Terms & Conditions</Text>
-                {' '}and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.termsContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxTouchable}
+                onPress={() => setAcceptedTerms(!acceptedTerms)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                  {acceptedTerms && (
+                    <Icon name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.termsTextTouchable}
+                onPress={() => navigation.navigate('TermsScreen')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.termsText}>
+                  I accept the{' '}
+                  <Text style={styles.termsLink}>Terms & Conditions</Text>
+                  {' '}and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Login Button */}
             <LinearGradient
@@ -357,25 +363,31 @@ const LoginScreen = ({ navigation }) => {
             </View>
 
             {/* Terms and Conditions Checkbox */}
-            <TouchableOpacity 
-              style={styles.termsContainer}
-              onPress={() => navigation.navigate('TermsScreen', {
-                onAccept: () => setAcceptedTerms(true)
-              })}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                {acceptedTerms && (
-                  <Icon name="checkmark" size={16} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.termsText}>
-                I accept the{' '}
-                <Text style={styles.termsLink}>Terms & Conditions</Text>
-                {' '}and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.termsContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxTouchable}
+                onPress={() => setAcceptedTerms(!acceptedTerms)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                  {acceptedTerms && (
+                    <Icon name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.termsTextTouchable}
+                onPress={() => navigation.navigate('TermsScreen')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.termsText}>
+                  I accept the{' '}
+                  <Text style={styles.termsLink}>Terms & Conditions</Text>
+                  {' '}and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <LinearGradient
               colors={["#f39c12", "#d35400"]}
@@ -659,6 +671,10 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
 
+  checkboxTouchable: {
+    marginRight: 10,
+  },
+
   checkbox: {
     width: 20,
     height: 20,
@@ -667,7 +683,6 @@ const styles = StyleSheet.create({
     borderColor: '#f39c12',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
     backgroundColor: '#fff',
   },
 
@@ -676,8 +691,11 @@ const styles = StyleSheet.create({
     borderColor: '#f39c12',
   },
 
-  termsText: {
+  termsTextTouchable: {
     flex: 1,
+  },
+
+  termsText: {
     fontSize: 13,
     color: '#555',
     lineHeight: 18,

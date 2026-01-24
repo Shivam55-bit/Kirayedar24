@@ -109,8 +109,12 @@ const EditPropertyScreen = ({ navigation, route }) => {
     })(),
     beds: initialProperty.bedrooms || initialProperty.beds || '',
     baths: initialProperty.bathrooms || initialProperty.baths || '',
-    // specificType contains the actual property type like "Flat", "House", etc.
-    type: initialProperty.specificType || initialProperty.propertyType || initialProperty.purpose || '',
+    // specificType contains the actual property type like "Flat", "Singlex", "Villa", etc.
+    specificType: initialProperty.specificType || initialProperty.propertyType || '',
+    // purpose is Sell/Rent/Paying Guest
+    purpose: initialProperty.purpose || '',
+    // type is for display purposes (uses specificType)
+    type: initialProperty.specificType || initialProperty.propertyType || '',
     status: initialProperty.status || initialProperty.availabilityStatus || 'pending',
     price: initialProperty.price != null ? String(initialProperty.price) : (initialProperty.amount != null ? String(initialProperty.amount) : ''),
     images: (() => {
@@ -156,7 +160,52 @@ const EditPropertyScreen = ({ navigation, route }) => {
     furnishing: initialProperty.furnishingStatus || initialProperty.furnishing || '',
     parking: initialProperty.parking || '',
     availableFor: initialProperty.availableFor || '',
+    balconies: initialProperty.balconies != null ? String(initialProperty.balconies) : '',
+    kitchenType: initialProperty.kitchenType || '',
+    floorNumber: initialProperty.floorNumber ? String(initialProperty.floorNumber) : '',
+    totalFloors: initialProperty.totalFloors ? String(initialProperty.totalFloors) : '',
+    societyMaintenance: initialProperty.societyMaintenance ? String(initialProperty.societyMaintenance) : '',
+    societyFeatures: initialProperty.societyFeatures || [],
+    contactPreferences: initialProperty.contactPreferences || { phone: true, whatsapp: true, chat: true },
+    availabilityStatus: initialProperty.availabilityStatus || '',
+    facingDirection: initialProperty.facingDirection || '',
+    // Location fields - check multiple possible field names from backend
+    propertyState: initialProperty.state || initialProperty.propertyState || 
+                   (initialProperty.address && initialProperty.address.state) || '',
+    city: initialProperty.city || 
+          (initialProperty.address && initialProperty.address.city) || '',
+    district: initialProperty.district || 
+              (initialProperty.address && initialProperty.address.district) || '',
+    locality: initialProperty.locality || 
+              (initialProperty.address && initialProperty.address.locality) || 
+              (initialProperty.address && initialProperty.address.area) || '',
+    pincode: initialProperty.pincode ? String(initialProperty.pincode) : 
+             (initialProperty.address && initialProperty.address.pincode) ? String(initialProperty.address.pincode) : '',
+    // Property category (Residential/Commercial)
+    propertyType: initialProperty.propertyType || 'Residential',
+    // Contact number
+    contactNumber: initialProperty.contactNumber || initialProperty.phone || '',
+    // Commercial specific
+    spaceAvailable: initialProperty.spaceAvailable ? String(initialProperty.spaceAvailable) : '',
   };
+
+  // Debug: Log the location fields to help troubleshoot
+  console.log('====================================');
+  console.log('[EditPropertyScreen] LOCATION FIELDS DEBUG:');
+  console.log('====================================');
+  console.log('initialProperty.state:', initialProperty.state);
+  console.log('initialProperty.propertyState:', initialProperty.propertyState);
+  console.log('initialProperty.city:', initialProperty.city);
+  console.log('initialProperty.district:', initialProperty.district);
+  console.log('initialProperty.locality:', initialProperty.locality);
+  console.log('initialProperty.pincode:', initialProperty.pincode);
+  console.log('initialProperty.address:', initialProperty.address);
+  console.log('Normalized propertyState:', normalizedProperty.propertyState);
+  console.log('Normalized city:', normalizedProperty.city);
+  console.log('Normalized district:', normalizedProperty.district);
+  console.log('Normalized locality:', normalizedProperty.locality);
+  console.log('Normalized pincode:', normalizedProperty.pincode);
+  console.log('====================================');
   
   console.log('====================================');
   console.log('[EditPropertyScreen] NORMALIZED DATA:');
@@ -210,13 +259,39 @@ const EditPropertyScreen = ({ navigation, route }) => {
 
         // Map local property fields to API expected keys
         const payload = {
-          propertyLocation: property.location || property.propertyLocation || property.propertyLocation,
+          propertyLocation: property.location || property.propertyLocation,
           description: property.description,
           price: property.price ? Number(property.price) : undefined,
           areaDetails: property.sqft ? Number(property.sqft) : undefined,
           bedrooms: property.beds ? Number(property.beds) : undefined,
           bathrooms: property.baths ? Number(property.baths) : undefined,
-          purpose: property.type || property.purpose,
+          // specificType: Apartment, Villa, Plot, Singlex, Duplex, Room, Flat, PG, Office, Shop, Warehouse
+          specificType: property.specificType || property.type || undefined,
+          // purpose: Sell, Rent, Paying Guest
+          purpose: property.purpose || undefined,
+          // Additional fields
+          balconies: property.balconies || undefined,
+          furnishingStatus: property.furnishing || undefined,
+          parking: property.parking || undefined,
+          kitchenType: property.kitchenType || undefined,
+          floorNumber: property.floorNumber ? Number(property.floorNumber) : undefined,
+          totalFloors: property.totalFloors ? Number(property.totalFloors) : undefined,
+          availableFor: property.availableFor || undefined,
+          societyMaintenance: property.societyMaintenance || undefined,
+          availabilityStatus: property.availabilityStatus || undefined,
+          facingDirection: property.facingDirection || undefined,
+          // Location fields - use 'state' as backend expects
+          state: property.propertyState || undefined,
+          city: property.city || undefined,
+          district: property.district || undefined,
+          locality: property.locality || undefined,
+          pincode: property.pincode || undefined,
+          // Property category
+          propertyType: property.propertyType || undefined,
+          // Contact number
+          contactNumber: property.contactNumber || undefined,
+          // Commercial specific
+          spaceAvailable: property.spaceAvailable ? Number(property.spaceAvailable) : undefined,
           removedFiles: removedImages.length ? JSON.stringify(removedImages) : undefined,
           removePhotos: removedImages.length ? JSON.stringify(removedImages) : undefined,
         };
@@ -238,6 +313,21 @@ const EditPropertyScreen = ({ navigation, route }) => {
             formData.append(key, value);
           }
         });
+
+        // Add society features if present
+        if (property.societyFeatures && property.societyFeatures.length > 0) {
+          property.societyFeatures.forEach(feature => {
+            formData.append('societyFeatures[]', feature);
+          });
+        }
+
+        // Add contact preferences if present
+        if (property.contactPreferences) {
+          Object.entries(property.contactPreferences).forEach(([key, value]) => {
+            formData.append(`contactPreferences[${key}]`, String(value));
+          });
+        }
+
         // Attach files
         files.forEach((file, idx) => {
           formData.append('photos', {
@@ -357,6 +447,70 @@ const EditPropertyScreen = ({ navigation, route }) => {
     </View>
   );
 
+  // Option Selector for dropdown-like fields
+  const OptionSelector = ({ label, options, value, onChange }) => (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionScroll}>
+        {options.map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[
+              styles.optionChip,
+              value === option && styles.optionChipSelected
+            ]}
+            onPress={() => onChange(option)}
+          >
+            <Text style={[
+              styles.optionChipText,
+              value === option && styles.optionChipTextSelected
+            ]}>{option}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  // Multi-select for society features
+  const MultiSelectChips = ({ label, options, selected, onChange }) => (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <View style={styles.chipContainer}>
+        {options.map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[
+              styles.optionChip,
+              (selected || []).includes(option) && styles.optionChipSelected
+            ]}
+            onPress={() => {
+              const newSelected = (selected || []).includes(option)
+                ? (selected || []).filter(item => item !== option)
+                : [...(selected || []), option];
+              onChange(newSelected);
+            }}
+          >
+            <Text style={[
+              styles.optionChipText,
+              (selected || []).includes(option) && styles.optionChipTextSelected
+            ]}>{option}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  // Toggle for contact preferences
+  const ContactToggle = ({ label, value, onToggle }) => (
+    <TouchableOpacity 
+      style={[styles.contactToggle, value && styles.contactToggleActive]}
+      onPress={onToggle}
+    >
+      <Icon name={value ? "checkbox" : "square-outline"} size={20} color={value ? COLORS.primary : COLORS.textSecondary} />
+      <Text style={[styles.contactToggleText, value && styles.contactToggleTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
@@ -441,18 +595,60 @@ const EditPropertyScreen = ({ navigation, route }) => {
           </ScrollView>
         </View>
 
-        {/* Section 2: Core Details */}
+        {/* Section 2: Location Details */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="location" size={20} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Location Details</Text>
+          </View>
+          
+          <InputField 
+            label="State" 
+            value={property.propertyState} 
+            onChangeText={(text) => handleChange('propertyState', text)} 
+          />
+          <View style={styles.rowWrapper}>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="District" 
+                value={property.district} 
+                onChangeText={(text) => handleChange('district', text)} 
+              />
+            </View>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="City" 
+                value={property.city} 
+                onChangeText={(text) => handleChange('city', text)} 
+              />
+            </View>
+          </View>
+          <View style={styles.rowWrapper}>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="Locality/Area" 
+                value={property.locality} 
+                onChangeText={(text) => handleChange('locality', text)} 
+              />
+            </View>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="Pincode" 
+                value={property.pincode} 
+                onChangeText={(text) => handleChange('pincode', text)} 
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Section 3: Property Details */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="information-circle" size={20} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Property Details</Text>
           </View>
           
-          <InputField 
-            label="Location/Address" 
-            value={property.location} 
-            onChangeText={(text) => handleChange('location', text)} 
-          />
           <View style={styles.rowWrapper}>
             <View style={styles.rowItem}>
               <InputField 
@@ -471,6 +667,40 @@ const EditPropertyScreen = ({ navigation, route }) => {
               />
             </View>
           </View>
+          <View style={styles.rowWrapper}>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="Balconies" 
+                value={String(property.balconies || '')}
+                onChangeText={(text) => handleChange('balconies', text)} 
+              />
+            </View>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="Floor Number" 
+                value={String(property.floorNumber || '')}
+                onChangeText={(text) => handleChange('floorNumber', text)} 
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+          <View style={styles.rowWrapper}>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="Total Floors" 
+                value={String(property.totalFloors || '')}
+                onChangeText={(text) => handleChange('totalFloors', text)} 
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={styles.rowItem}>
+              <InputField 
+                label="Society Maintenance" 
+                value={String(property.societyMaintenance || '')}
+                onChangeText={(text) => handleChange('societyMaintenance', text)} 
+              />
+            </View>
+          </View>
           <InputField 
             label="Description" 
             value={property.description} 
@@ -479,7 +709,59 @@ const EditPropertyScreen = ({ navigation, route }) => {
           />
         </View>
 
-        {/* Section 3: Financials & Size */}
+        {/* Section 4: Property Type & Purpose */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="home" size={20} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Property Type & Purpose</Text>
+          </View>
+          
+          <OptionSelector
+            label="Category"
+            options={["Residential", "Commercial"]}
+            value={property.propertyType}
+            onChange={(val) => handleChange('propertyType', val)}
+          />
+          
+          {property.propertyType === 'Commercial' ? (
+            <OptionSelector
+              label="Commercial Type"
+              options={["Office", "Shop", "Warehouse", "PG"]}
+              value={property.specificType || property.type}
+              onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
+            />
+          ) : (
+            <OptionSelector
+              label="Residential Type"
+              options={["Apartment", "Villa", "Plot", "Singlex", "Duplex", "Room", "Flat"]}
+              value={property.specificType || property.type}
+              onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
+            />
+          )}
+          
+          <OptionSelector
+            label="Purpose"
+            options={["Rent", "Paying Guest"]}
+            value={property.purpose}
+            onChange={(val) => handleChange('purpose', val)}
+          />
+          
+          <OptionSelector
+            label="Availability Status"
+            options={["Ready to Move", "Under Construction"]}
+            value={property.availabilityStatus}
+            onChange={(val) => handleChange('availabilityStatus', val)}
+          />
+          
+          <OptionSelector
+            label="Available For"
+            options={["Boys", "Girls", "Family", "Students", "Bachelor", "Any"]}
+            value={property.availableFor}
+            onChange={(val) => handleChange('availableFor', val)}
+          />
+        </View>
+
+        {/* Section 4: Financials & Size */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="cash" size={20} color={COLORS.primary} />
@@ -493,27 +775,101 @@ const EditPropertyScreen = ({ navigation, route }) => {
             keyboardType="numeric"
           />
           
-          <View style={styles.rowWrapper}>
-            <View style={styles.rowItem}>
-              <InputField 
-                label="Area (sqft)" 
-                value={property.sqft} 
-                onChangeText={(text) => handleChange('sqft', text)} 
-                keyboardType="numeric"
-              />
-            </View>
-            <View style={styles.rowItem}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Property Type</Text>
-                <View style={styles.typeDisplay}>
-                  <Text style={styles.typeText}>{property.type || 'Not specified'}</Text>
-                </View>
-              </View>
-            </View>
+          <InputField 
+            label="Area (sqft)" 
+            value={property.sqft} 
+            onChangeText={(text) => handleChange('sqft', text)} 
+            keyboardType="numeric"
+          />
+        </View>
+
+        {/* Section 5: Amenities & Features */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="options" size={20} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Amenities & Features</Text>
+          </View>
+          
+          <OptionSelector
+            label="Furnishing Status"
+            options={["Furnished", "Semi-Furnished", "Unfurnished"]}
+            value={property.furnishing}
+            onChange={(val) => handleChange('furnishing', val)}
+          />
+          
+          <OptionSelector
+            label="Parking"
+            options={["Available", "Not Available"]}
+            value={property.parking}
+            onChange={(val) => handleChange('parking', val)}
+          />
+          
+          <OptionSelector
+            label="Kitchen Type"
+            options={["Modular", "Simple"]}
+            value={property.kitchenType}
+            onChange={(val) => handleChange('kitchenType', val)}
+          />
+          
+          <OptionSelector
+            label="Facing Direction"
+            options={["North", "South", "East", "West"]}
+            value={property.facingDirection}
+            onChange={(val) => handleChange('facingDirection', val)}
+          />
+          
+          <MultiSelectChips
+            label="Society Features"
+            options={["Gym", "Lift", "Guarded Gated Campus"]}
+            selected={property.societyFeatures}
+            onChange={(val) => handleChange('societyFeatures', val)}
+          />
+        </View>
+
+        {/* Section 6: Contact Preferences */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Icon name="call" size={20} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Contact Details</Text>
+          </View>
+          
+          <InputField 
+            label="Contact Number" 
+            value={property.contactNumber} 
+            onChangeText={(text) => handleChange('contactNumber', text)} 
+            keyboardType="phone-pad"
+          />
+          
+          <Text style={styles.subSectionLabel}>Contact Preferences</Text>
+          <View style={styles.contactTogglesRow}>
+            <ContactToggle
+              label="Phone"
+              value={property.contactPreferences?.phone}
+              onToggle={() => handleChange('contactPreferences', {
+                ...property.contactPreferences,
+                phone: !property.contactPreferences?.phone
+              })}
+            />
+            <ContactToggle
+              label="WhatsApp"
+              value={property.contactPreferences?.whatsapp}
+              onToggle={() => handleChange('contactPreferences', {
+                ...property.contactPreferences,
+                whatsapp: !property.contactPreferences?.whatsapp
+              })}
+            />
+            <ContactToggle
+              label="Chat"
+              value={property.contactPreferences?.chat}
+              onToggle={() => handleChange('contactPreferences', {
+                ...property.contactPreferences,
+                chat: !property.contactPreferences?.chat
+              })}
+            />
           </View>
         </View>
 
-        {/* Section 4: Status Management */}
+        {/* Section 7: Status Management */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="toggle" size={20} color={COLORS.primary} />
@@ -837,6 +1193,77 @@ const styles = StyleSheet.create({
     color: COLORS.card,
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  // --- Option Selector Chips ---
+  optionScroll: {
+    flexGrow: 0,
+  },
+  optionChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: COLORS.lightGray,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  optionChipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  optionChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+  },
+  optionChipTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+
+  // --- Contact Preferences ---
+  contactTogglesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  contactToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.lightGray,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 8,
+  },
+  contactToggleActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: COLORS.primary,
+  },
+  contactToggleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  contactToggleTextActive: {
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  subSectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 12,
+    marginTop: 8,
   },
 });
 

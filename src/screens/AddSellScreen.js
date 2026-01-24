@@ -1800,6 +1800,13 @@ const AddSellScreen = ({ navigation, route }) => {
                 onSelect={setParking}
               />
               
+              <Text style={styles.fieldLabel}>Purpose</Text>
+              <OptionSelector
+                options={["Rent", "Paying Guest"]}
+                selectedValue={purpose}
+                onSelect={setPurpose}
+              />
+              
               {/* Available From Date Picker */}
               <View style={styles.datePickerContainer}>
                 <Text style={styles.fieldLabel}>Available From</Text>

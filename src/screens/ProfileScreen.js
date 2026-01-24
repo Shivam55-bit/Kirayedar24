@@ -25,6 +25,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getCurrentUserProfile } from '../services/userapi';
 import { getUserProperties } from '../services/propertyService';
 import CustomAlert from '../components/CustomAlert';
+import SubscriptionModal from '../components/SubscriptionModal';
 import { useSubscription } from '../context/SubscriptionContext';
 import { getNotificationCount } from '../utils/notificationManager';
 import { propertyService } from '../services/propertyapi';
@@ -65,6 +66,7 @@ const ProfileScreen = ({ navigation }) => {
     const [avatar, setAvatar] = useState(null);
     const [avatarVersion, setAvatarVersion] = useState(Date.now());
     const [fcmToken, setFcmToken] = useState('');
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
     
     // Subscription context
     const { activeSubscription, userHasPackage, loadActiveSubscription } = useSubscription();
@@ -423,14 +425,14 @@ const ProfileScreen = ({ navigation }) => {
                     /* Premium Features Card - Show when no active subscription (only for tenants) */
                     <TouchableOpacity 
                         style={styles.premiumCard} 
-                        onPress={() => navigation.navigate('SubscriptionPlans')}
+                        onPress={() => setShowSubscriptionModal(true)}
                         activeOpacity={0.9}
                     >
                         <View style={styles.premiumHeader}>
                             <View style={styles.premiumIconWrapper}>
                                 <FontAwesomeIcon name="crown" size={20} color={COLORS.warning} />
                             </View>
-                            <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
+                            <Text style={styles.premiumTitle}>Buy Subscription Plan</Text>
                         </View>
                         <Text style={styles.premiumDescription}>
                             Unlock exclusive features, priority support, and advanced analytics
@@ -575,6 +577,16 @@ const ProfileScreen = ({ navigation }) => {
                     iconColor={logoutAlert.iconColor}
                     buttons={logoutAlert.buttons}
                     onClose={() => setLogoutAlert({ visible: false })}
+                />
+
+                {/* Subscription Modal */}
+                <SubscriptionModal
+                    visible={showSubscriptionModal}
+                    onClose={() => setShowSubscriptionModal(false)}
+                    onSuccess={() => {
+                        setShowSubscriptionModal(false);
+                        loadActiveSubscription(); // Refresh subscription status
+                    }}
                 />
 
                 <View style={{ height: 40 }} />

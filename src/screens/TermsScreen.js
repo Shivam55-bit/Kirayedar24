@@ -18,10 +18,10 @@ const TermsScreen = ({ navigation, route }) => {
   const onAccept = route?.params?.onAccept;
 
   const handleAccept = () => {
-    if (accepted && onAccept) {
+    if (onAccept && accepted) {
       onAccept();
-      navigation.goBack();
     }
+    navigation.goBack();
   };
 
   const termsContent = `TERMS AND CONDITIONS
@@ -259,26 +259,22 @@ Website: https://kirayedar24.com
             )}
           </View>
           <Text style={styles.checkboxText}>
-            I accept the Terms & Conditions and Privacy Policy
+            I accept the Terms & Conditions and Privacy Policy (Optional)
           </Text>
         </TouchableOpacity>
 
         {/* Accept Button */}
         <LinearGradient
-          colors={accepted ? ['#10B981', '#059669'] : ['#D1D5DB', '#9CA3AF']}
-          style={[styles.acceptButton, !accepted && styles.buttonDisabled]}
+          colors={['#10B981', '#059669']}
+          style={styles.acceptButton}
         >
           <TouchableOpacity
             style={styles.acceptButtonInner}
             onPress={handleAccept}
-            disabled={!accepted}
             activeOpacity={0.8}
           >
-            {!accepted && (
-              <Icon name="lock-closed" size={20} color="#fff" style={{ marginRight: 8 }} />
-            )}
             <Text style={styles.acceptButtonText}>
-              {accepted ? 'Agree & Continue' : 'Please Accept to Continue'}
+              {accepted ? 'Agree & Continue' : 'Continue Reading'}
             </Text>
           </TouchableOpacity>
         </LinearGradient>

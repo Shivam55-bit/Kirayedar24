@@ -60,7 +60,29 @@ const LoginScreen = ({ navigation }) => {
       setLoading(true);
       console.log('🔐 Attempting email login for:', email.trim());
       
-      const response = await authService.login(email.trim(), password);
+      // Get FCM token before login
+      let fcmToken = null;
+      try {
+        fcmToken = await getStoredFCMToken();
+        if (!fcmToken) {
+          console.log('📲 No stored FCM token, generating new one...');
+          fcmToken = await getFCMToken();
+        }
+        console.log('🔑 FCM Token obtained:', fcmToken?.substring(0, 30) + '...');
+      } catch (fcmError) {
+        console.log('ℹ️ FCM token not available:', fcmError.message);
+      }
+      
+      // Include FCM token in login request
+      const loginPayload = {
+        email: email.trim(),
+        password: password,
+        fcmToken: fcmToken || undefined // Include token if available
+      };
+      
+      console.log('📤 Login payload:', { email: loginPayload.email, hasFcmToken: !!loginPayload.fcmToken });
+      
+      const response = await authService.login(email.trim(), password, fcmToken);
       
       console.log('📥 Login Response:', JSON.stringify(response, null, 2));
       console.log('✅ Has token?', !!response.token);

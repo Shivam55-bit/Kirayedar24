@@ -128,10 +128,21 @@ export const signup = async (userData) => {
   });
 };
 
-export const login = async (email, password) => {
+export const login = async (email, password, fcmToken = null) => {
+  const loginData = {
+    email,
+    password
+  };
+  
+  // Include FCM token if available
+  if (fcmToken) {
+    loginData.fcmToken = fcmToken;
+    console.log('📤 Including FCM token in login request');
+  }
+  
   const response = await makeRequest('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify(loginData)
   });
 
   // Store token if login successful

@@ -35,20 +35,25 @@ export const authService = {
   },
 
   // User Login (Email/Password)
-  login: async (email, password) => {
+  login: async (email, password, fcmToken = null) => {
     try {
-      console.log('Logging in user:', email);
-      const response = await API.login(email, password);
+      console.log('🔐 Logging in user:', email);
+      console.log('📱 FCM Token included:', !!fcmToken);
+      
+      const response = await API.login(email, password, fcmToken);
       
       if (response.success && response.token) {
-        console.log('Login successful, token stored');
+        console.log('✅ Login successful, token stored');
+        if (fcmToken) {
+          console.log('🔔 FCM token sent to backend during login');
+        }
       } else {
-        console.error('Login failed:', response.message);
+        console.error('❌ Login failed:', response.message);
       }
       
       return response;
     } catch (error) {
-      console.error('Auth Service - Login Error:', error);
+      console.error('🔥 Auth Service - Login Error:', error);
       return {
         success: false,
         message: error.message || 'Failed to login'

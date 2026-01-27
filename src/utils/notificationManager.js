@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
+import notifee from '@notifee/react-native';
 
 /**
  * Notification Manager Service
@@ -35,6 +36,37 @@ export const addNotification = async (notification) => {
       notification: newNotification,
       count: unreadCount
     });
+
+    // Display system notification using Notifee (shows as popup in background)
+    try {
+      await notifee.displayNotification({
+        title: `📱 [APP] ${newNotification.title}`, // Prefix to show it's from app
+        body: newNotification.message || newNotification.body || '',
+        android: {
+          channelId: 'default_notification_channel',
+          pressAction: {
+            id: 'default',
+            launchActivity: 'default',
+          },
+          importance: 4, // HIGH priority for heads-up
+        },
+        ios: {
+          sound: 'default',
+          critical: false,
+        },
+        data: {
+          notificationId: newNotification.id,
+          type: newNotification.type,
+          source: 'local_app', // Mark as local app notification
+          propertyId: newNotification.propertyId,
+          chatId: newNotification.chatId,
+          inquiryId: newNotification.inquiryId,
+        }
+      });
+      console.log('📱 [LOCAL APP NOTIFICATION] Displayed:', newNotification.title);
+    } catch (notificationError) {
+      console.warn('⚠️ Failed to display system notification:', notificationError);
+    }
 
     console.log('✅ Notification added:', newNotification.title);
     return newNotification;

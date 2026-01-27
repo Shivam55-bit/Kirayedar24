@@ -10,6 +10,7 @@
     <!-- Firebase Cloud Messaging Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     
     
     <application
@@ -34,6 +35,15 @@
       <meta-data
         android:name="firebase_messaging_auto_init_enabled"
         android:value="true" />
+
+      <!-- Firebase Cloud Messaging Service - Handles notifications in all app states -->
+      <service
+        android:name=".FCMNotificationService"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+      </service>
 
       <activity
         android:name=".MainActivity"

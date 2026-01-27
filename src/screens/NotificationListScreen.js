@@ -16,7 +16,9 @@ import {
   DeviceEventEmitter,
   Modal,
   Pressable,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
@@ -230,7 +232,8 @@ const NotificationListScreen = ({ navigation }) => {
   /* ================= UI ================= */
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" translucent={false} />
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -308,7 +311,7 @@ const NotificationListScreen = ({ navigation }) => {
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 

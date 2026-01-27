@@ -10,7 +10,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     Image,
-    SafeAreaView,
     ActivityIndicator,
     ScrollView,
     StatusBar,
@@ -18,6 +17,7 @@ import {
     Clipboard,
     ToastAndroid,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import FeatherIcon from "react-native-vector-icons/Feather";
 import FontAwesomeIcon from "react-native-vector-icons/FontAwesome";
@@ -246,8 +246,8 @@ const ProfileScreen = ({ navigation }) => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="light-content" backgroundColor="#FDB022" translucent={false} />
             
             {/* Beautiful Header Design */}
             <View style={styles.headerSection}>
@@ -344,7 +344,7 @@ const ProfileScreen = ({ navigation }) => {
 
                         <TouchableOpacity 
                             style={[styles.actionCard, { backgroundColor: COLORS.orange + '10' }]}
-                            onPress={() => navigation.navigate('Notifications')}
+                            onPress={() => navigation.navigate('NotificationList')}
                         >
                             <View style={[styles.actionIcon, { backgroundColor: COLORS.orange + '20' }]}>
                                 <Icon name="notifications" size={24} color={COLORS.orange} />

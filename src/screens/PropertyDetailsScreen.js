@@ -11,12 +11,12 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
-  SafeAreaView,
   Linking,
   Modal,
   StatusBar,
   Alert,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import { saveProperty, getSavedProperties } from '../services/api';
 import { getPropertyById } from '../services/propertyService';
@@ -580,7 +580,8 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
       {/* Enhanced Image Gallery */}
       <View style={styles.galleryContainer}>
         <TouchableOpacity onPress={() => setShowFullscreenMedia(true)}>

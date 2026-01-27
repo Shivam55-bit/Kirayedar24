@@ -7,10 +7,10 @@ import {
   ScrollView,
   TextInput,
   Image,
-  SafeAreaView,
   Alert,
   FlatList,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 
 import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
@@ -512,7 +512,7 @@ const EditPropertyScreen = ({ navigation, route }) => {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

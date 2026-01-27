@@ -6,8 +6,8 @@ import {
   Animated,
   Dimensions,
   StatusBar,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AuthFlowManager from "../utils/AuthFlowManager";
 import { useSubscription } from '../context/SubscriptionContext';
 
@@ -75,8 +75,8 @@ const SplashScreen = ({ navigation }) => {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor="#F7F3F7" barStyle="dark-content" />
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+      <StatusBar backgroundColor="#F7F3F7" barStyle="dark-content" translucent={false} />
 
       {/* Soft Background Circles */}
       <View style={styles.circleTop} />

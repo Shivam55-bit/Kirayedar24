@@ -9,8 +9,9 @@ import {
   TextInput,
   Dimensions,
   ScrollView,
-  SafeAreaView,
+  StatusBar,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 // API services removed
@@ -256,7 +257,8 @@ const BuyScreen = ({ navigation }) => {
 
   // --- Main Render ---
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" translucent={false} />
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>

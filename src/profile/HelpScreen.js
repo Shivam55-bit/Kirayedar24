@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, FlatList, Alert, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 
 const FAQS = [
@@ -35,7 +36,8 @@ const HelpScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar translucent={false} backgroundColor="#F9FAFB" barStyle="dark-content" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#FF7A00" />
@@ -66,7 +68,7 @@ const HelpScreen = ({ navigation }) => {
           <Text style={[styles.contactText, { color: '#111827' }]}>Email Support</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 

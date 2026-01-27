@@ -12,7 +12,9 @@ import {
   Dimensions,
   Modal,
   TouchableWithoutFeedback,
+  StatusBar,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 // API services removed\n// import { get } from \"../../services/api\";
@@ -266,6 +268,8 @@ const RentScreen = ({ navigation }) => {
   };
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" translucent={false} />
     <View style={styles.container}>
       {/* Safety modal (Updated) */}
       <Modal
@@ -444,11 +448,13 @@ const RentScreen = ({ navigation }) => {
         />
       )}
     </View>
+    </SafeAreaView>
   );
 };
 
 // --- Styles ---
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
   container: { flex: 1, backgroundColor: COLORS.background },
 
   header: {

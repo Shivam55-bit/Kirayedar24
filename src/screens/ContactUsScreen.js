@@ -10,9 +10,9 @@ import {
     ScrollView,
     TouchableOpacity,
     Linking,
-    SafeAreaView,
     StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -52,8 +52,8 @@ const ContactUsScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} translucent={false} />
             
             {/* Header */}
             <LinearGradient

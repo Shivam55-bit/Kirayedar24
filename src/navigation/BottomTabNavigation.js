@@ -6,7 +6,6 @@ import {
   Dimensions,
   Text,
   Platform,
-  SafeAreaViewBase
 } from "react-native";
 import { COLORS as THEME_COLORS, FONTS } from '../constants/theme';
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -29,7 +28,10 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
 
   return (
     <View style={styles.tabBarContainer} pointerEvents="box-none">
-      <View style={[styles.tabItemsContainer, { paddingBottom: insets.bottom  }]}>
+      <View style={[styles.tabItemsContainer, { 
+        paddingBottom: Math.max(insets.bottom, 8),
+        height: Platform.OS === 'ios' ? 65 + insets.bottom : 65 + Math.max(insets.bottom, 8)
+      }]}>
         {/* simple bar: no active indicator */}
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -123,18 +125,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: Platform.OS === 'ios' ? 77 : 100,
     backgroundColor: "transparent",
   },
   tabItemsContainer: {
     flexDirection: "row",
     width: "100%",
-    height: "100%",
     backgroundColor: THEME_COLORS.white || '#fff',
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,
     paddingHorizontal: 6,
-    
+    paddingTop: 8,
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },

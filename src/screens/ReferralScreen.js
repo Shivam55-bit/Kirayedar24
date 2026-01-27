@@ -8,12 +8,12 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     StatusBar,
     Alert,
     Clipboard,
     Share,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 
 const COLORS = {
@@ -54,8 +54,8 @@ const ReferralScreen = ({ navigation }) => {
     }, [referralCode]);
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} translucent={false} />
             
             {/* Header */}
             <View style={styles.header}>

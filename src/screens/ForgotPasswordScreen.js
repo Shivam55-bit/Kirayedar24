@@ -6,7 +6,9 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  StatusBar,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 
@@ -14,7 +16,9 @@ const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
 
   return (
-    <LinearGradient colors={["#6BA3BE", "#27496D"]} style={styles.container}>
+    <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
+      <StatusBar backgroundColor="#6BA3BE" barStyle="light-content" translucent={false} />
+      <LinearGradient colors={["#6BA3BE", "#27496D"]} style={styles.container}>
       <View style={styles.card}>
         {/* Title */}
         <Text style={styles.title}>Forgot Password?</Text>
@@ -52,6 +56,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
     </LinearGradient>
+    </SafeAreaView>
   );
 };
 

@@ -8,12 +8,12 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     StatusBar,
     Alert,
     Platform,
     TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import FeatherIcon from "react-native-vector-icons/Feather";
 
@@ -60,8 +60,8 @@ const AddressSearchScreen = ({ navigation, route }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar backgroundColor={COLORS.primary} barStyle="light-content" />
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar backgroundColor={COLORS.primary} barStyle="light-content" translucent={false} />
             
             {/* Header */}
             <View style={styles.header}>

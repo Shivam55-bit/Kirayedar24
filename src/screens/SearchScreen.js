@@ -3,7 +3,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TextInput,
     TouchableOpacity,
     FlatList,
@@ -17,6 +16,7 @@ import {
     ScrollView,
     Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { DeviceEventEmitter } from 'react-native';
 import { getRecentProperties } from '../services/propertyService';
@@ -531,10 +531,11 @@ const SearchScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
             <StatusBar 
-                backgroundColor={Platform.OS === 'android' ? '#F3F4F6' : undefined}
-                barStyle="dark-content" 
+                backgroundColor="#F8FAFC"
+                barStyle="dark-content"
+                translucent={false}
             />
 
             {/* Header */}

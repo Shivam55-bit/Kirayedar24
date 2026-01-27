@@ -8,7 +8,6 @@ import {
     ImageBackground,
     ScrollView,
     Dimensions,
-    SafeAreaView,
     TextInput,
     Platform,
     ActivityIndicator,
@@ -20,6 +19,7 @@ import {
     FlatList,
     Animated,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1164,7 +1164,8 @@ const Homescreen = ({ navigation }) => {
     }, []);
 
     return (
-        <SafeAreaView style={styles.container} key={stableRenderKey}>
+        <SafeAreaView style={styles.container} key={stableRenderKey} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
             {/* Modern Header with Gradient */}
             <LinearGradient
                 colors={['#FFFFFF', '#FFFFFF', '#FFFFFF']}
@@ -1371,11 +1372,11 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderBottomLeftRadius: 24,
         borderBottomRightRadius: 24,
-        elevation: 6,
+        elevation: 0,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
     },
     
     headerTopRow: {

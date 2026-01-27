@@ -3,13 +3,13 @@ import {
     View, 
     Text, 
     StyleSheet, 
-    SafeAreaView, 
     FlatList, 
     TouchableOpacity, 
     Image, 
     Platform,
     StatusBar
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 // --- MOCK DATA: Comprehensive List including Location/Category Logic ---
@@ -262,8 +262,8 @@ const CategoryServicesScreen = ({ navigation, route }) => {
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="dark-content" backgroundColor="#fff" translucent={false} />
             
             {/* Header */}
             <View style={styles.header}>

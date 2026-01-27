@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
-  SafeAreaView,
   ActivityIndicator,
   Image,
   Dimensions,
@@ -17,6 +16,7 @@ import {
   Modal,
   FlatList,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
@@ -1547,7 +1547,7 @@ const AddSellScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <LinearGradient colors={["#f9d976", "#f39c12"]} style={styles.header}>
         <TouchableOpacity onPress={currentStep === 1 ? () => navigation.goBack() : prevStep}>
           <Icon name="arrow-back" size={22} color="#fff" />

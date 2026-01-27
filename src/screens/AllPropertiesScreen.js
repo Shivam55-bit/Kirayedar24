@@ -5,7 +5,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     Image,
-    SafeAreaView,
     ScrollView,
     Dimensions,
     ActivityIndicator,
@@ -15,11 +14,15 @@ import {
     Modal,
     TextInput,
     Linking,
+    Pressable,
+    DeviceEventEmitter,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRecentProperties, getResidentialProperties, getCommercialProperties } from '../services/propertyService';
+import propertyService from '../services/propertyapi';
 import MediaCard from '../components/MediaCard';
 import ContactPreferenceIcons from '../components/ContactPreferenceIcons';
 
@@ -188,6 +191,7 @@ const AllPropertiesScreen = ({ navigation, route }) => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState(null);
     const [favorites, setFavorites] = useState([]);
+    const [loadingSaveProperty, setLoadingSaveProperty] = useState(null);
     
     // Filter state
     const [showFilterModal, setShowFilterModal] = useState(false);
@@ -289,13 +293,20 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         setFilteredProperties(filtered);
     }, [allProperties, applyFilters]);
 
-    // Load favorites from storage
+    // Load favorites from API (like HomeScreen)
     const loadFavorites = useCallback(async () => {
         try {
-            const savedIds = await getSavedPropertiesIds();
-            setFavorites(savedIds);
-        } catch (e) {
-            console.warn('Failed to load favorites:', e);
+            const response = await propertyService.getSavedProperties();
+            if (response.success && response.savedProperties && Array.isArray(response.savedProperties)) {
+                const savedIds = response.savedProperties
+                    .filter(p => p !== null && p !== undefined)
+                    .map(p => p._id || p.id)
+                    .filter(Boolean);
+                setFavorites(savedIds);
+                console.log('✅ Loaded saved properties:', savedIds.length);
+            }
+        } catch (error) {
+            console.error('Error loading saved properties:', error);
         }
     }, []);
 
@@ -392,6 +403,29 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         loadFavorites();
     }, []);  // Remove dependencies to prevent infinite loops
 
+    // Listen for screen focus and reload favorites
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            console.log('📱 AllPropertiesScreen focused - reloading favorites');
+            loadFavorites();
+        });
+
+        return unsubscribe;
+    }, [navigation, loadFavorites]);
+
+    // Listen for saved property updates from other screens
+    useEffect(() => {
+        const listener = DeviceEventEmitter.addListener('savedListUpdated', (event) => {
+            if (event.action === 'removed') {
+                setFavorites(prev => prev.filter(id => id !== event.propertyId));
+            } else if (event.action === 'added') {
+                setFavorites(prev => [...prev, event.propertyId]);
+            }
+        });
+
+        return () => listener.remove();
+    }, []);
+
     // Enhanced refresh handler
     const onRefresh = useCallback(() => {
         setIsRefreshing(true);
@@ -401,34 +435,41 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         ]);
     }, [loadAllData, loadFavorites]);
 
-    // Enhanced favorite toggle with local storage
+    // Enhanced favorite toggle with API calls (same as HomeScreen)
     const toggleFavorite = useCallback(async (propertyId) => {
+        if (loadingSaveProperty === propertyId) return; // Prevent multiple clicks
+        
         const isCurrentlySaved = favorites.includes(propertyId);
+        setLoadingSaveProperty(propertyId);
         
         try {
-            let updatedFavorites;
+            let response;
             if (isCurrentlySaved) {
-                updatedFavorites = favorites.filter(id => id !== propertyId);
+                // Remove from saved
+                response = await propertyService.removeSavedProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => prev.filter((f) => f !== propertyId));
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'removed' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to remove property from saved list');
+                }
             } else {
-                updatedFavorites = [...favorites, propertyId];
+                // Save property
+                response = await propertyService.saveProperty(propertyId);
+                if (response.success) {
+                    setFavorites((prev) => [...prev, propertyId]);
+                    DeviceEventEmitter.emit('savedListUpdated', { propertyId, action: 'added' });
+                } else {
+                    Alert.alert('Error', response.message || 'Failed to save property');
+                }
             }
-            
-            // Update state
-            setFavorites(updatedFavorites);
-            
-            // Save to local storage
-            await AsyncStorage.setItem('savedProperties', JSON.stringify(updatedFavorites));
-            
         } catch (error) {
-            console.error('Error toggling favorite:', error);
-            Alert.alert(
-                'Error', 
-                isCurrentlySaved 
-                    ? 'Failed to remove from favorites' 
-                    : 'Failed to add to favorites'
-            );
+            console.error('Toggle favorite error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setLoadingSaveProperty(null);
         }
-    }, [favorites]);
+    }, [favorites, loadingSaveProperty]);
 
     // Enhanced property navigation
     const openProperty = useCallback(async (item) => {
@@ -507,75 +548,74 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         });
         
         return (
-            <TouchableOpacity
+            <View
                 key={item._id || index}
                 style={styles.residentialCard}
-                onPress={() => openProperty(item)}
-                activeOpacity={0.9}
+                pointerEvents="box-none"
             >
-                {/* Property Image Container */}
-                <View style={styles.residentialImageContainer}>
-                    <MediaCard
-                        mediaItems={mediaItems}
-                        fallbackImage={FALLBACK_IMAGE_URI}
-                        imageStyle={styles.residentialImage}
-                        showControls={false}
-                        autoPlay={false}
-                        style={styles.residentialMediaCard}
-                    />
-                    
-                    {/* Favorite Icon */}
-                    <TouchableOpacity 
-                        onPress={() => toggleFavorite(item._id)} 
-                        style={styles.residentialFavoriteIcon}
-                        activeOpacity={0.7}
-                    >
+                {/* Card Content - TouchableOpacity for navigation */}
+                <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => openProperty(item)}
+                    activeOpacity={0.9}
+                    pointerEvents="auto"
+                >
+                    {/* Property Image Container */}
+                    <View style={styles.residentialImageContainer}>
+                        <MediaCard
+                            mediaItems={mediaItems}
+                            fallbackImage={FALLBACK_IMAGE_URI}
+                            imageStyle={styles.residentialImage}
+                            showControls={false}
+                            autoPlay={false}
+                            style={styles.residentialMediaCard}
+                        />
+                    </View>
+
+                    {/* Property Details */}
+                    <View style={styles.residentialDetails}>
+                        {/* Title */}
+                        <Text style={styles.residentialTitle} numberOfLines={1}>
+                            {item.description || 'Property Name'}
+                        </Text>
+
+                        {/* Location */}
+                        <View style={styles.residentialLocation}>
+                            <Icon name="location-outline" size={13} color="#64748B" />
+                            <Text style={styles.residentialLocationText} numberOfLines={1}>
+                                {getDisplayLocation(item)}
+                            </Text>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+
+                {/* Favorite Button - Positioned absolutely to be outside the navigation touch area */}
+                <Pressable 
+                    onPress={() => toggleFavorite(item._id)}
+                    style={({ pressed }) => [
+                        styles.residentialFavoriteIcon,
+                        pressed && { opacity: 0.6 }
+                    ]}
+                    pointerEvents="auto"
+                    disabled={loadingSaveProperty === item._id}
+                >
+                    {loadingSaveProperty === item._id ? (
+                        <ActivityIndicator size="small" color="#EF4444" />
+                    ) : (
                         <Icon
                             name={isFavorite ? "heart" : "heart-outline"}
                             size={20}
                             color={isFavorite ? "#EF4444" : "#64748B"}
                         />
-                    </TouchableOpacity>
-                </View>
-
-                {/* Property Details */}
-                <View style={styles.residentialDetails}>
-                    {/* Title */}
-                    <Text style={styles.residentialTitle} numberOfLines={1}>
-                        {item.description || 'Property Name'}
-                    </Text>
-
-                    {/* Location */}
-                    <View style={styles.residentialLocation}>
-                        <Icon name="location-outline" size={13} color="#64748B" />
-                        <Text style={styles.residentialLocationText} numberOfLines={1}>
-                            {getDisplayLocation(item)}
-                        </Text>
-                    </View>
-
-                    {/* Price */}
-                    <Text style={styles.residentialPrice}>
-                        {formatPrice(item.price)}
-                    </Text>
-                    
-                    {/* Contact Preference Icons */}
-                    <ContactPreferenceIcons
-                        contactPreferences={item.contactPreferences}
-                        onPhonePress={() => handlePhoneCall(item)}
-                        onWhatsAppPress={() => handleWhatsApp(item)}
-                        onChatPress={() => handlePropertyChat(item)}
-                        iconSize={14}
-                        buttonSize={28}
-                        containerStyle={styles.propertyActionButtons}
-                    />
-                </View>
-            </TouchableOpacity>
+                    )}
+                </Pressable>
+            </View>
         );
     }, [favorites, openProperty, toggleFavorite, handlePhoneCall, handleWhatsApp, handlePropertyChat]);
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor={theme.COLORS.white} />
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="dark-content" backgroundColor={theme.COLORS.white} translucent={false} />
             
             {/* Enhanced Header */}
             <View style={styles.header}>
@@ -1458,7 +1498,6 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderRadius: 18,
         backgroundColor: '#FFFFFF',
-        overflow: 'hidden',
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.1,
@@ -1466,12 +1505,16 @@ const styles = StyleSheet.create({
         elevation: 6,
         borderWidth: 1,
         borderColor: '#F3F4F6',
+        position: 'relative',
     },
     residentialImageContainer: {
         width: '100%',
         height: 200,
         backgroundColor: '#F1F5F9',
         position: 'relative',
+        overflow: 'hidden',
+        borderTopLeftRadius: 18,
+        borderTopRightRadius: 18,
     },
     residentialMediaCard: {
         width: '100%',

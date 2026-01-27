@@ -10,10 +10,11 @@ import {
   TextInput,
   Dimensions,
   Pressable,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
+  StatusBar,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import { useFocusEffect } from '@react-navigation/native';
@@ -281,7 +282,8 @@ const SellScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" translucent={false} />
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.headerIcon} onPress={() => navigation.goBack()}>

@@ -7,13 +7,13 @@ import {
   ScrollView,
   TextInput,
   Dimensions,
-  SafeAreaView,
   StatusBar,
   Alert,
   Platform,
   Animated,
   ImageBackground,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 
@@ -302,10 +302,9 @@ const PayBillScreen = ({ navigation }) => {
   };
 
   return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" translucent={false} />
     <View style={styles.container}>
-      <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
-
-      <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
           <TouchableOpacity 
@@ -359,8 +358,8 @@ const PayBillScreen = ({ navigation }) => {
 
           {renderPaymentForm()}
         </ScrollView>
-      </SafeAreaView>
     </View>
+      </SafeAreaView>
   );
 };
 

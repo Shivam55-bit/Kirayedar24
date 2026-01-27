@@ -10,7 +10,6 @@ import {
     TouchableOpacity,
     ScrollView,
     Dimensions,
-    SafeAreaView,
     Platform,
     StatusBar,
     Modal,
@@ -21,6 +20,7 @@ import {
     Alert,
     ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import LinearGradient from 'react-native-linear-gradient';
 // API services removed
@@ -945,8 +945,8 @@ const ServicesScreen = ({ navigation }) => {
     );
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="dark-content" backgroundColor="#fff" translucent={false} />
             <View style={styles.container}>
                 {/* Enhanced Header */}
                 <LinearGradient

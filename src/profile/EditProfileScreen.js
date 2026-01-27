@@ -11,12 +11,13 @@ import {
     TouchableOpacity,
     TextInput,
     ScrollView,
-    SafeAreaView,
     Alert,
     ActivityIndicator,
     Image,
     Platform,
+    StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import { useFocusEffect } from '@react-navigation/native'; // Used to trigger data fetch when screen is active
 
@@ -209,7 +210,8 @@ const EditProfileScreen = ({ navigation }) => {
     // --- Conditional Rendering: Loading State ---
     if (loading) {
         return (
-            <SafeAreaView style={[styles.container, styles.centerContent]}>
+            <SafeAreaView style={[styles.container, styles.centerContent]} edges={['top', 'left', 'right']}>
+                <StatusBar translucent={false} backgroundColor="#F4F7F9" barStyle="dark-content" />
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.loadingText}>Loading profile data...</Text>
             </SafeAreaView>
@@ -218,7 +220,8 @@ const EditProfileScreen = ({ navigation }) => {
     
     // --- Conditional Rendering: Main Form ---
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar translucent={false} backgroundColor="#F4F7F9" barStyle="dark-content" />
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

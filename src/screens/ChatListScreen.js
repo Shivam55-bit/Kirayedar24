@@ -21,14 +21,15 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  SafeAreaView,
   TouchableOpacity,
   ToastAndroid,
   Platform,
   DeviceEventEmitter,
   Modal,
   Pressable,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -320,7 +321,8 @@ const ChatListScreen = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent={false} />
       {/* Header */}
       <LinearGradient
         colors={[colors.primary, colors.primaryDark]}

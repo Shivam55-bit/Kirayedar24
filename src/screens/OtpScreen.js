@@ -12,6 +12,7 @@ import {
   StatusBar,
   Modal,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -235,8 +236,8 @@ const OtpScreen = ({ route, navigation }) => {
   };
 
   return (
-    <View style={styles.background}>
-      <StatusBar backgroundColor="#F8FAFB" barStyle="dark-content" />
+    <SafeAreaView style={styles.background} edges={['top', 'left', 'right']}>
+      <StatusBar backgroundColor="#F8FAFB" barStyle="dark-content" translucent={false} />
       <View style={styles.overlay}>
         {/* Toast Notification */}
         {toastVisible && (
@@ -344,7 +345,7 @@ const OtpScreen = ({ route, navigation }) => {
       </View>
 
       {/* Register Modal REMOVED - Direct navigation to Home after OTP verify */}
-    </View>
+    </SafeAreaView>
   );
 };
 

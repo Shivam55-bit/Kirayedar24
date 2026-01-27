@@ -23,10 +23,11 @@ import {
     Platform,
     ActivityIndicator,
     Alert,
-    SafeAreaView,
     Keyboard,
     DeviceEventEmitter,
+    StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 import moment from 'moment'; 
@@ -884,19 +885,22 @@ const ChatDetailScreen = ({ navigation, route }) => {
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
+            <SafeAreaView style={styles.loadingContainer} edges={['top', 'left', 'right']}>
+                <StatusBar barStyle="dark-content" backgroundColor={colors.white} translucent={false} />
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={{ marginTop: 10, color: colors.lightText }}>Initializing chat...</Text>
-            </View>
+            </SafeAreaView>
         );
     }
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={'padding'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.white }} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="dark-content" backgroundColor={colors.white} translucent={false} />
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={'padding'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
             {/* Custom Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={handleGoBack} style={styles.headerButton}>
@@ -1006,6 +1010,7 @@ const ChatDetailScreen = ({ navigation, route }) => {
                 </TouchableOpacity>
             </View>
         </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 };
 
@@ -1024,7 +1029,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', 
         alignItems: 'center', 
         paddingHorizontal: 20, 
-        paddingTop: Platform.OS === 'ios' ? 50 : 20, 
+        paddingTop: 12, 
         paddingBottom: 16,
         backgroundColor: colors.white, 
         borderBottomWidth: 0,

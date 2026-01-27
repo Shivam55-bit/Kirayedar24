@@ -10,6 +10,7 @@ import {
   Animated,
   StatusBar,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get("window");
 
@@ -83,8 +84,8 @@ const OnboardingScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent={false} />
       
       <FlatList
         ref={flatListRef}
@@ -169,7 +170,7 @@ const OnboardingScreen = ({ navigation }) => {
           </ImageBackground>
         )}
       />
-    </View>
+    </SafeAreaView>
   );
 };
 

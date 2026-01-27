@@ -12,7 +12,9 @@ import {
     Modal,
     ScrollView,
     ActivityIndicator,
+    StatusBar,
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/Ionicons";
 import { DeviceEventEmitter } from 'react-native';
@@ -348,7 +350,9 @@ const SavedScreen = ({ navigation }) => {
     );
 
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.safeContainer} edges={['top', 'left', 'right']}>
+            <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" translucent={false} />
+            <View style={styles.container}>
             {/* Header */}
             <View style={styles.headerRowTop}>
                 <Text style={styles.header}>Shortlisted Properties</Text>
@@ -385,7 +389,8 @@ const SavedScreen = ({ navigation }) => {
                 onClose={() => setShowSubscriptionModal(false)}
                 onSuccess={handleSubscriptionSuccess}
             />
-        </View>
+            </View>
+        </SafeAreaView>
     );
 };
 
@@ -393,6 +398,10 @@ const SavedScreen = ({ navigation }) => {
 // ## Stylesheet
 // ----------------------------------------------------------------
 const styles = StyleSheet.create({
+    safeContainer: {
+        flex: 1,
+        backgroundColor: "#f9f9f9",
+    },
     container: { flex: 1, backgroundColor: "#f9f9f9", paddingHorizontal: 15 },
     header: {
         fontSize: 22,

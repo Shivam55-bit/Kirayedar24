@@ -5,9 +5,10 @@ import {
     StyleSheet, 
     TouchableOpacity, 
     ScrollView,
-    SafeAreaView, // Added for correct screen display
     Switch, // Added for the example toggle setting
+    StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import { Alert } from 'react-native';
 import { logoutUser } from '../utils/authManager';
@@ -161,7 +162,8 @@ const SettingsScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <StatusBar translucent={false} backgroundColor="#F4F7F9" barStyle="dark-content" />
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

@@ -6,10 +6,10 @@ import {
     TouchableOpacity,
     TextInput, // Added for input fields
     ScrollView,
-    SafeAreaView,
     Alert, // Using Alert for placeholder messaging as it's standard in RN
     ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 // import { profileService } from '../services/profileApi.js'; // REMOVED
 
@@ -94,7 +94,7 @@ const ChangePasswordScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

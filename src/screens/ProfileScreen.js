@@ -25,9 +25,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getCurrentUserProfile } from '../services/userapi';
 import { getUserProperties } from '../services/propertyService';
 import CustomAlert from '../components/CustomAlert';
+import SubscriptionModal from '../components/SubscriptionModal';
 import { useSubscription } from '../context/SubscriptionContext';
 import { getNotificationCount } from '../utils/notificationManager';
 import { propertyService } from '../services/propertyapi';
+import { getFCMToken, getStoredFCMToken } from '../utils/fcmService';
 
 // Real API integration for profile data
 
@@ -65,6 +67,7 @@ const ProfileScreen = ({ navigation }) => {
     const [avatar, setAvatar] = useState(null);
     const [avatarVersion, setAvatarVersion] = useState(Date.now());
     const [fcmToken, setFcmToken] = useState('');
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
     
     // Subscription context
     const { activeSubscription, userHasPackage, loadActiveSubscription } = useSubscription();
@@ -128,11 +131,20 @@ const ProfileScreen = ({ navigation }) => {
                 
                 // Fetch FCM token for testing
                 try {
-                    const storedFcmToken = await AsyncStorage.getItem('current_fcm_token');
-                    if (storedFcmToken) {
-                        setFcmToken(storedFcmToken);
+                    let tokenToShow = await AsyncStorage.getItem('current_fcm_token');
+                    
+                    // If stored token not found, try to get fresh token from Firebase
+                    if (!tokenToShow) {
+                        console.log('[ProfileScreen] No stored token, getting fresh FCM token...');
+                        tokenToShow = await getFCMToken();
+                    }
+                    
+                    if (tokenToShow) {
+                        setFcmToken(tokenToShow);
+                        console.log('[ProfileScreen] FCM Token loaded:', tokenToShow.substring(0, 20) + '...');
                     } else {
                         setFcmToken('No FCM Token Found');
+                        console.warn('[ProfileScreen] No FCM token available');
                     }
                 } catch (e) {
                     console.error('[ProfileScreen] Error fetching FCM token:', e);
@@ -423,14 +435,14 @@ const ProfileScreen = ({ navigation }) => {
                     /* Premium Features Card - Show when no active subscription (only for tenants) */
                     <TouchableOpacity 
                         style={styles.premiumCard} 
-                        onPress={() => navigation.navigate('SubscriptionPlans')}
+                        onPress={() => setShowSubscriptionModal(true)}
                         activeOpacity={0.9}
                     >
                         <View style={styles.premiumHeader}>
                             <View style={styles.premiumIconWrapper}>
                                 <FontAwesomeIcon name="crown" size={20} color={COLORS.warning} />
                             </View>
-                            <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
+                            <Text style={styles.premiumTitle}>Buy Subscription Plan</Text>
                         </View>
                         <Text style={styles.premiumDescription}>
                             Unlock exclusive features, priority support, and advanced analytics
@@ -575,6 +587,16 @@ const ProfileScreen = ({ navigation }) => {
                     iconColor={logoutAlert.iconColor}
                     buttons={logoutAlert.buttons}
                     onClose={() => setLogoutAlert({ visible: false })}
+                />
+
+                {/* Subscription Modal */}
+                <SubscriptionModal
+                    visible={showSubscriptionModal}
+                    onClose={() => setShowSubscriptionModal(false)}
+                    onSuccess={() => {
+                        setShowSubscriptionModal(false);
+                        loadActiveSubscription(); // Refresh subscription status
+                    }}
                 />
 
                 <View style={{ height: 40 }} />

@@ -60,7 +60,29 @@ const LoginScreen = ({ navigation }) => {
       setLoading(true);
       console.log('🔐 Attempting email login for:', email.trim());
       
-      const response = await authService.login(email.trim(), password);
+      // Get FCM token before login
+      let fcmToken = null;
+      try {
+        fcmToken = await getStoredFCMToken();
+        if (!fcmToken) {
+          console.log('📲 No stored FCM token, generating new one...');
+          fcmToken = await getFCMToken();
+        }
+        console.log('🔑 FCM Token obtained:', fcmToken?.substring(0, 30) + '...');
+      } catch (fcmError) {
+        console.log('ℹ️ FCM token not available:', fcmError.message);
+      }
+      
+      // Include FCM token in login request
+      const loginPayload = {
+        email: email.trim(),
+        password: password,
+        fcmToken: fcmToken || undefined // Include token if available
+      };
+      
+      console.log('📤 Login payload:', { email: loginPayload.email, hasFcmToken: !!loginPayload.fcmToken });
+      
+      const response = await authService.login(email.trim(), password, fcmToken);
       
       console.log('📥 Login Response:', JSON.stringify(response, null, 2));
       console.log('✅ Has token?', !!response.token);
@@ -285,25 +307,31 @@ const LoginScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             {/* Terms and Conditions Checkbox */}
-            <TouchableOpacity 
-              style={styles.termsContainer}
-              onPress={() => navigation.navigate('TermsScreen', {
-                onAccept: () => setAcceptedTerms(true)
-              })}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                {acceptedTerms && (
-                  <Icon name="checkmark" size={16} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.termsText}>
-                I accept the{' '}
-                <Text style={styles.termsLink}>Terms & Conditions</Text>
-                {' '}and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.termsContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxTouchable}
+                onPress={() => setAcceptedTerms(!acceptedTerms)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                  {acceptedTerms && (
+                    <Icon name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.termsTextTouchable}
+                onPress={() => navigation.navigate('TermsScreen')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.termsText}>
+                  I accept the{' '}
+                  <Text style={styles.termsLink}>Terms & Conditions</Text>
+                  {' '}and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Login Button */}
             <LinearGradient
@@ -357,25 +385,31 @@ const LoginScreen = ({ navigation }) => {
             </View>
 
             {/* Terms and Conditions Checkbox */}
-            <TouchableOpacity 
-              style={styles.termsContainer}
-              onPress={() => navigation.navigate('TermsScreen', {
-                onAccept: () => setAcceptedTerms(true)
-              })}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                {acceptedTerms && (
-                  <Icon name="checkmark" size={16} color="#fff" />
-                )}
-              </View>
-              <Text style={styles.termsText}>
-                I accept the{' '}
-                <Text style={styles.termsLink}>Terms & Conditions</Text>
-                {' '}and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.termsContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxTouchable}
+                onPress={() => setAcceptedTerms(!acceptedTerms)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                  {acceptedTerms && (
+                    <Icon name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.termsTextTouchable}
+                onPress={() => navigation.navigate('TermsScreen')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.termsText}>
+                  I accept the{' '}
+                  <Text style={styles.termsLink}>Terms & Conditions</Text>
+                  {' '}and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <LinearGradient
               colors={["#f39c12", "#d35400"]}
@@ -659,6 +693,10 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
 
+  checkboxTouchable: {
+    marginRight: 10,
+  },
+
   checkbox: {
     width: 20,
     height: 20,
@@ -667,7 +705,6 @@ const styles = StyleSheet.create({
     borderColor: '#f39c12',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
     backgroundColor: '#fff',
   },
 
@@ -676,8 +713,11 @@ const styles = StyleSheet.create({
     borderColor: '#f39c12',
   },
 
-  termsText: {
+  termsTextTouchable: {
     flex: 1,
+  },
+
+  termsText: {
     fontSize: 13,
     color: '#555',
     lineHeight: 18,

@@ -20,9 +20,9 @@ const App = () => {
       try {
         console.log('🚀 Starting FCM setup in App.js...');
         
-        const result = await initializeFCM(
+        const result = await initializeFCM({
           // Callback for token refresh
-          async (newToken) => {
+          onTokenRefresh: async (newToken) => {
             console.log('🔄 FCM Token refreshed in App.js:', newToken?.substring(0, 20) + '...');
             
             // Send updated token to backend
@@ -40,8 +40,8 @@ const App = () => {
             }
           },
           
-          // Callback for notification opened
-          (notification) => {
+          // Callback for notification opened (background/killed state)
+          onNotificationOpened: (notification) => {
             console.log('🔔 Notification opened in App.js:', notification);
             
             try {
@@ -67,8 +67,14 @@ const App = () => {
             } catch (notificationError) {
               console.error('❌ Error handling opened notification:', notificationError);
             }
+          },
+          
+          // Callback for foreground notifications (app is open)
+          onForegroundNotification: (remoteMessage) => {
+            console.log('📬 Foreground notification received in App.js:', remoteMessage.notification?.title);
+            // You can add custom UI updates here (toast, banner, etc)
           }
-        );
+        });
 
         if (result.configured && result.token) {
           console.log('✅ FCM initialized successfully with token:', result.token.substring(0, 20) + '...');

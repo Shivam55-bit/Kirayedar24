@@ -404,11 +404,11 @@ const styles = StyleSheet.create({
     },
     container: { flex: 1, backgroundColor: "#f9f9f9", paddingHorizontal: 15 },
     header: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: "bold",
-        marginBottom: 10,
+        marginBottom: 5,
         color: "#222",
-        paddingTop: 40,
+        paddingTop: 0,
     },
 
     searchContainer: {
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 40,
+        marginTop: 10,
         marginBottom: 8,
     },
     countText: {

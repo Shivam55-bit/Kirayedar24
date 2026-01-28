@@ -360,15 +360,14 @@ export const fetchAndProcessNotifications = async (showPushNotification = true) 
       newNotifications = [];
     }
     
-    // Show push notifications for new ones (when app is in background)
+    // Show push notifications for new ones
     if (showPushNotification && newNotifications.length > 0) {
       const appState = AppState.currentState;
+      console.log(`📱 App state: ${appState}, showing ${Math.min(newNotifications.length, 3)} notifications`);
       
-      // Only show push when app is in background or inactive
-      if (appState !== 'active') {
-        for (const notification of newNotifications.slice(0, 3)) { // Limit to 3
-          await displayLocalNotification(notification);
-        }
+      // Show heads-up notification regardless of app state
+      for (const notification of newNotifications.slice(0, 3)) { // Limit to 3
+        await displayLocalNotification(notification);
       }
     }
     

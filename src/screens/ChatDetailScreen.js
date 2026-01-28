@@ -1143,7 +1143,8 @@ const styles = StyleSheet.create({
     inputContainer: { 
         flexDirection: 'row', 
         padding: 12,
-        paddingBottom: Platform.OS === 'android' ? 25 : 12,
+        paddingBottom: Platform.OS === 'android' ? 8 : 12,
+        marginBottom: 0,
         backgroundColor: colors.white, 
         alignItems: 'center', 
         borderTopWidth: 1, 

@@ -244,6 +244,12 @@ export const initializeFCM = async (callbacks = {}) => {
     // Check for any pending token syncs from previous sessions
     await checkPendingTokenSync();
     
+    // CRITICAL: Sync token to backend on EVERY app open
+    // This ensures backend always has the latest token
+    if (token) {
+      await syncTokenOnAppOpen(token);
+    }
+    
     // Listen for token refresh
     const tokenRefreshUnsubscribe = setupTokenRefreshListener(callbacks.onTokenRefresh);
     
@@ -469,6 +475,47 @@ const syncRefreshedTokenToBackend = async (token) => {
     console.error(`${TAG} ❌ Error syncing FCM token to backend:`, error);
     // Mark for retry on next app open
     await AsyncStorage.setItem('fcm_token_pending_sync', 'true');
+  }
+};
+
+/**
+ * Sync FCM token to backend on every app open
+ * This ensures backend ALWAYS has the latest token
+ * CRITICAL for admin broadcast notifications to work!
+ */
+const syncTokenOnAppOpen = async (token) => {
+  try {
+    const userId = await AsyncStorage.getItem('userId');
+    
+    if (!userId) {
+      console.log(`${TAG} ℹ️ User not logged in, skipping token sync on app open`);
+      return;
+    }
+    
+    // Check last sync time - only sync if more than 1 hour ago
+    const lastSync = await AsyncStorage.getItem('fcm_token_last_sync');
+    if (lastSync) {
+      const lastSyncTime = new Date(lastSync).getTime();
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      
+      if (lastSyncTime > oneHourAgo) {
+        console.log(`${TAG} ℹ️ Token synced recently, skipping...`);
+        return;
+      }
+    }
+    
+    console.log(`${TAG} 🔄 Syncing FCM token on app open...`);
+    
+    const response = await sendFCMTokenToBackend(userId, token);
+    
+    if (response && response.success) {
+      console.log(`${TAG} ✅ FCM token synced on app open!`);
+      await AsyncStorage.setItem('fcm_token_last_sync', new Date().toISOString());
+    } else {
+      console.warn(`${TAG} ⚠️ Token sync on app open failed:`, response?.message);
+    }
+  } catch (error) {
+    console.warn(`${TAG} ⚠️ Error syncing token on app open:`, error.message);
   }
 };
 

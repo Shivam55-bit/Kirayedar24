@@ -1124,6 +1124,24 @@ const HomeScreenOwner = ({ navigation }) => {
                                     autoPlay={false}
                                     style={styles.residentialMediaCard}
                                 />
+                                
+                                {/* Heart Icon - Top Right */}
+                                <TouchableOpacity 
+                                    onPress={() => toggleFavorite(item._id)} 
+                                    style={styles.residentialFavoriteIcon}
+                                    activeOpacity={0.7}
+                                    disabled={loadingSaveProperty === item._id}
+                                >
+                                    {loadingSaveProperty === item._id ? (
+                                        <ActivityIndicator size="small" color="#EF4444" />
+                                    ) : (
+                                        <Icon
+                                            name={favorites.includes(item._id) ? "heart" : "heart-outline"}
+                                            size={18}
+                                            color={favorites.includes(item._id) ? "#EF4444" : "#FFFFFF"}
+                                        />
+                                    )}
+                                </TouchableOpacity>
                             </View>
 
                             {/* Property Details */}
@@ -2635,6 +2653,16 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
+        position: 'relative',
+    },
+    residentialFavoriteIcon: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        borderRadius: 20,
+        padding: 6,
+        zIndex: 10,
     },
     residentialMediaCard: {
         width: '100%',

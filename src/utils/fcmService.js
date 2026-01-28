@@ -10,7 +10,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
-import { Platform } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
+import { sendFCMTokenToBackend } from '../services/api';
 
 const FCM_TOKEN_KEY = '@fcm_token';
 const TAG = '🔔 FCMService';
@@ -51,6 +52,39 @@ export const checkFCMConfiguration = async () => {
       error: error.message,
       status: '❌ ERROR'
     };
+  }
+};
+
+// ============================================================================
+// STEP 1.5: CHECK FOR NATIVE TOKEN REFRESH (Android only)
+// ============================================================================
+
+/**
+ * Check if Android native side has stored a refreshed FCM token
+ * This happens when Firebase refreshes the token while the app was killed
+ * The native FCMNotificationService stores it in SharedPreferences
+ */
+export const checkNativeTokenRefresh = async () => {
+  if (Platform.OS !== 'android') {
+    return null;
+  }
+  
+  try {
+    console.log(`${TAG} 🔍 Checking for native-stored refreshed token...`);
+    
+    // Try to read from SharedPreferences via RN bridge
+    // Note: This requires the app to implement a native module or we use AsyncStorage
+    // For now, we rely on the JS onTokenRefresh listener which fires when app opens
+    
+    // The native side stores the token, and when React Native initializes,
+    // the @react-native-firebase/messaging library will detect the new token
+    // and fire the onTokenRefresh event
+    
+    console.log(`${TAG} ℹ️ Native token refresh will be handled by onTokenRefresh listener`);
+    return null;
+  } catch (error) {
+    console.error(`${TAG} ❌ Error checking native token refresh:`, error);
+    return null;
   }
 };
 
@@ -207,6 +241,9 @@ export const initializeFCM = async (callbacks = {}) => {
     // Get token
     const token = await getFCMToken();
     
+    // Check for any pending token syncs from previous sessions
+    await checkPendingTokenSync();
+    
     // Listen for token refresh
     const tokenRefreshUnsubscribe = setupTokenRefreshListener(callbacks.onTokenRefresh);
     
@@ -278,15 +315,59 @@ const setupForegroundNotificationHandler = (callback) => {
 /**
  * Handle notifications when app is in BACKGROUND
  * App is minimized but still in memory
- * NOTE: This must be set up at module level (outside component)
+ * Firebase automatically displays notification from Notification Payload
+ * This handler is for additional processing of data payload
  */
 export const setupBackgroundNotificationHandler = (callback) => {
   try {
-    // NOTE: Background notifications are handled by Android FCMNotificationService
-    // This callback is kept for compatibility but not used
-    console.log(`${TAG} ℹ️ Background notifications handled by Android native service`);
+    // NOTE: For background state, if message has Notification Payload:
+    // Firebase SDK automatically displays it - no code needed
+    // 
+    // If message has ONLY Data Payload:
+    // Need to manually display using notifee in setBackgroundMessageHandler
+    
+    messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+      console.log(`${TAG} 🌙 Background Message Handler Called`);
+      console.log(`${TAG} Title: ${remoteMessage.notification?.title}`);
+      console.log(`${TAG} Body: ${remoteMessage.notification?.body}`);
+      console.log(`${TAG} Has Notification: ${!!remoteMessage.notification}`);
+      console.log(`${TAG} Has Data: ${remoteMessage.data?.size > 0}`);
+      
+      // If has notification payload, Firebase will show it automatically
+      if (remoteMessage.notification) {
+        console.log(`${TAG} ✅ Firebase will auto-display notification`);
+      } 
+      // If only has data payload, show it manually
+      else if (remoteMessage.data) {
+        console.log(`${TAG} 📦 Data-only message, displaying manually...`);
+        const title = remoteMessage.data.title || 'Notification';
+        const body = remoteMessage.data.body || '';
+        
+        if (title || body) {
+          await notifee.displayNotification({
+            title: title,
+            body: body,
+            android: {
+              channelId: 'default_notification_channel',
+              pressAction: {
+                id: 'default',
+                launchActivity: 'default',
+              },
+            },
+          });
+          console.log(`${TAG} ✅ Manual notification displayed`);
+        }
+      }
+      
+      // Call custom callback
+      if (callback) {
+        callback(remoteMessage);
+      }
+    });
+    
+    console.log(`${TAG} ✅ Background message handler registered`);
   } catch (error) {
-    console.error(`${TAG} ❌ Error in background handler setup:`, error);
+    console.error(`${TAG} ❌ Error in background handler:`, error);
   }
 };
 
@@ -325,13 +406,22 @@ const setupNotificationOpenedHandler = (callback) => {
 /**
  * Handle FCM token refresh
  * New token generated when user clears app data, installs update, etc.
+ * CRITICAL: This must send the new token to backend to keep admin notifications working!
  */
 const setupTokenRefreshListener = (callback) => {
   try {
-    const unsubscribe = messaging().onTokenRefresh((token) => {
-      console.log(`${TAG} 🔄 FCM Token refreshed`);
-      AsyncStorage.setItem(FCM_TOKEN_KEY, token);
+    const unsubscribe = messaging().onTokenRefresh(async (token) => {
+      console.log(`${TAG} 🔄 FCM Token refreshed - SYNCING TO BACKEND...`);
+      console.log(`${TAG} 📝 New token (first 30 chars): ${token.substring(0, 30)}...`);
       
+      // Store locally first
+      await AsyncStorage.setItem(FCM_TOKEN_KEY, token);
+      await AsyncStorage.setItem('current_fcm_token', token);
+      
+      // CRITICAL: Send refreshed token to backend immediately
+      await syncRefreshedTokenToBackend(token);
+      
+      // Call custom callback if provided
       if (callback) {
         callback(token);
       }
@@ -341,6 +431,64 @@ const setupTokenRefreshListener = (callback) => {
   } catch (error) {
     console.error(`${TAG} ❌ Error setting up token refresh listener:`, error);
     return () => {};
+  }
+};
+
+/**
+ * Sync refreshed FCM token to backend
+ * Called when Firebase generates a new token (reinstall, update, refresh)
+ * This is CRITICAL for admin broadcast notifications to work!
+ */
+const syncRefreshedTokenToBackend = async (token) => {
+  try {
+    console.log(`${TAG} 📤 Syncing refreshed FCM token to backend...`);
+    
+    // Get current user ID from storage
+    const userId = await AsyncStorage.getItem('userId');
+    
+    if (!userId) {
+      console.warn(`${TAG} ⚠️ No userId found - user not logged in. Token will sync on next login.`);
+      // Store flag so we can sync on next login
+      await AsyncStorage.setItem('fcm_token_pending_sync', 'true');
+      return;
+    }
+    
+    // Send to backend
+    const response = await sendFCMTokenToBackend(userId, token);
+    
+    if (response && response.success) {
+      console.log(`${TAG} ✅ FCM token synced to backend successfully!`);
+      await AsyncStorage.setItem('fcm_token_pending_sync', 'false');
+      await AsyncStorage.setItem('fcm_token_last_sync', new Date().toISOString());
+    } else {
+      console.error(`${TAG} ❌ Failed to sync FCM token:`, response?.message || 'Unknown error');
+      // Mark for retry
+      await AsyncStorage.setItem('fcm_token_pending_sync', 'true');
+    }
+  } catch (error) {
+    console.error(`${TAG} ❌ Error syncing FCM token to backend:`, error);
+    // Mark for retry on next app open
+    await AsyncStorage.setItem('fcm_token_pending_sync', 'true');
+  }
+};
+
+/**
+ * Check if there's a pending FCM token sync and retry if needed
+ * Call this on app startup and after login
+ */
+export const checkPendingTokenSync = async () => {
+  try {
+    const pendingSync = await AsyncStorage.getItem('fcm_token_pending_sync');
+    
+    if (pendingSync === 'true') {
+      console.log(`${TAG} 🔄 Found pending FCM token sync, retrying...`);
+      const token = await AsyncStorage.getItem(FCM_TOKEN_KEY);
+      if (token) {
+        await syncRefreshedTokenToBackend(token);
+      }
+    }
+  } catch (error) {
+    console.error(`${TAG} ❌ Error checking pending token sync:`, error);
   }
 };
 
@@ -467,4 +615,6 @@ export default {
   onNotificationOpenedApp,
   onTokenRefresh,
   createNotificationChannel,
+  checkPendingTokenSync,
+  syncRefreshedTokenToBackend,
 };

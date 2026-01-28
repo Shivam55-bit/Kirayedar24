@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from "../services/authApi";
 import AuthFlowManager from "../utils/AuthFlowManager";
 import CustomAlert from '../components/CustomAlert';
-import { getStoredFCMToken, getFCMToken } from '../utils/fcmService';
+import { getStoredFCMToken, getFCMToken, checkPendingTokenSync } from '../utils/fcmService';
 import { sendFCMTokenToBackend } from '../services/api';
 
 const { width } = Dimensions.get("window");
@@ -110,6 +110,9 @@ const LoginScreen = ({ navigation }) => {
               console.log('📤 Sending FCM token:', fcmToken?.substring(0, 30) + '...');
               await sendFCMTokenToBackend(userId, fcmToken);
               console.log('✅ FCM token sent to backend successfully');
+              
+              // Also check for any pending token syncs from previous sessions
+              await checkPendingTokenSync();
             } else {
               console.log('⚠️ Missing fcmToken or userId:', { hasFcmToken: !!fcmToken, hasUserId: !!userId });
             }

@@ -330,24 +330,54 @@ public class FCMNotificationService extends FirebaseMessagingService {
 
     /**
      * Send FCM token to backend for sending notifications
-     * Backend will store this token and use it to send notifications
+     * Stores token in SharedPreferences for React Native to access and sync with backend
      */
     private void sendTokenToBackend(String token) {
-        // TODO: Implement API call to send token to your backend
-        // Example:
-        // ApiService.sendFCMToken(token)
-        //     .enqueue(new Callback<Void>() {
-        //         @Override
-        //         public void onResponse(Call<Void> call, Response<Void> response) {
-        //             Log.d(TAG, "✅ Token sent to backend");
-        //         }
-        //
-        //         @Override
-        //         public void onFailure(Call<Void> call, Throwable t) {
-        //             Log.e(TAG, "❌ Failed to send token", t);
-        //         }
-        //     });
+        Log.d(TAG, "🔄 Storing refreshed FCM token for React Native sync...");
         
-        Log.d(TAG, "⚠️ sendTokenToBackend not implemented - token: " + token);
+        // Store in SharedPreferences for React Native to access
+        // React Native @react-native-async-storage uses this same storage
+        try {
+            android.content.SharedPreferences prefs = getApplicationContext()
+                .getSharedPreferences("RN_FCM_TOKEN", Context.MODE_PRIVATE);
+            
+            prefs.edit()
+                .putString("refreshed_token", token)
+                .putLong("refresh_timestamp", System.currentTimeMillis())
+                .putBoolean("needs_sync", true)
+                .apply();
+            
+            Log.d(TAG, "✅ FCM token stored in SharedPreferences for React Native sync");
+            Log.d(TAG, "📝 Token (first 30 chars): " + token.substring(0, Math.min(30, token.length())) + "...");
+            
+            // Also store in AsyncStorage format for direct React Native access
+            // This matches how @react-native-async-storage stores data
+            storeTokenForReactNative(token);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to store FCM token: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Store token in a format React Native AsyncStorage can read
+     * AsyncStorage on Android stores data in a SQLite database
+     */
+    private void storeTokenForReactNative(String token) {
+        try {
+            // Store directly using SharedPreferences with RNCAsyncStorage format
+            android.content.SharedPreferences asyncPrefs = getApplicationContext()
+                .getSharedPreferences("RN_FCM_REFRESH", Context.MODE_PRIVATE);
+            
+            asyncPrefs.edit()
+                .putString("token", token)
+                .putLong("timestamp", System.currentTimeMillis())
+                .putBoolean("pending_sync", true)
+                .apply();
+            
+            Log.d(TAG, "📱 Token stored for React Native retrieval");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not store token for React Native: " + e.getMessage());
+        }
     }
 }

@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from "react-native-linear-gradient";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getStoredFCMToken, getFCMToken } from "../utils/fcmService";
+import { getStoredFCMToken, getFCMToken, checkPendingTokenSync } from "../utils/fcmService";
 import { sendFCMTokenToBackend } from "../services/api";
 import { authService } from "../services/authApi";
 import { storeUserCredentials } from '../utils/authManager';
@@ -166,6 +166,9 @@ const OtpScreen = ({ route, navigation }) => {
             console.log('📤 Sending FCM token:', fcmToken?.substring(0, 30) + '...');
             await sendFCMTokenToBackend(otpResponse.user.id, fcmToken);
             console.log('✅ FCM token sent to backend successfully');
+            
+            // Also check for any pending token syncs from previous sessions
+            await checkPendingTokenSync();
           } else {
             console.log('⚠️ Missing fcmToken or userId:', { hasFcmToken: !!fcmToken, hasUserId: !!otpResponse.user.id });
           }

@@ -92,15 +92,64 @@ global.checkStoredToken = async () => {
   try {
     const token = await AsyncStorage.getItem('@fcm_token');
     const currentToken = await AsyncStorage.getItem('current_fcm_token');
+    const userId = await AsyncStorage.getItem('userId');
+    const authToken = await AsyncStorage.getItem('authToken');
     
     console.log('📋 Stored Tokens:');
     console.log('  FCM Token Key:', token ? `${token.substring(0, 20)}...` : 'None');
     console.log('  Current Token:', currentToken ? `${currentToken.substring(0, 20)}...` : 'None');
+    console.log('  User ID:', userId || 'Not set');
+    console.log('  Auth Token:', authToken ? 'Present' : 'Missing');
     
-    return { token, currentToken };
+    return { token, currentToken, userId, hasAuthToken: !!authToken };
   } catch (error) {
     console.error('❌ Token Check Error:', error);
     return null;
+  }
+};
+
+// Check if FCM token was sent to backend
+global.checkFCMTokenSentToBackend = async () => {
+  console.log('🔍 Checking if FCM Token was sent to backend...\n');
+  try {
+    const token = await AsyncStorage.getItem('@fcm_token');
+    const userId = await AsyncStorage.getItem('userId');
+    const authToken = await AsyncStorage.getItem('authToken');
+    
+    console.log('Step 1: Check prerequisites');
+    console.log('  ✓ FCM Token exists:', !!token);
+    console.log('  ✓ User ID exists:', !!userId);
+    console.log('  ✓ Auth Token exists:', !!authToken);
+    
+    if (!token || !userId || !authToken) {
+      console.log('\n❌ Missing required data - user might not be logged in properly\n');
+      return { 
+        success: false, 
+        error: 'Missing prerequisites',
+        details: { hasToken: !!token, hasUserId: !!userId, hasAuthToken: !!authToken }
+      };
+    }
+    
+    console.log('\nStep 2: Call sendFCMTokenToBackend');
+    const { sendFCMTokenToBackend } = await import('../services/api');
+    const response = await sendFCMTokenToBackend(userId, token);
+    
+    console.log('\nStep 3: Check response');
+    console.log('  Response:', JSON.stringify(response, null, 2));
+    
+    if (response.success) {
+      console.log('\n✅ FCM Token successfully sent to backend!');
+      console.log('  Token: ' + token.substring(0, 30) + '...');
+      console.log('  User: ' + userId);
+    } else {
+      console.log('\n❌ Failed to send FCM token');
+      console.log('  Error:', response.message || response.error);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('❌ Error checking FCM token status:', error.message);
+    return { success: false, error: error.message };
   }
 };
 
@@ -163,6 +212,7 @@ global.fcmHelp = () => {
 🌐 Backend Tests:
   testBackendNotification()   - Test backend notification API
   testBackendNotification(token) - Test with specific token
+  checkFCMTokenSentToBackend() - Verify FCM token sent to backend
 
 📚 Usage Examples:
   // Quick test
@@ -177,6 +227,9 @@ global.fcmHelp = () => {
   
   // Add local notification
   await addTestNotification()
+  
+  // Check if FCM token reached backend
+  await checkFCMTokenSentToBackend()
 
 Type fcmHelp() again to see this help.
   `);
@@ -193,5 +246,6 @@ export default {
   addTestNotification: global.addTestNotification,
   checkStoredToken: global.checkStoredToken,
   testBackendNotification: global.testBackendNotification,
+  checkFCMTokenSentToBackend: global.checkFCMTokenSentToBackend,
   fcmHelp: global.fcmHelp
 };

@@ -20,6 +20,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
 import { saveProperty, getSavedProperties } from '../services/api';
 import { getPropertyById } from '../services/propertyService';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionModal from '../components/SubscriptionModal';
 
 // import {
 //   formatImageUrl,
@@ -102,6 +104,9 @@ const getAmenityIcon = (name) => {
 const PropertyDetailsScreen = ({ navigation, route }) => {
   const { property: routeProperty, itemId, user: routeUser, fromAddProperty } = route?.params || {};
   
+  // Subscription context
+  const { userHasPackage, setPropertyForSubscription } = useSubscription();
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   console.log('🏠 PropertyDetailsScreen - Route property received:', routeProperty);
   console.log('🏠 Property state value:', routeProperty?.state);
   console.log('🏠 Property city value:', routeProperty?.city);
@@ -417,6 +422,13 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
 
   // Handle call button press
   const handleCallPress = () => {
+    // Check if user has active package
+    if (!userHasPackage) {
+      setPropertyForSubscription(property);
+      setShowSubscriptionModal(true);
+      return;
+    }
+    
     if (!property) return;
     
     // Get phone number from property owner
@@ -1123,6 +1135,13 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={[styles.actionBtn, styles.whatsappBtn]}
             onPress={() => {
+              // Check if user has active package
+              if (!userHasPackage) {
+                setPropertyForSubscription(property);
+                setShowSubscriptionModal(true);
+                return;
+              }
+              
               const phoneNumber = property.contactNumber || property.phone;
               if (!phoneNumber) {
                 Alert.alert(
@@ -1158,6 +1177,13 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={[styles.actionBtn, styles.chatBtn]}
             onPress={() => {
+              // Check if user has active package
+              if (!userHasPackage) {
+                setPropertyForSubscription(property);
+                setShowSubscriptionModal(true);
+                return;
+              }
+              
               // Extract ownerId from property data (try all possible fields)
               let ownerId = null;
               let ownerData = null;
@@ -1253,6 +1279,17 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           </View>
         </View>
       </Modal>
+
+      {/* Subscription Modal */}
+      <SubscriptionModal 
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        onSuccess={() => {
+          setShowSubscriptionModal(false);
+          // Refresh subscription status
+          // The subscription context should be updated automatically
+        }}
+      />
     </SafeAreaView>
   );
 };

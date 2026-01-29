@@ -898,8 +898,9 @@ const ChatDetailScreen = ({ navigation, route }) => {
             <StatusBar barStyle="dark-content" backgroundColor={colors.white} translucent={false} />
             <KeyboardAvoidingView
                 style={styles.container}
-                behavior={'padding'}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                enabled={true}
             >
             {/* Custom Header */}
             <View style={styles.header}>
@@ -964,9 +965,11 @@ const ChatDetailScreen = ({ navigation, route }) => {
                 data={messages}
                 renderItem={renderMessage}
                 keyExtractor={(item) => item.id.toString()}
-                contentContainerStyle={[styles.messageList, { paddingBottom: showEmojiPicker ? 260 : 120 }]}
+                contentContainerStyle={[styles.messageList, { paddingBottom: showEmojiPicker ? 380 : 140 }]}
                 keyboardShouldPersistTaps={'handled'}
                 showsVerticalScrollIndicator={false}
+                scrollEnabled={true}
+                nestedScrollEnabled={true}
                 onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             />
 
@@ -1143,10 +1146,10 @@ const styles = StyleSheet.create({
     inputContainer: { 
         flexDirection: 'row', 
         padding: 12,
-        paddingBottom: Platform.OS === 'android' ? 8 : 12,
+        paddingBottom: Platform.OS === 'android' ? 12 : 12,
         marginBottom: 0,
         backgroundColor: colors.white, 
-        alignItems: 'center', 
+        alignItems: 'flex-end', 
         borderTopWidth: 1, 
         borderColor: colors.greyLight,
         elevation: 8,

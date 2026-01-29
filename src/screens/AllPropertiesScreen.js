@@ -25,6 +25,8 @@ import { getRecentProperties, getResidentialProperties, getCommercialProperties 
 import propertyService from '../services/propertyapi';
 import MediaCard from '../components/MediaCard';
 import ContactPreferenceIcons from '../components/ContactPreferenceIcons';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionModal from '../components/SubscriptionModal';
 
 // Helper functions for property data formatting
 const formatImageUrl = (url) => {
@@ -183,6 +185,10 @@ const AllPropertiesScreen = ({ navigation, route }) => {
     // Route parameters
     const category = route.params?.category; // 'Featured', 'Recent', 'Nearby'
     const searchQuery = route.params?.query; // Search query from the home screen
+
+    // Subscription context
+    const { userHasPackage, setPropertyForSubscription, loadActiveSubscription } = useSubscription();
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
     // State management
     const [allProperties, setAllProperties] = useState([]);
@@ -473,8 +479,16 @@ const AllPropertiesScreen = ({ navigation, route }) => {
 
     // Enhanced property navigation
     const openProperty = useCallback(async (item) => {
+        // Check if user has active subscription
+        if (!userHasPackage) {
+            setPropertyForSubscription(item);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
+        // User has subscription, navigate to details
         navigation.navigate('PropertyDetailsScreen', { property: item });
-    }, [navigation]);
+    }, [navigation, userHasPackage, setPropertyForSubscription]);
 
     // Property action handlers
     const handlePhoneCall = useCallback((property) => {
@@ -937,6 +951,17 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                     </View>
                 </View>
             </Modal>
+
+            {/* Subscription Modal */}
+            <SubscriptionModal 
+                visible={showSubscriptionModal}
+                onClose={() => setShowSubscriptionModal(false)}
+                onSuccess={() => {
+                    setShowSubscriptionModal(false);
+                    // Refresh subscription status
+                    loadActiveSubscription();
+                }}
+            />
         </SafeAreaView>
     );
 };

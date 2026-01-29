@@ -1687,15 +1687,6 @@ const AddSellScreen = ({ navigation, route }) => {
                     selectedValue={commercialType}
                     onSelect={setCommercialType}
                   />
-                  
-                  <InputField
-                    label="Space Available (sq ft)*"
-                    placeholder="Enter space available"
-                    placeholderTextColor="#999"
-                    keyboardType="numeric"
-                    value={spaceAvailable}
-                    onChangeText={setSpaceAvailable}
-                  />
                 </>
               )}
 
@@ -1779,12 +1770,16 @@ const AddSellScreen = ({ navigation, route }) => {
                 onChangeText={setPrice}
               />
 
-              <Text style={styles.fieldLabel}>Kitchen Type</Text>
-              <OptionSelector
-                options={["Modular", "Simple"]}
-                selectedValue={kitchenType}
-                onSelect={setKitchenType}
-              />
+              {propertyType === "Residential" && (
+                <>
+                  <Text style={styles.fieldLabel}>Kitchen Type</Text>
+                  <OptionSelector
+                    options={["Modular", "Simple"]}
+                    selectedValue={kitchenType}
+                    onSelect={setKitchenType}
+                  />
+                </>
+              )}
 
               <Text style={styles.fieldLabel}>Furnishing Status</Text>
               <OptionSelector
@@ -1800,12 +1795,16 @@ const AddSellScreen = ({ navigation, route }) => {
                 onSelect={setParking}
               />
               
-              <Text style={styles.fieldLabel}>Purpose</Text>
-              <OptionSelector
-                options={["Rent", "Paying Guest"]}
-                selectedValue={purpose}
-                onSelect={setPurpose}
-              />
+              {propertyType === "Residential" && (
+                <>
+                  <Text style={styles.fieldLabel}>Purpose</Text>
+                  <OptionSelector
+                    options={["Rent", "Paying Guest"]}
+                    selectedValue={purpose}
+                    onSelect={setPurpose}
+                  />
+                </>
+              )}
               
               {/* Available From Date Picker */}
               <View style={styles.datePickerContainer}>

@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Image,
   Dimensions,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -342,11 +343,9 @@ const MyPropertyScreen = ({ navigation, route }) => {
     const phoneNumber = property.originalData?.contactNumber || property.originalData?.phoneNumber || property.originalData?.ownerPhone || '1234567890';
     const phoneUrl = `tel:${phoneNumber}`;
     
-    import('react-native').then(({ Linking }) => {
-      Linking.openURL(phoneUrl).catch((err) => {
-        console.error('Error opening phone dialer:', err);
-        Alert.alert('Error', 'Could not open phone dialer');
-      });
+    Linking.openURL(phoneUrl).catch((err) => {
+      console.error('Error opening phone dialer:', err);
+      Alert.alert('Error', 'Could not open phone dialer');
     });
   };
 
@@ -355,11 +354,9 @@ const MyPropertyScreen = ({ navigation, route }) => {
     const message = encodeURIComponent(`Hi, I want to inquire about your property: ${property.title}`);
     const whatsappUrl = `whatsapp://send?phone=+91${phoneNumber}&text=${message}`;
     
-    import('react-native').then(({ Linking }) => {
-      Linking.openURL(whatsappUrl).catch((err) => {
-        console.error('Error opening WhatsApp:', err);
-        Alert.alert('Error', 'WhatsApp is not installed or could not be opened');
-      });
+    Linking.openURL(whatsappUrl).catch((err) => {
+      console.error('Error opening WhatsApp:', err);
+      Alert.alert('Error', 'WhatsApp is not installed or could not be opened');
     });
   };
 

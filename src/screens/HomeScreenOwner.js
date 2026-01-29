@@ -18,6 +18,7 @@ import {
     Keyboard,
     FlatList,
     Animated,
+    Linking,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from "react-native-linear-gradient";
@@ -39,6 +40,8 @@ import { showQuickNotificationStatus } from '../utils/notificationStatus';
 import MediaCard from '../components/MediaCard';
 import DrawerMenu from '../components/DrawerMenu';
 import { getUserProperties } from '../services/propertyService';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionModal from '../components/SubscriptionModal';
 
 // Theme & Layout Constants
 const { width, height } = Dimensions.get("window");
@@ -312,6 +315,10 @@ const ChatButton = ({ onPress, theme, hasUnreadMessages }) => (
 // Location geocoding functionality removed
 
 const HomeScreenOwner = ({ navigation }) => {
+    // Subscription context
+    const { userHasPackage, setPropertyForSubscription, loadActiveSubscription } = useSubscription();
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
     // Debug function to check login status (for testing)
     const checkLoginStatus = async () => {
         const credentials = await getStoredCredentials();
@@ -633,32 +640,48 @@ const HomeScreenOwner = ({ navigation }) => {
 
     // Property action button handlers
     const handlePhoneCall = (property) => {
+        // Check if user has active package
+        if (!userHasPackage) {
+            setPropertyForSubscription(property);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
         const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
         const phoneUrl = `tel:${phoneNumber}`;
         
-        // Use React Native Linking to open phone dialer
-        import('react-native').then(({ Linking }) => {
-            Linking.openURL(phoneUrl).catch((err) => {
-                console.error('Error opening phone dialer:', err);
-                Alert.alert('Error', 'Could not open phone dialer');
-            });
+        Linking.openURL(phoneUrl).catch((err) => {
+            console.error('Error opening phone dialer:', err);
+            Alert.alert('Error', 'Could not open phone dialer');
         });
     };
 
     const handleWhatsApp = (property) => {
+        // Check if user has active package
+        if (!userHasPackage) {
+            setPropertyForSubscription(property);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
         const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
         const message = encodeURIComponent(`Hi, I'm interested in your property: ${property.description || property.title || 'Property'}`);
         const whatsappUrl = `whatsapp://send?phone=+91${phoneNumber}&text=${message}`;
         
-        import('react-native').then(({ Linking }) => {
-            Linking.openURL(whatsappUrl).catch((err) => {
-                console.error('Error opening WhatsApp:', err);
-                Alert.alert('Error', 'WhatsApp is not installed or could not be opened');
-            });
+        Linking.openURL(whatsappUrl).catch((err) => {
+            console.error('Error opening WhatsApp:', err);
+            Alert.alert('Error', 'WhatsApp is not installed or could not be opened');
         });
     };
 
     const handlePropertyChat = async (property) => {
+        // Check if user has active package
+        if (!userHasPackage) {
+            setPropertyForSubscription(property);
+            setShowSubscriptionModal(true);
+            return;
+        }
+        
         try {
             // Navigate to chat with property owner
             // ChatDetailScreen expects 'user' object with '_id' field
@@ -1632,6 +1655,16 @@ const HomeScreenOwner = ({ navigation }) => {
                 onClose={() => setDrawerVisible(false)}
                 onLogout={handleLogout}
                 navigation={navigation}
+            />
+
+            {/* Subscription Modal */}
+            <SubscriptionModal 
+                visible={showSubscriptionModal}
+                onClose={() => setShowSubscriptionModal(false)}
+                onSuccess={() => {
+                    setShowSubscriptionModal(false);
+                    loadActiveSubscription();
+                }}
             />
         </SafeAreaView>
     );

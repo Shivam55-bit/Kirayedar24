@@ -19,6 +19,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import propertyService from '../services/propertyapi';
 import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
 import ContactPreferenceIcons from '../components/ContactPreferenceIcons';
+import { useSubscription } from '../context/SubscriptionContext';
+import SubscriptionRenewalModal from '../components/SubscriptionRenewalModal';
 
 // Get screen width for card calculations
 const { width } = Dimensions.get("window");
@@ -28,6 +30,11 @@ const MyPropertyScreen = ({ navigation, route }) => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [daysExpired, setDaysExpired] = useState(0);
+
+  // Subscription context
+  const { userHasPackage, activeSubscription, loadActiveSubscription } = useSubscription();
 
   // Load user's posted properties from API and merge local drafts
   const loadMyProperties = React.useCallback(async () => {
@@ -148,6 +155,7 @@ const MyPropertyScreen = ({ navigation, route }) => {
           bathrooms: d.bathrooms || 'N/A',
           area: `${d.areaSqFt || 'N/A'} sqft`,
           status: d.status || 'Pending Payment',
+          paymentStatus: d.paymentStatus || 'unpaid',
           image: imageUrl,
           purpose: d.purpose || '',
           furnishing: d.furnishingStatus || 'Not specified',
@@ -217,8 +225,37 @@ const MyPropertyScreen = ({ navigation, route }) => {
     React.useCallback(() => {
       console.log('🔄🔄🔄 MY PROPERTY SCREEN FOCUSED - LOADING DATA 🔄🔄🔄');
       loadMyProperties();
+      
+      // Check subscription status when screen is focused
+      checkSubscriptionStatus();
     }, [loadMyProperties])
   );
+
+  // Check if subscription is expired and show renewal modal
+  const checkSubscriptionStatus = async () => {
+    try {
+      await loadActiveSubscription();
+      
+      if (userHasPackage && activeSubscription) {
+        const expiryDate = activeSubscription.expiryDate || activeSubscription.expiry_date || activeSubscription.endDate || activeSubscription.end_date;
+        
+        if (expiryDate) {
+          const expiry = new Date(expiryDate);
+          const now = new Date();
+          
+          if (expiry < now) {
+            // Package is expired - show renewal modal
+            const diffTime = now - expiry;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            setDaysExpired(diffDays);
+            setShowRenewalModal(true);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+    }
+  };
 
   // Refresh handler
   const onRefresh = async () => {
@@ -408,9 +445,12 @@ const MyPropertyScreen = ({ navigation, route }) => {
     }
   };
 
-  const renderPropertyCard = ({ item }) => (
+  const renderPropertyCard = ({ item }) => {
+    const isUnpaid = item.paymentStatus === 'unpaid' || item.status === 'draft' || item.isLocalDraft;
+    
+    return (
     <TouchableOpacity 
-      style={styles.residentialCard}
+      style={[styles.residentialCard, isUnpaid && { opacity: 0.6 }]}
       onPress={() => handlePropertyPress(item)}
       activeOpacity={0.9}
     >
@@ -444,6 +484,14 @@ const MyPropertyScreen = ({ navigation, route }) => {
             {(item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending').charAt(0).toUpperCase() + (item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending').slice(1)}
           </Text>
         </View>
+
+        {/* Unpaid Badge - Show when property is unpaid or draft */}
+        {(item.paymentStatus === 'unpaid' || item.status === 'draft' || item.isLocalDraft) && (
+          <View style={[styles.statusBadgeNew, { backgroundColor: '#EF4444', position: 'absolute', right: 12, top: 12 }]}>
+            <Icon name="alert-circle" size={12} color="#FFFFFF" />
+            <Text style={styles.statusTextNew}>UNPAID</Text>
+          </View>
+        )}
       </View>
 
       {/* Property Details */}
@@ -524,17 +572,17 @@ const MyPropertyScreen = ({ navigation, route }) => {
             <Icon name="eye-outline" size={16} color="#3B82F6" />
             <Text style={styles.managementButtonText}>View</Text>
           </TouchableOpacity>
-          {/* Pay Now button for local drafts / pending payment items */}
-          {(item.isLocalDraft || item.status === 'Pending Payment') && (
+          {/* Pay Now button for local drafts / pending payment items / unpaid properties */}
+          {(item.isLocalDraft || item.status === 'Pending Payment' || item.paymentStatus === 'unpaid' || item.status === 'draft') && (
             <TouchableOpacity
               style={styles.managementButton}
               onPress={() => {
                 Alert.alert(
-                  'Pending Payment',
-                  'This property has a pending payment. Do you want to proceed to pay now?',
+                  'Payment Required',
+                  'This property has an unpaid payment. Do you want to proceed to pay now?',
                   [
                     { text: 'Later', style: 'cancel' },
-                    { text: 'Pay Now', onPress: () => navigation.navigate('AddSell', { openPayment: true, draftId: item.id }) }
+                    { text: 'Pay Now', onPress: () => navigation.navigate('AddSell', { openPayment: true, draftId: item.id, propertyId: item.id }) }
                   ],
                   { cancelable: true }
                 );
@@ -554,7 +602,8 @@ const MyPropertyScreen = ({ navigation, route }) => {
         </View>
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -652,6 +701,22 @@ const MyPropertyScreen = ({ navigation, route }) => {
           )}
         </View>
       </ScrollView>
+
+      {/* Subscription Renewal Modal */}
+      <SubscriptionRenewalModal
+        visible={showRenewalModal}
+        onClose={() => setShowRenewalModal(false)}
+        onSelectPackage={(pkg) => {
+          setShowRenewalModal(false);
+          // Navigate to AddSell screen with payment modal open
+          navigation.navigate('AddSell', { 
+            openPaymentModal: true,
+            selectedPackage: pkg
+          });
+        }}
+        expiredDate={activeSubscription?.expiryDate || activeSubscription?.expiry_date}
+        daysExpired={daysExpired}
+      />
     </SafeAreaView>
   );
 };

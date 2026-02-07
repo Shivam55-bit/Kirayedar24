@@ -40,6 +40,39 @@ const isSubscriptionValid = (subscription) => {
   return true;
 };
 
+/**
+ * Get days remaining until subscription expires
+ */
+const getDaysRemaining = (subscription) => {
+  if (!subscription) return 0;
+  
+  const expiryDate = subscription.expiryDate || subscription.expiry_date || subscription.endDate || subscription.end_date;
+  if (!expiryDate) return 0;
+  
+  const expiry = new Date(expiryDate);
+  const now = new Date();
+  const diffTime = expiry - now;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return Math.max(0, diffDays);
+};
+
+/**
+ * Get subscription expiry date formatted
+ */
+const getExpiryDateFormatted = (subscription) => {
+  if (!subscription) return null;
+  
+  const expiryDate = subscription.expiryDate || subscription.expiry_date || subscription.endDate || subscription.end_date;
+  if (!expiryDate) return null;
+  
+  return new Date(expiryDate).toLocaleDateString('en-IN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};
+
 export const SubscriptionProvider = ({ children }) => {
   const [userHasPackage, setUserHasPackage] = useState(false);
   const [activeSubscription, setActiveSubscription] = useState(null);
@@ -102,6 +135,27 @@ export const SubscriptionProvider = ({ children }) => {
     setSelectedProperty(property);
   }, []);
 
+  /**
+   * Check if user can post a property
+   */
+  const canPostProperty = useCallback(() => {
+    return userHasPackage && isSubscriptionValid(activeSubscription);
+  }, [userHasPackage, activeSubscription]);
+
+  /**
+   * Get days remaining until subscription expires
+   */
+  const getDaysUntilExpiry = useCallback(() => {
+    return getDaysRemaining(activeSubscription);
+  }, [activeSubscription]);
+
+  /**
+   * Get formatted expiry date
+   */
+  const getFormattedExpiryDate = useCallback(() => {
+    return getExpiryDateFormatted(activeSubscription);
+  }, [activeSubscription]);
+
   const value = {
     userHasPackage,
     activeSubscription,
@@ -111,6 +165,10 @@ export const SubscriptionProvider = ({ children }) => {
     refreshSubscription,
     clearSubscription,
     setPropertyForSubscription,
+    canPostProperty,
+    getDaysUntilExpiry,
+    getFormattedExpiryDate,
+    isSubscriptionValid,
   };
 
   return (

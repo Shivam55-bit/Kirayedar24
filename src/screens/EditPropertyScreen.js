@@ -185,8 +185,6 @@ const EditPropertyScreen = ({ navigation, route }) => {
     propertyType: initialProperty.propertyType || 'Residential',
     // Contact number
     contactNumber: initialProperty.contactNumber || initialProperty.phone || '',
-    // Commercial specific
-    spaceAvailable: initialProperty.spaceAvailable ? String(initialProperty.spaceAvailable) : '',
   };
 
   // Debug: Log the location fields to help troubleshoot
@@ -290,8 +288,6 @@ const EditPropertyScreen = ({ navigation, route }) => {
           propertyType: property.propertyType || undefined,
           // Contact number
           contactNumber: property.contactNumber || undefined,
-          // Commercial specific
-          spaceAvailable: property.spaceAvailable ? Number(property.spaceAvailable) : undefined,
           removedFiles: removedImages.length ? JSON.stringify(removedImages) : undefined,
           removePhotos: removedImages.length ? JSON.stringify(removedImages) : undefined,
         };
@@ -543,7 +539,7 @@ const EditPropertyScreen = ({ navigation, route }) => {
           />
           <View style={styles.previewOverlay} />
           <View style={styles.previewContent}>
-            <View style={styles.previewBadges}>
+          <View style={styles.previewBadges}>
               {property.type ? (
                 <View style={styles.typeBadge}>
                   <Text style={styles.typeBadgeText}>{property.type}</Text>
@@ -731,20 +727,22 @@ const EditPropertyScreen = ({ navigation, route }) => {
               onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
             />
           ) : (
-            <OptionSelector
-              label="Residential Type"
-              options={["Apartment", "Villa", "Plot", "Singlex", "Duplex", "Room", "Flat"]}
-              value={property.specificType || property.type}
-              onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
-            />
+            <>
+              <OptionSelector
+                label="Residential Type"
+                options={["Apartment", "Villa", "Plot", "Singlex", "Duplex", "Room", "Flat"]}
+                value={property.specificType || property.type}
+                onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
+              />
+              
+              <OptionSelector
+                label="Purpose"
+                options={["Rent", "Paying Guest"]}
+                value={property.purpose}
+                onChange={(val) => handleChange('purpose', val)}
+              />
+            </>
           )}
-          
-          <OptionSelector
-            label="Purpose"
-            options={["Rent", "Paying Guest"]}
-            value={property.purpose}
-            onChange={(val) => handleChange('purpose', val)}
-          />
           
           <OptionSelector
             label="Availability Status"
@@ -804,12 +802,14 @@ const EditPropertyScreen = ({ navigation, route }) => {
             onChange={(val) => handleChange('parking', val)}
           />
           
-          <OptionSelector
-            label="Kitchen Type"
-            options={["Modular", "Simple"]}
-            value={property.kitchenType}
-            onChange={(val) => handleChange('kitchenType', val)}
-          />
+          {property.propertyType === 'Residential' && (
+            <OptionSelector
+              label="Kitchen Type"
+              options={["Modular", "Simple"]}
+              value={property.kitchenType}
+              onChange={(val) => handleChange('kitchenType', val)}
+            />
+          )}
           
           <OptionSelector
             label="Facing Direction"

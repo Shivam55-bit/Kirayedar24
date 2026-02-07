@@ -407,10 +407,12 @@ export const addProperty = async (formData) => {
     };
 
   } catch (error) {
-    console.error('🔥 Property API Network Error:', error);
+    // Network error - don't log loudly, just return failed response
+    // The calling code (AddSellScreen) will handle this with a fallback
+    console.log('📡 API Network error (will fall back to local save):', error.message);
     return {
       success: false,
-      message: 'Network error. Please check your connection.',
+      message: 'Network error. Saving locally instead.',
       error: error.message,
       isNetworkError: true
     };

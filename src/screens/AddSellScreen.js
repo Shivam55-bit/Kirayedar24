@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useMemo } from "react";
+﻿import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,9 +22,13 @@ import LinearGradient from "react-native-linear-gradient";
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import DatePicker from 'react-native-date-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addProperty, verifySubscriptionPayment, getSubscriptionPackages, createSubscriptionOrder, getStates, getDistricts, getCities, extractPincode } from '../services/api'; // Import the API service (subscription helpers added)
+import { addProperty, verifySubscriptionPayment, getSubscriptionPackages, createSubscriptionOrder, getStates, getDistricts, getCities, extractPincode } from '../services/api';
+import { useSubscription } from '../context/SubscriptionContext'; // Import the API service (subscription helpers added)
 import RazorpayCheckout from 'react-native-razorpay';
 import { RAZORPAY_KEY_ID } from '../config/api.config';
+import SubscriptionRenewalModal from '../components/SubscriptionRenewalModal';
+import NoPackageModal from '../components/NoPackageModal';
+import MediaPickerModal from '../components/MediaPickerModal';
 // Default subscription package id (replace with real package id or make configurable)
 const DEFAULT_SUBSCRIPTION_PACKAGE_ID = '64fabc1234567890abcd1234';
 import { getAllStates, getCitiesByState, getAreasByCity, getPincodeByArea } from '../utils/locationData';
@@ -405,6 +409,55 @@ const AddSellScreen = ({ navigation, route }) => {
   // Local draft id when we come from MyPropertyScreen to pay for a draft
   const [currentDraftId, setCurrentDraftId] = useState(null);
 
+  // ✅ Subscription Context Hook
+  const { userHasPackage, activeSubscription, loadActiveSubscription, refreshSubscription } = useSubscription();
+  const [showSubscriptionExpiredModal, setShowSubscriptionExpiredModal] = useState(false);
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [daysExpired, setDaysExpired] = useState(0);
+  const [showNoPackageModal, setShowNoPackageModal] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+
+  // ✅ Check subscription on mount and handle expiry
+  useEffect(() => {
+    const checkSubscriptionStatus = async () => {
+      try {
+        // Reload latest subscription status
+        await loadActiveSubscription();
+      } catch (error) {
+        console.error('Error checking subscription:', error);
+      }
+    };
+
+    checkSubscriptionStatus();
+  }, [loadActiveSubscription]);
+
+  // ✅ Block submission if subscription is expired/inactive
+  const isSubscriptionActive = useCallback(() => {
+    if (!userHasPackage || !activeSubscription) {
+      return false;
+    }
+    
+    // Check if subscription is expired
+    const expiryDate = activeSubscription.expiryDate || activeSubscription.expiry_date || activeSubscription.endDate || activeSubscription.end_date;
+    if (expiryDate) {
+      const expiry = new Date(expiryDate);
+      const now = new Date();
+      
+      if (expiry < now) {
+        console.warn('⚠️ Subscription expired on:', expiry.toISOString());
+        
+        // Calculate days expired
+        const diffTime = now - expiry;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        setDaysExpired(diffDays);
+        
+        return false;
+      }
+    }
+    
+    return true;
+  }, [userHasPackage, activeSubscription]);
+
   // API functions for location data
   const fetchStates = async () => {
     try {
@@ -484,25 +537,40 @@ const AddSellScreen = ({ navigation, route }) => {
   React.useEffect(() => {
     let mounted = true;
     const params = route?.params || {};
-    if (params.openPayment && params.draftId) {
+    if (params.openPayment && (params.draftId || params.propertyId)) {
       (async () => {
         try {
+          let draftData = null;
+          
+          // First try to find in local drafts
           const raw = await AsyncStorage.getItem('@local_draft_properties');
           const drafts = raw ? JSON.parse(raw) : [];
-          const found = drafts.find(d => d._id === params.draftId);
-          if (!found) {
-            console.warn('[AddSellScreen] Draft not found for payment:', params.draftId);
+          draftData = drafts.find(d => d._id === params.draftId);
+          
+          // If not found locally and propertyId provided, it's a backend property
+          // For now, we'll use the propertyId - you may need to fetch it from backend later
+          if (!draftData && !params.draftId) {
+            console.log('[AddSellScreen] Opening payment for backend property:', params.propertyId);
+            // Store propertyId for payment processing
+            setCurrentDraftId(params.propertyId);
+            // Open payment modal immediately for backend properties
+            setShowPaymentModal(true);
+            return;
+          }
+
+          if (!draftData) {
+            console.warn('[AddSellScreen] Draft/Property not found for payment:', params.draftId || params.propertyId);
             return;
           }
 
           if (!mounted) return;
 
           // Prefill fields from draft
-          setPropertyState(found.state || '');
-          setCity(found.city || '');
-          setLocality(found.locality || '');
+          setPropertyState(draftData.state || '');
+          setCity(draftData.city || '');
+          setLocality(draftData.locality || '');
           // Handle district - check if it was manually entered (Other option)
-          const savedDistrict = found.district || found.post || '';
+          const savedDistrict = draftData.district || draftData.post || '';
           if (savedDistrict === 'OTHER' || !availableDistricts.find(d => d.value === savedDistrict)) {
             setDistrict('OTHER');
             setIsOtherDistrict(true);
@@ -512,25 +580,25 @@ const AddSellScreen = ({ navigation, route }) => {
             setIsOtherDistrict(false);
             setManualDistrict('');
           }
-          setPincode(found.pincode || '');
-          setArea(found.areaSqFt ? String(found.areaSqFt) : '');
-          setPrice(found.price ? String(found.price) : '');
-          setContactNumber(found.contactNumber || '');
-          setPropertyType(found.propertyType || 'Residential');
-          setPurpose(found.purpose || 'Rent');
-          setFurnishing(found.furnishingStatus || 'Semi-Furnished');
-          setParking(found.parking || 'Available');
-          setKitchenType(found.kitchenType || 'Simple');
-          setAvailability(found.availabilityStatus || 'Ready to Move');
-          setDescription(found.description || '');
-          setSelectedMedia((found.photos||[]).map(uri => ({ uri, type: 'photo' })).concat((found.videos||[]).map(uri => ({ uri, type: 'video' }))));
-          setCurrentDraftId(found._id);
+          setPincode(draftData.pincode || '');
+          setArea(draftData.areaSqFt ? String(draftData.areaSqFt) : '');
+          setPrice(draftData.price ? String(draftData.price) : '');
+          setContactNumber(draftData.contactNumber || '');
+          setPropertyType(draftData.propertyType || 'Residential');
+          setPurpose(draftData.purpose || 'Rent');
+          setFurnishing(draftData.furnishingStatus || 'Semi-Furnished');
+          setParking(draftData.parking || 'Available');
+          setKitchenType(draftData.kitchenType || 'Simple');
+          setAvailability(draftData.availabilityStatus || 'Ready to Move');
+          setDescription(draftData.description || '');
+          setSelectedMedia((draftData.photos||[]).map(uri => ({ uri, type: 'photo' })).concat((draftData.videos||[]).map(uri => ({ uri, type: 'video' }))));
+          setCurrentDraftId(draftData._id);
 
           // Open payment modal for this draft
           setShowPaymentModal(true);
 
           // Clear navigation params so we don't reopen repeatedly
-          try { navigation.setParams({ openPayment: false, draftId: null }); } catch (e) { }
+          try { navigation.setParams({ openPayment: false, draftId: null, propertyId: null }); } catch (e) { }
         } catch (e) {
           console.error('[AddSellScreen] Failed to load draft for payment:', e);
         }
@@ -699,6 +767,16 @@ const AddSellScreen = ({ navigation, route }) => {
   const toggleContactBy = useCallback((key) =>
     setContactBy((p) => ({ ...p, [key]: !p[key] })), []);
 
+  // Handle package selection from renewal modal
+  const handleRenewalPackageSelect = useCallback((selectedPkg) => {
+    console.log('📦 Package selected for renewal:', selectedPkg.name);
+    setShowRenewalModal(false);
+    
+    // Set the selected package and open payment modal
+    setSelectedPackage(selectedPkg);
+    setShowPaymentModal(true);
+  }, []);
+
   // Step Navigation Functions - wrapped in useCallback
   const validateStep1 = useCallback(() => {
     // Get effective district value
@@ -805,24 +883,7 @@ const AddSellScreen = ({ navigation, route }) => {
   };
 
   const handleMediaPicker = () => {
-    Alert.alert(
-      "Add Media",
-      "Choose photos or videos for your property",
-      [
-        {
-          text: "Camera",
-          onPress: () => openCamera()
-        },
-        {
-          text: "Gallery", 
-          onPress: () => openGallery()
-        },
-        {
-          text: "Cancel",
-          style: "cancel"
-        }
-      ]
-    );
+    setShowMediaPicker(true);
   };
 
   const openCamera = async () => {
@@ -942,9 +1003,228 @@ const AddSellScreen = ({ navigation, route }) => {
     setSelectedMedia(prev => prev.filter(media => media.id !== id));
   };
 
+  // ✅ NEW FUNCTION: Save property as unpaid/draft
+  const savePropertyAsDraft = async (addressValidation, areaNum, priceNum) => {
+    try {
+      const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
+      
+      const formData = new FormData();
+      
+      // Address
+      formData.append('state', addressValidation.state);
+      formData.append('district', addressValidation.district);
+      formData.append('city', addressValidation.city);
+      formData.append('locality', addressValidation.locality);
+      formData.append('pincode', addressValidation.pincode);
+      
+      // Core fields
+      formData.append('areaSqFt', areaNum);
+      formData.append('price', priceNum);
+      formData.append('contactNumber', contactNumber.trim());
+      formData.append('propertyType', propertyType);
+      formData.append('purpose', purpose);
+      formData.append('furnishingStatus', furnishing);
+      formData.append('parking', parking);
+      formData.append('availabilityStatus', availability);
+      formData.append('availableFrom', availableFrom.toISOString().split('T')[0]);
+      formData.append('availableFor', availableFor);
+      
+      // Residential specific
+      if (propertyType === 'Residential') {
+        formData.append('residentialType', residentialType);
+        formData.append('bedrooms', bedrooms);
+        formData.append('bathrooms', bathrooms);
+        formData.append('kitchenType', kitchenType);
+        formData.append('balconies', balconies);
+        formData.append('floorNumber', floorNumber);
+        formData.append('totalFloors', totalFloors);
+        formData.append('societyMaintenance', societyMaintenance);
+        if (societyFeatures.length > 0) {
+          societyFeatures.forEach(feature => formData.append('societyFeatures[]', feature));
+        }
+      } else if (propertyType === 'Commercial') {
+        formData.append('commercialType', commercialType);
+        formData.append('spaceAvailable', spaceAvailable);
+      }
+      
+      formData.append('description', description);
+      formData.append('contactPreference', contactPreference);
+      formData.append('whatsappContact', contactBy.whatsapp);
+      formData.append('phoneContact', contactBy.phone);
+      formData.append('emailContact', contactBy.email);
+      
+      // Media - don't include in FormData if there are issues
+      if (selectedMedia && selectedMedia.length > 0) {
+        selectedMedia.forEach((media, index) => {
+          if (media.uri) {
+            formData.append('media', {
+              uri: media.uri,
+              type: media.type || 'image/jpeg',
+              name: media.name || `media_${index}.jpg`
+            });
+          }
+        });
+      }
+      
+      // ✅ IMPORTANT: Mark as unpaid/draft
+      formData.append('paymentStatus', 'unpaid');
+      formData.append('status', 'draft');
+      
+      console.log('💾 Saving property as UNPAID DRAFT...');
+      console.log('🌐 Attempting to sync with backend...');
+      
+      let result = null;
+      let savedLocally = false;
+      
+      // Try to save to backend first
+      try {
+        result = await addProperty(formData);
+        console.log('📨 addProperty response:', result);
+        
+        if (result && result.success) {
+          console.log('✅ Property saved to BACKEND!');
+        } else {
+          // Backend didn't accept it - save locally
+          console.warn('⚠️ Backend rejected - saving locally instead');
+          throw new Error('Backend unavailable');
+        }
+      } catch (backendError) {
+        console.warn('🔥 Backend error, saving to local storage instead:', backendError.message);
+        
+        // Save locally as fallback
+        const localProperty = {
+          _id: Date.now().toString(), // Use timestamp as local ID
+          state: addressValidation.state,
+          district: addressValidation.district,
+          city: addressValidation.city,
+          locality: addressValidation.locality,
+          pincode: addressValidation.pincode,
+          areaSqFt: areaNum,
+          price: priceNum,
+          contactNumber: contactNumber.trim(),
+          propertyType,
+          purpose,
+          furnishingStatus: furnishing,
+          parking,
+          availabilityStatus: availability,
+          availableFrom: availableFrom.toISOString().split('T')[0],
+          availableFor,
+          residentialType: propertyType === 'Residential' ? residentialType : null,
+          bedrooms: propertyType === 'Residential' ? bedrooms : null,
+          bathrooms: propertyType === 'Residential' ? bathrooms : null,
+          kitchenType: propertyType === 'Residential' ? kitchenType : null,
+          balconies: propertyType === 'Residential' ? balconies : null,
+          floorNumber: propertyType === 'Residential' ? floorNumber : null,
+          totalFloors: propertyType === 'Residential' ? totalFloors : null,
+          societyMaintenance: propertyType === 'Residential' ? societyMaintenance : null,
+          societyFeatures: propertyType === 'Residential' ? societyFeatures : [],
+          commercialType: propertyType === 'Commercial' ? commercialType : null,
+          spaceAvailable: propertyType === 'Commercial' ? spaceAvailable : null,
+          description,
+          contactPreference,
+          whatsappContact: contactBy.whatsapp,
+          phoneContact: contactBy.phone,
+          emailContact: contactBy.email,
+          paymentStatus: 'unpaid',
+          status: 'draft',
+          photos: selectedMedia.filter(m => m.type === 'photo' || !m.type).map(m => m.uri) || [],
+          videos: selectedMedia.filter(m => m.type === 'video').map(m => m.uri) || [],
+          isLocalDraft: true,
+          createdAt: new Date().toISOString(),
+          syncedWithBackend: false
+        };
+        
+        // Save to AsyncStorage
+        try {
+          const existing = await AsyncStorage.getItem('@local_draft_properties');
+          const drafts = existing ? JSON.parse(existing) : [];
+          drafts.push(localProperty);
+          await AsyncStorage.setItem('@local_draft_properties', JSON.stringify(drafts));
+          console.log('✅ Property saved to LOCAL STORAGE');
+          savedLocally = true;
+          result = { success: true, data: localProperty };
+        } catch (storageError) {
+          console.error('❌ Failed to save locally:', storageError);
+          throw storageError;
+        }
+      }
+      
+      if (result && result.success) {
+        const createdProperty = result.data || result.property || result;
+        
+        console.log('✅ Property saved successfully!', createdProperty);
+        
+        // Clear form
+        setCurrentStep(1);
+        setPropertyState('');
+        setCity('');
+        setDistrict('');
+        setLocality('');
+        setPincode('');
+        setSelectedMedia([]);
+        
+        // Show success modal with appropriate message
+        const successMessage = savedLocally 
+          ? 'Saved locally. Will sync with server when online.'
+          : 'Property saved successfully!';
+        
+        Alert.alert(
+          'Success! ✨',
+          'Property saved as unpaid\n\n' + successMessage,
+          [
+            {
+              text: 'View in My Properties',
+              onPress: () => {
+                setSubmitting(false);
+                navigation.navigate('MyPropertyScreen', { 
+                  refresh: true, 
+                  timestamp: Date.now(),
+                  showUnpaidProperties: true 
+                });
+              },
+              style: 'default'
+            },
+            {
+              text: 'Add More',
+              onPress: () => {
+                setSubmitting(false);
+              }
+            }
+          ]
+        );
+        
+      } else {
+        console.error('❌ Failed to save property:', result);
+        const errorMsg = result?.message || result?.error || 'Failed to save property. Please try again.';
+        Alert.alert('Error', errorMsg);
+        setSubmitting(false);
+      }
+    } catch (error) {
+      console.error('🔥 Error saving draft:', error);
+      console.error('🔥 Error message:', error.message);
+      
+      Alert.alert('Error', 'Failed to save property:\n' + (error.message || 'Unknown error'));
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async () => {
     console.log('🚀 Starting property submission validation...');
     
+    // ✅ CHECK SUBSCRIPTION FIRST
+    if (!isSubscriptionActive()) {
+      // Show renewal modal for expired package
+      if (userHasPackage && activeSubscription) {
+        console.log('⚠️ Subscription has expired, showing renewal modal');
+        setShowRenewalModal(true);
+      } else {
+        // No package at all - show beautiful no-package modal
+        console.log('⚠️ No active package, showing purchase modal');
+        setShowNoPackageModal(true);
+      }
+      return;
+    }
+
     // Get effective district (from dropdown or manual input)
     const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
     
@@ -1113,15 +1393,16 @@ const AddSellScreen = ({ navigation, route }) => {
 
     console.log('✅ All frontend validation passed successfully!');
     console.log('📋 Validated field values:', {
-      address: addressValidation, // Use validated address object
+      address: addressValidation,
       areaDetails: areaNum,
       price: priceNum,
       propertyType,
       contactNumber
     });
     
-    // Open payment modal directly instead of navigating
-    setShowPaymentModal(true);
+    // ✅ NEW: Save as unpaid/draft directly without payment modal
+    setSubmitting(true);
+    await savePropertyAsDraft(addressValidation, areaNum, priceNum);
   };
   
   // New function to handle actual property submission after payment
@@ -2299,6 +2580,61 @@ const AddSellScreen = ({ navigation, route }) => {
           </View>
         </View>
       </Modal>
+
+      {/* Subscription Renewal Modal - shown when package expires */}
+      <SubscriptionRenewalModal
+        visible={showRenewalModal}
+        onClose={() => setShowRenewalModal(false)}
+        onSelectPackage={handleRenewalPackageSelect}
+        expiredDate={activeSubscription?.expiryDate || activeSubscription?.expiry_date}
+        daysExpired={daysExpired}
+        onMaybeLater={async () => {
+          setShowRenewalModal(false);
+          const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
+          const addressValidation = {
+            state: propertyState?.trim() || '',
+            district: effectiveDistrict || '',
+            city: city?.trim() || '',
+            locality: locality?.trim() || '',
+            pincode: pincode?.trim() || ''
+          };
+          const areaNum = parseInt(area);
+          const priceNum = parseInt(price);
+          await savePropertyAsDraft(addressValidation, areaNum, priceNum);
+        }}
+      />
+
+      {/* No Package Modal - shown when user has no active package */}
+      <NoPackageModal
+        visible={showNoPackageModal}
+        onClose={() => setShowNoPackageModal(false)}
+        onBuyPackage={() => {
+          setShowNoPackageModal(false);
+          setShowPaymentModal(true);
+        }}
+        onMaybeLater={async () => {
+          setShowNoPackageModal(false);
+          const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
+          const addressValidation = {
+            state: propertyState?.trim() || '',
+            district: effectiveDistrict || '',
+            city: city?.trim() || '',
+            locality: locality?.trim() || '',
+            pincode: pincode?.trim() || ''
+          };
+          const areaNum = parseInt(area);
+          const priceNum = parseInt(price);
+          await savePropertyAsDraft(addressValidation, areaNum, priceNum);
+        }}
+      />
+
+      {/* Media Picker Modal - shown when user wants to add photos/videos */}
+      <MediaPickerModal
+        visible={showMediaPicker}
+        onClose={() => setShowMediaPicker(false)}
+        onCamera={() => openCamera()}
+        onGallery={() => openGallery()}
+      />
     </SafeAreaView>
   );
 };

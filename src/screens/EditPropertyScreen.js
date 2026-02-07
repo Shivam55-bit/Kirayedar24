@@ -21,8 +21,8 @@ import propertyService from '../services/propertyapi';
 const safeFormatImageUrl = (url) => {
   if (!url) return 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('uploads/')) return `https://n5.bhoomitechzone.us/${url}`;
-  return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
+  if (url.startsWith('uploads/')) return `https://kiraeydarback.bhoomi.cloud/${url}`;
+  return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
 };
 
 const safeFormatPrice = (price) => {

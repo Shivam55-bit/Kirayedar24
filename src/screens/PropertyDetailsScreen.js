@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -41,14 +41,14 @@ const formatImageUrl = (url) => {
   
   // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
   if (url.startsWith('uploads/')) {
-    return `https://n5.bhoomitechzone.us/${url}`;
+    return `https://kiraeydarback.bhoomi.cloud/${url}`;
   }
   
   // For other relative paths, add base URL
-  return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
+  return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
 };
 
-const formatPrice = (price) => price ? `₹${Number(price).toLocaleString()}` : '₹0';
+const formatPrice = (price) => price ? `?${Number(price).toLocaleString()}` : '?0';
 const getRecentProperties = async (limit) => ({ success: true, properties: [] });
 const getNearbyProperties = async (lat, lng) => ({ success: true, properties: [] });
 
@@ -107,22 +107,22 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   // Subscription context
   const { userHasPackage, setPropertyForSubscription } = useSubscription();
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  console.log('🏠 PropertyDetailsScreen - Route property received:', routeProperty);
-  console.log('🏠 Property state value:', routeProperty?.state);
-  console.log('🏠 Property city value:', routeProperty?.city);
-  console.log('🏠 Property locality value:', routeProperty?.locality);
-  console.log('🏠 Property address object:', routeProperty?.address);
-  console.log('🏠 Property availableFrom:', routeProperty?.availableFrom);
-  console.log('🏠 Property societyFeatures:', routeProperty?.societyFeatures);
-  console.log('🏠 Property societyMaintenance:', routeProperty?.societyMaintenance);
-  console.log('🏠 Property availableFor:', routeProperty?.availableFor);
-  console.log('🏠 Property parking:', routeProperty?.parking);
+  console.log('?? PropertyDetailsScreen - Route property received:', routeProperty);
+  console.log('?? Property state value:', routeProperty?.state);
+  console.log('?? Property city value:', routeProperty?.city);
+  console.log('?? Property locality value:', routeProperty?.locality);
+  console.log('?? Property address object:', routeProperty?.address);
+  console.log('?? Property availableFrom:', routeProperty?.availableFrom);
+  console.log('?? Property societyFeatures:', routeProperty?.societyFeatures);
+  console.log('?? Property societyMaintenance:', routeProperty?.societyMaintenance);
+  console.log('?? Property availableFor:', routeProperty?.availableFor);
+  console.log('?? Property parking:', routeProperty?.parking);
   
   // Utility to get address fields from nested address object or flat structure
   const getAddressField = (property, field) => {
     if (!property) return null;
     
-    console.log(`🔍 getAddressField called for "${field}"`, {
+    console.log(`?? getAddressField called for "${field}"`, {
       hasAddressObject: !!property.address,
       addressValue: property.address?.[field],
       flatValue: property[field],
@@ -133,24 +133,24 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
     if (property.address && typeof property.address === 'object') {
       const value = property.address[field];
       if (value) {
-        console.log(`✅ Found "${field}" in address object:`, value);
+        console.log(`? Found "${field}" in address object:`, value);
         return safeString(value, null);
       }
     }
     
     // Fallback to flat structure (old format)
     if (property[field]) {
-      console.log(`✅ Found "${field}" in flat structure:`, property[field]);
+      console.log(`? Found "${field}" in flat structure:`, property[field]);
       return safeString(property[field], null);
     }
     
     // Special mapping for locality - can also be propertyLocation in old format
     if (field === 'locality' && property.propertyLocation) {
-      console.log(`✅ Found locality as propertyLocation:`, property.propertyLocation);
+      console.log(`? Found locality as propertyLocation:`, property.propertyLocation);
       return safeString(property.propertyLocation, null);
     }
     
-    console.log(`❌ "${field}" not found anywhere`);
+    console.log(`? "${field}" not found anywhere`);
     return null;
   };
   
@@ -188,7 +188,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
 
     try {
       setSavingProperty(true);
-      console.log('💾 Saving property:', propertyId);
+      console.log('?? Saving property:', propertyId);
       
       const response = await saveProperty(propertyId);
       
@@ -199,7 +199,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           'Property added to your shortlist!',
           [{ text: 'OK' }]
         );
-        console.log('✅ Property saved successfully');
+        console.log('? Property saved successfully');
       } else {
         Alert.alert(
           'Info',
@@ -208,7 +208,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
         );
       }
     } catch (error) {
-      console.error('❌ Error saving property:', error);
+      console.error('? Error saving property:', error);
       Alert.alert(
         'Error',
         error.message || 'Failed to save property. Please try again.',
@@ -236,21 +236,21 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
       const fetchPropertyDetails = async () => {
         setLoading(true);
         try {
-          console.log('📥 Fetching full property details for ID:', propertyId);
+          console.log('?? Fetching full property details for ID:', propertyId);
           const response = await getPropertyById(propertyId);
-          console.log('📦 Property API Response:', response);
+          console.log('?? Property API Response:', response);
           
           if (response.success && response.data) {
             setProperty(response.data);
-            console.log('✅ Property details loaded successfully');
+            console.log('? Property details loaded successfully');
           } else if (response.property) {
             setProperty(response.property);
-            console.log('✅ Property details loaded successfully (from response.property)');
+            console.log('? Property details loaded successfully (from response.property)');
           } else {
-            console.warn('⚠️ Property not found or incomplete response');
+            console.warn('?? Property not found or incomplete response');
           }
         } catch (err) {
-          console.error("❌ Property fetch failed:", err);
+          console.error("? Property fetch failed:", err);
         } finally {
           setLoading(false);
         }
@@ -295,9 +295,9 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
       if (!propertyId) return;
 
       try {
-        console.log('🔍 Checking if property is saved:', propertyId);
+        console.log('?? Checking if property is saved:', propertyId);
         const response = await getSavedProperties();
-        console.log('📦 Saved Properties API Response:', response);
+        console.log('?? Saved Properties API Response:', response);
         
         // Extract saved properties array - matching SavedScreen logic
         let savedPropertiesList = [];
@@ -313,19 +313,19 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
         // Filter out null entries
         savedPropertiesList = savedPropertiesList.filter(Boolean);
         
-        console.log('📋 Saved properties count:', savedPropertiesList.length);
+        console.log('?? Saved properties count:', savedPropertiesList.length);
         
         if (savedPropertiesList.length > 0) {
           const savedPropertyIds = savedPropertiesList.map(p => p._id || p.id).filter(Boolean);
           const isAlreadySaved = savedPropertyIds.includes(propertyId);
           setIsSaved(isAlreadySaved);
           
-          console.log(isAlreadySaved ? '✅ Property is already in shortlist' : 'ℹ️ Property is not in shortlist');
+          console.log(isAlreadySaved ? '? Property is already in shortlist' : '?? Property is not in shortlist');
         } else {
-          console.log('ℹ️ No saved properties found');
+          console.log('?? No saved properties found');
         }
       } catch (error) {
-        console.error('❌ Error checking saved status:', error);
+        console.error('? Error checking saved status:', error);
       }
     };
 
@@ -382,7 +382,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   const currentImage = allImages[currentImageIndex];
 
   // Enhanced debugging with image URL testing
-  console.log('🏠 Property data debugging:', {
+  console.log('?? Property data debugging:', {
     propertyId: property?._id || property?.id,
     hasPhotos: !!property?.photos,
     photosLength: property?.photos?.length || 0,
@@ -410,7 +410,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   // Test image URL accessibility
   const testImageUrl = (url) => {
     if (url) {
-      console.log('🔍 Testing image URL accessibility:', url);
+      console.log('?? Testing image URL accessibility:', url);
     }
   };
   
@@ -498,7 +498,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
     return (
       <View style={[styles.container, styles.center]}>
         <Text style={{ fontSize: 16, color: colors.text }}>
-          Property details not available 😟
+          Property details not available ??
         </Text>
         <TouchableOpacity style={{ marginTop: 12 }} onPress={handleBackPress}>
           <Text style={{ color: colors.primary, fontWeight: "700" }}>Go back</Text>
@@ -603,12 +603,12 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             resizeMode="cover"
             onError={(error) => {
               setImageError(true);
-              console.log('❌ Image failed to load:', currentImage);
+              console.log('? Image failed to load:', currentImage);
               console.log('Error details:', error.nativeEvent);
             }}
             onLoad={() => {
               setImageError(false);
-              console.log('✅ Image loaded successfully:', currentImage);
+              console.log('? Image loaded successfully:', currentImage);
             }}
           />
         </TouchableOpacity>
@@ -704,7 +704,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
         <View style={styles.infoCard}>
           {routeUser ? (
             <View style={styles.userBanner}>
-              <Text style={styles.userBannerText}>Viewing as: {routeUser.name} • {routeUser.phone}</Text>
+              <Text style={styles.userBannerText}>Viewing as: {routeUser.name} � {routeUser.phone}</Text>
             </View>
           ) : null}
           
@@ -712,7 +712,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             <Text style={styles.priceText}>{price}</Text>
             {(property.propertyLocation || getAddressField(property, 'locality') || getAddressField(property, 'city')) && (
               <Text style={styles.locationText} numberOfLines={1}>
-                📍 {safeString(property.propertyLocation) || 
+                ?? {safeString(property.propertyLocation) || 
                     `${getAddressField(property, 'locality') || ''}${getAddressField(property, 'locality') && getAddressField(property, 'city') ? ', ' : ''}${getAddressField(property, 'city') || ''}`}
               </Text>
             )}
@@ -856,7 +856,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                 </View>
               )}
               {(() => {
-                console.log('🔍 Checking availableFrom field:', {
+                console.log('?? Checking availableFrom field:', {
                   raw: property.availableFrom,
                   exists: !!property.availableFrom,
                   type: typeof property.availableFrom
@@ -996,7 +996,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             
             const maintenance = property.societyMaintenance || property.address?.societyMaintenance;
             
-            console.log('🏢 Society Features Complete Debug:', {
+            console.log('?? Society Features Complete Debug:', {
               rawFeatures: property.societyFeatures,
               parsedArray: featuresArray,
               arrayLength: featuresArray.length,
@@ -1009,11 +1009,11 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             const shouldShow = !!(maintenance || featuresArray.length > 0);
             
             if (!shouldShow) {
-              console.log('❌ Society section hidden - no data found');
+              console.log('? Society section hidden - no data found');
               return null;
             }
             
-            console.log('✅ Society section will be displayed');
+            console.log('? Society section will be displayed');
             
             return (
               <View style={styles.featuresSection}>
@@ -1026,7 +1026,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                   <View style={styles.societyMaintenanceRow}>
                     <Icon name="cash-outline" size={18} color={colors.primary} />
                     <Text style={styles.societyMaintenanceText}>
-                      Maintenance: ₹{maintenance}
+                      Maintenance: ?{maintenance}
                     </Text>
                   </View>
                 )}
@@ -1216,7 +1216,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                 ownerId = property.createdBy;
               }
 
-              console.log('💬 Chat button pressed:', {
+              console.log('?? Chat button pressed:', {
                 propertyId: property._id || property.id,
                 ownerId: ownerId,
                 ownerData: ownerData,

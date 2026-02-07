@@ -6,7 +6,7 @@
  */
 
 // ⚠️ IMPORTANT: Update this URL when your new backend is ready
-export const BASE_URL = 'https://n5.bhoomitechzone.us';
+export const BASE_URL = 'https://kiraeydarback.bhoomi.cloud';
 
 // API timeout configuration
 export const API_TIMEOUT = 15000; // 15 seconds
@@ -15,7 +15,7 @@ export const API_TIMEOUT = 15000; // 15 seconds
 export const API_VERSION = 'v1';
 
 // Socket configuration
-export const SOCKET_URL = 'https://n5.bhoomitechzone.us';  // Same as BASE_URL for socket connections
+export const SOCKET_URL = 'https://kiraeydarback.bhoomi.cloud';  // Same as BASE_URL for socket connections
 
 // Image upload configuration
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB

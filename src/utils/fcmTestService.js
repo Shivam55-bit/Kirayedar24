@@ -1,4 +1,4 @@
-﻿/**
+/**
  * FCM Test Service - TEMPORARILY DISABLED
  * All Firebase Cloud Messaging functionality has been stubbed out
  */

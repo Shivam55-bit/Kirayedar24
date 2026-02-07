@@ -27,7 +27,7 @@ export const formatImageUrl = (url) => {
     }
 
     // Use the known base URL if BASE_URL is not available
-    const baseUrl = BASE_URL || 'https://n5.bhoomitechzone.us';
+    const baseUrl = BASE_URL || 'https://kiraeydarback.bhoomi.cloud';
     
     // If it's a relative path, prepend base URL
     if (url.startsWith('/')) {

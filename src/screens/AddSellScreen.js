@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -409,7 +409,7 @@ const AddSellScreen = ({ navigation, route }) => {
   // Local draft id when we come from MyPropertyScreen to pay for a draft
   const [currentDraftId, setCurrentDraftId] = useState(null);
 
-  // ✅ Subscription Context Hook
+  // ? Subscription Context Hook
   const { userHasPackage, activeSubscription, loadActiveSubscription, refreshSubscription } = useSubscription();
   const [showSubscriptionExpiredModal, setShowSubscriptionExpiredModal] = useState(false);
   const [showRenewalModal, setShowRenewalModal] = useState(false);
@@ -417,7 +417,7 @@ const AddSellScreen = ({ navigation, route }) => {
   const [showNoPackageModal, setShowNoPackageModal] = useState(false);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
 
-  // ✅ Check subscription on mount and handle expiry
+  // ? Check subscription on mount and handle expiry
   useEffect(() => {
     const checkSubscriptionStatus = async () => {
       try {
@@ -431,7 +431,7 @@ const AddSellScreen = ({ navigation, route }) => {
     checkSubscriptionStatus();
   }, [loadActiveSubscription]);
 
-  // ✅ Block submission if subscription is expired/inactive
+  // ? Block submission if subscription is expired/inactive
   const isSubscriptionActive = useCallback(() => {
     if (!userHasPackage || !activeSubscription) {
       return false;
@@ -444,7 +444,7 @@ const AddSellScreen = ({ navigation, route }) => {
       const now = new Date();
       
       if (expiry < now) {
-        console.warn('⚠️ Subscription expired on:', expiry.toISOString());
+        console.warn('?? Subscription expired on:', expiry.toISOString());
         
         // Calculate days expired
         const diffTime = now - expiry;
@@ -490,15 +490,15 @@ const AddSellScreen = ({ navigation, route }) => {
   };
 
   const fetchCities = async (districtName) => {
-    console.log('🏙️ fetchCities called with district:', districtName);
+    console.log('??? fetchCities called with district:', districtName);
     try {
-      console.log('📡 Making API call to getCities...');
+      console.log('?? Making API call to getCities...');
       const response = await getCities(districtName);
-      console.log('📨 getCities API response:', response);
+      console.log('?? getCities API response:', response);
       
       if (response.success && response.data) {
-        console.log('✅ Cities API successful! Data count:', response.data.length);
-        console.log('📄 First 3 cities:', response.data.slice(0, 3));
+        console.log('? Cities API successful! Data count:', response.data.length);
+        console.log('?? First 3 cities:', response.data.slice(0, 3));
         
         // Store full city data for pincode extraction
         setCitiesApiData(response.data);
@@ -509,11 +509,11 @@ const AddSellScreen = ({ navigation, route }) => {
           name = name.replace(/\s+(B\.O|S\.O|PO|SO|BO)$/i, '').trim();
           return name;
         });
-        console.log('🏷️ Cleaned city names for dropdown:', cityNames.slice(0, 3));
+        console.log('??? Cleaned city names for dropdown:', cityNames.slice(0, 3));
         return cityNames;
       } else {
-        console.warn('⚠️ Cities API failed:', response.message);
-        console.warn('⚠️ Response success:', response.success, 'Data exists:', !!response.data);
+        console.warn('?? Cities API failed:', response.message);
+        console.warn('?? Response success:', response.success, 'Data exists:', !!response.data);
         setCitiesApiData([]);
         return getAreasByCity(districtName);
       }
@@ -695,15 +695,15 @@ const AddSellScreen = ({ navigation, route }) => {
 
   // Debug function to test API directly
   const testAPI = async () => {
-    console.log('🧪 Testing API directly...');
+    console.log('?? Testing API directly...');
     
     try {
       const token = await AsyncStorage.getItem('authToken');
-      console.log('🔑 Token exists:', !!token);
-      console.log('🔑 Token length:', token?.length || 0);
+      console.log('?? Token exists:', !!token);
+      console.log('?? Token length:', token?.length || 0);
       
       if (!token) {
-        console.log('❌ No token found');
+        console.log('? No token found');
         Alert.alert('Error', 'No authentication token found. Please login first.');
         return;
       }
@@ -733,9 +733,9 @@ const AddSellScreen = ({ navigation, route }) => {
       testFormData.append('floorNumber', 2); // Required for Residential non-Plot
       testFormData.append('totalFloors', 5); // Required for Residential non-Plot
 
-      console.log('📦 Making test API call...');
+      console.log('?? Making test API call...');
       
-      const response = await fetch('https://n5.bhoomitechzone.us/property/add', {
+      const response = await fetch('https://kiraeydarback.bhoomi.cloud/property/add', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -743,23 +743,23 @@ const AddSellScreen = ({ navigation, route }) => {
         body: testFormData
       });
 
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+      console.log('?? Response status:', response.status);
+      console.log('?? Response headers:', Object.fromEntries(response.headers.entries()));
       
       const responseText = await response.text();
-      console.log('📄 Raw response:', responseText);
+      console.log('?? Raw response:', responseText);
       
       try {
         const jsonResponse = JSON.parse(responseText);
-        console.log('✅ Parsed response:', jsonResponse);
+        console.log('? Parsed response:', jsonResponse);
         Alert.alert('Test Result', JSON.stringify(jsonResponse, null, 2));
       } catch (e) {
-        console.log('❌ Response is not JSON');
+        console.log('? Response is not JSON');
         Alert.alert('Test Result', `Status: ${response.status}\n\nResponse: ${responseText.substring(0, 200)}...`);
       }
 
     } catch (error) {
-      console.error('🔥 Test API error:', error);
+      console.error('?? Test API error:', error);
       Alert.alert('Test Error', error.message);
     }
   };
@@ -769,7 +769,7 @@ const AddSellScreen = ({ navigation, route }) => {
 
   // Handle package selection from renewal modal
   const handleRenewalPackageSelect = useCallback((selectedPkg) => {
-    console.log('📦 Package selected for renewal:', selectedPkg.name);
+    console.log('?? Package selected for renewal:', selectedPkg.name);
     setShowRenewalModal(false);
     
     // Set the selected package and open payment modal
@@ -1003,7 +1003,7 @@ const AddSellScreen = ({ navigation, route }) => {
     setSelectedMedia(prev => prev.filter(media => media.id !== id));
   };
 
-  // ✅ NEW FUNCTION: Save property as unpaid/draft
+  // ? NEW FUNCTION: Save property as unpaid/draft
   const savePropertyAsDraft = async (addressValidation, areaNum, priceNum) => {
     try {
       const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
@@ -1066,12 +1066,12 @@ const AddSellScreen = ({ navigation, route }) => {
         });
       }
       
-      // ✅ IMPORTANT: Mark as unpaid/draft
+      // ? IMPORTANT: Mark as unpaid/draft
       formData.append('paymentStatus', 'unpaid');
       formData.append('status', 'draft');
       
-      console.log('💾 Saving property as UNPAID DRAFT...');
-      console.log('🌐 Attempting to sync with backend...');
+      console.log('?? Saving property as UNPAID DRAFT...');
+      console.log('?? Attempting to sync with backend...');
       
       let result = null;
       let savedLocally = false;
@@ -1079,17 +1079,17 @@ const AddSellScreen = ({ navigation, route }) => {
       // Try to save to backend first
       try {
         result = await addProperty(formData);
-        console.log('📨 addProperty response:', result);
+        console.log('?? addProperty response:', result);
         
         if (result && result.success) {
-          console.log('✅ Property saved to BACKEND!');
+          console.log('? Property saved to BACKEND!');
         } else {
           // Backend didn't accept it - save locally
-          console.warn('⚠️ Backend rejected - saving locally instead');
+          console.warn('?? Backend rejected - saving locally instead');
           throw new Error('Backend unavailable');
         }
       } catch (backendError) {
-        console.warn('🔥 Backend error, saving to local storage instead:', backendError.message);
+        console.warn('?? Backend error, saving to local storage instead:', backendError.message);
         
         // Save locally as fallback
         const localProperty = {
@@ -1140,11 +1140,11 @@ const AddSellScreen = ({ navigation, route }) => {
           const drafts = existing ? JSON.parse(existing) : [];
           drafts.push(localProperty);
           await AsyncStorage.setItem('@local_draft_properties', JSON.stringify(drafts));
-          console.log('✅ Property saved to LOCAL STORAGE');
+          console.log('? Property saved to LOCAL STORAGE');
           savedLocally = true;
           result = { success: true, data: localProperty };
         } catch (storageError) {
-          console.error('❌ Failed to save locally:', storageError);
+          console.error('? Failed to save locally:', storageError);
           throw storageError;
         }
       }
@@ -1152,7 +1152,7 @@ const AddSellScreen = ({ navigation, route }) => {
       if (result && result.success) {
         const createdProperty = result.data || result.property || result;
         
-        console.log('✅ Property saved successfully!', createdProperty);
+        console.log('? Property saved successfully!', createdProperty);
         
         // Clear form
         setCurrentStep(1);
@@ -1169,7 +1169,7 @@ const AddSellScreen = ({ navigation, route }) => {
           : 'Property saved successfully!';
         
         Alert.alert(
-          'Success! ✨',
+          'Success! ?',
           'Property saved as unpaid\n\n' + successMessage,
           [
             {
@@ -1194,14 +1194,14 @@ const AddSellScreen = ({ navigation, route }) => {
         );
         
       } else {
-        console.error('❌ Failed to save property:', result);
+        console.error('? Failed to save property:', result);
         const errorMsg = result?.message || result?.error || 'Failed to save property. Please try again.';
         Alert.alert('Error', errorMsg);
         setSubmitting(false);
       }
     } catch (error) {
-      console.error('🔥 Error saving draft:', error);
-      console.error('🔥 Error message:', error.message);
+      console.error('?? Error saving draft:', error);
+      console.error('?? Error message:', error.message);
       
       Alert.alert('Error', 'Failed to save property:\n' + (error.message || 'Unknown error'));
       setSubmitting(false);
@@ -1209,17 +1209,17 @@ const AddSellScreen = ({ navigation, route }) => {
   };
 
   const handleSubmit = async () => {
-    console.log('🚀 Starting property submission validation...');
+    console.log('?? Starting property submission validation...');
     
-    // ✅ CHECK SUBSCRIPTION FIRST
+    // ? CHECK SUBSCRIPTION FIRST
     if (!isSubscriptionActive()) {
       // Show renewal modal for expired package
       if (userHasPackage && activeSubscription) {
-        console.log('⚠️ Subscription has expired, showing renewal modal');
+        console.log('?? Subscription has expired, showing renewal modal');
         setShowRenewalModal(true);
       } else {
         // No package at all - show beautiful no-package modal
-        console.log('⚠️ No active package, showing purchase modal');
+        console.log('?? No active package, showing purchase modal');
         setShowNoPackageModal(true);
       }
       return;
@@ -1253,7 +1253,7 @@ const AddSellScreen = ({ navigation, route }) => {
       pincode: pincode?.trim() || ''
     };
 
-    console.log('🔍 Address validation check:');
+    console.log('?? Address validation check:');
     Object.entries(addressValidation).forEach(([key, value]) => {
       console.log(`  - ${key}: "${value}" (length: ${value.length})`);
     });
@@ -1274,7 +1274,7 @@ const AddSellScreen = ({ navigation, route }) => {
         "Missing Address Information", 
         `Please provide: ${addressErrors.join(', ')}`
       );
-      console.log('❌ Address validation failed:', addressErrors);
+      console.log('? Address validation failed:', addressErrors);
       return;
     }
 
@@ -1286,13 +1286,13 @@ const AddSellScreen = ({ navigation, route }) => {
     });
     
     if (missingFields.length > 0) {
-      const missingFieldNames = missingFields.map(field => `• ${field.name}`).join("\n");
+      const missingFieldNames = missingFields.map(field => `� ${field.name}`).join("\n");
       Alert.alert(
         "Required Fields Missing", 
         `Please fill the following required fields:\n\n${missingFieldNames}`,
         [{ text: "OK", style: "default" }]
       );
-      console.log('❌ Validation failed: Missing required fields:', missingFields.map(f => f.field));
+      console.log('? Validation failed: Missing required fields:', missingFields.map(f => f.field));
       return;
     }
 
@@ -1301,7 +1301,7 @@ const AddSellScreen = ({ navigation, route }) => {
     // Contact number validation (exactly 10 digits)
     if (!contactNumber || !/^\d{10}$/.test(contactNumber.trim())) {
       Alert.alert("Invalid Contact Number", "Contact number must be exactly 10 digits");
-      console.log('❌ Validation failed: Invalid contact number format:', contactNumber);
+      console.log('? Validation failed: Invalid contact number format:', contactNumber);
       return;
     }
     
@@ -1314,13 +1314,13 @@ const AddSellScreen = ({ navigation, route }) => {
     
     if (!area || isNaN(areaNum) || areaNum <= 0) {
       Alert.alert("Invalid Area", "Please enter a valid area in sq ft (must be greater than 0)");
-      console.log('❌ Validation failed: Invalid area:', area, 'parsed:', areaNum);
+      console.log('? Validation failed: Invalid area:', area, 'parsed:', areaNum);
       return;
     }
 
     if (!price || isNaN(priceNum) || priceNum <= 0) {
       Alert.alert("Invalid Price", "Please enter a valid price (must be greater than 0)");
-      console.log('❌ Validation failed: Invalid price:', price, 'parsed:', priceNum);
+      console.log('? Validation failed: Invalid price:', price, 'parsed:', priceNum);
       return;
     }
 
@@ -1330,7 +1330,7 @@ const AddSellScreen = ({ navigation, route }) => {
       // Validate residential type is selected
       if (!residentialType) {
         Alert.alert("Missing Selection", "Please select a residential type (Apartment/Villa/Plot)");
-        console.log('❌ Validation failed: Missing residential type');
+        console.log('? Validation failed: Missing residential type');
         return;
       }
       
@@ -1340,13 +1340,13 @@ const AddSellScreen = ({ navigation, route }) => {
       
       if (!bedrooms || isNaN(bedroomsNum) || bedroomsNum < 1) {
         Alert.alert("Invalid Bedrooms", "Bedrooms must be at least 1 for residential properties");
-        console.log('❌ Validation failed: Invalid bedrooms:', bedrooms);
+        console.log('? Validation failed: Invalid bedrooms:', bedrooms);
         return;
       }
       
       if (!bathrooms || isNaN(bathroomsNum) || bathroomsNum < 1) {
         Alert.alert("Invalid Bathrooms", "Bathrooms must be at least 1 for residential properties");
-        console.log('❌ Validation failed: Invalid bathrooms:', bathrooms);
+        console.log('? Validation failed: Invalid bathrooms:', bathrooms);
         return;
       }
       
@@ -1357,19 +1357,19 @@ const AddSellScreen = ({ navigation, route }) => {
         
         if (!floorNumber || isNaN(floorNum) || floorNum < 1) {
           Alert.alert("Missing Floor Number", `Floor Number is required for ${residentialType} properties and must be at least 1`);
-          console.log('❌ Validation failed: Invalid floor number for', residentialType, ':', floorNumber);
+          console.log('? Validation failed: Invalid floor number for', residentialType, ':', floorNumber);
           return;
         }
         
         if (!totalFloors || isNaN(totalFloorNum) || totalFloorNum < 1) {
           Alert.alert("Missing Total Floors", `Total Floors is required for ${residentialType} properties and must be at least 1`);
-          console.log('❌ Validation failed: Invalid total floors for', residentialType, ':', totalFloors);
+          console.log('? Validation failed: Invalid total floors for', residentialType, ':', totalFloors);
           return;
         }
         
         if (floorNum > totalFloorNum) {
           Alert.alert("Invalid Floor Numbers", "Floor Number cannot be greater than Total Floors");
-          console.log('❌ Validation failed: Floor number greater than total floors:', floorNum, '>', totalFloorNum);
+          console.log('? Validation failed: Floor number greater than total floors:', floorNum, '>', totalFloorNum);
           return;
         }
       }
@@ -1378,7 +1378,7 @@ const AddSellScreen = ({ navigation, route }) => {
       // Validate commercial type is selected
       if (!commercialType) {
         Alert.alert("Missing Selection", "Please select a commercial type (office/shop/warehouse)");
-        console.log('❌ Validation failed: Missing commercial type');
+        console.log('? Validation failed: Missing commercial type');
         return;
       }
       
@@ -1386,13 +1386,13 @@ const AddSellScreen = ({ navigation, route }) => {
       const spaceNum = parseInt(spaceAvailable);
       if (!spaceAvailable || isNaN(spaceNum) || spaceNum <= 0) {
         Alert.alert("Invalid Space", "Please enter valid space available in sq ft");
-        console.log('❌ Validation failed: Invalid space available:', spaceAvailable);
+        console.log('? Validation failed: Invalid space available:', spaceAvailable);
         return;
       }
     }
 
-    console.log('✅ All frontend validation passed successfully!');
-    console.log('📋 Validated field values:', {
+    console.log('? All frontend validation passed successfully!');
+    console.log('?? Validated field values:', {
       address: addressValidation,
       areaDetails: areaNum,
       price: priceNum,
@@ -1400,22 +1400,30 @@ const AddSellScreen = ({ navigation, route }) => {
       contactNumber
     });
     
-    // ✅ NEW: Save as unpaid/draft directly without payment modal
+    // ? NEW: Save as unpaid/draft directly without payment modal
     setSubmitting(true);
     await savePropertyAsDraft(addressValidation, areaNum, priceNum);
   };
   
-  // New function to handle actual property submission after payment
+  // ================================================================================
+  // NEW FLOW: Property Create FIRST, Then Payment
+  // Flow: 1. Create Property → 2. Get PropertyId → 3. Payment → 4. Verify with PropertyId
+  // ================================================================================
   const handlePropertySubmission = async () => {
     // Get effective district (from dropdown or manual input)
     const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
     
-    console.log('🔍 DEBUG: Current state values:');
-    console.log('  propertyState:', propertyState);
-    console.log('  district:', effectiveDistrict);
-    console.log('  city:', city);
-    console.log('  locality:', locality);
-    console.log('  pincode:', pincode);
+    console.log('🔍 DEBUG: Starting property submission with payment...');
+    console.log('🔍 DEBUG values:', {
+      propertyState: propertyState,
+      district: district,
+      manualDistrict: manualDistrict,
+      isOtherDistrict: isOtherDistrict,
+      effectiveDistrict: effectiveDistrict,
+      city: city,
+      locality: locality,
+      pincode: pincode
+    });
     
     const addressValidation = {
       state: propertyState?.trim() || '',
@@ -1425,403 +1433,275 @@ const AddSellScreen = ({ navigation, route }) => {
       pincode: pincode?.trim() || ''
     };
     
-    console.log('📦 Address validation object:', addressValidation);
+    // Validate required address fields before proceeding
+    const missingFields = [];
+    if (!addressValidation.state) missingFields.push('State');
+    if (!addressValidation.city) missingFields.push('City');
+    if (!addressValidation.locality) missingFields.push('Locality');
+    
+    if (missingFields.length > 0) {
+      Alert.alert(
+        'Missing Information',
+        `Please fill in the required fields: ${missingFields.join(', ')}.\n\nGo back to Step 1 to complete the address details.`,
+        [{ text: 'OK' }]
+      );
+      setProcessingPayment(false);
+      setSubmitting(false);
+      return;
+    }
     
     const areaNum = parseInt(area);
     const priceNum = parseInt(price);
-    
-    // =============================================================================
-    // FORMDATA CONSTRUCTION (Exact backend schema match)
-    // =============================================================================
     
     setSubmitting(true);
     setProcessingPayment(true);
     
     try {
-      // First: handle payment / subscription purchase (backend + Razorpay) before final submission
-      try {
-        if (selectedPaymentMethod === 'cod') {
-          const verifyPayload = paymentVerificationPayload || {
-            subscriptionPackageId: selectedPackage?._id || DEFAULT_SUBSCRIPTION_PACKAGE_ID,
-            isFreeMode: true
-          };
-          console.log('🔁 Verifying subscription payment (COD) with payload:', verifyPayload);
-          const verifyRes = await verifySubscriptionPayment(verifyPayload);
-          console.log('🔁 verifySubscriptionPayment response:', verifyRes);
-          
-          // Check for authentication error (401/403)
-          if (verifyRes?.status === 403 || verifyRes?.status === 401 || verifyRes?.message?.toLowerCase().includes('token')) {
-            Alert.alert(
-              'Session Expired',
-              'Your session has expired. Please login again to continue.',
-              [
-                {
-                  text: 'Login',
-                  onPress: () => {
-                    setProcessingPayment(false);
-                    setSubmitting(false);
-                    navigation.navigate('LoginScreen');
-                  }
-                },
-                {
-                  text: 'Cancel',
-                  onPress: () => {
-                    setProcessingPayment(false);
-                    setSubmitting(false);
-                  },
-                  style: 'cancel'
-                }
-              ]
-            );
-            return;
+      // =========================================================================
+      // STEP 1: CREATE PROPERTY FIRST (status: pending)
+      // =========================================================================
+      let propertyId = currentDraftId; // Use existing draft ID if available
+      
+      if (!propertyId) {
+        console.log('📦 Step 1: Creating property first...');
+        console.log('📦 Address data:', addressValidation);
+        
+        const formData = new FormData();
+        
+        // Try both formats for address - flat fields AND nested object
+        // Flat fields (like EditPropertyScreen uses)
+        formData.append('state', addressValidation.state);
+        formData.append('district', addressValidation.district);  
+        formData.append('city', addressValidation.city);
+        formData.append('locality', addressValidation.locality);
+        formData.append('pincode', addressValidation.pincode);
+        
+        // Also try nested object as JSON string (for backends that expect address object)
+        formData.append('address', JSON.stringify({
+          state: addressValidation.state,
+          district: addressValidation.district,
+          city: addressValidation.city,
+          locality: addressValidation.locality,
+          pincode: addressValidation.pincode
+        }));
+        
+        // Core fields
+        formData.append('areaSqFt', areaNum);
+        formData.append('price', priceNum);
+        formData.append('contactNumber', contactNumber.trim());
+        formData.append('propertyType', propertyType);
+        formData.append('purpose', purpose);
+        formData.append('furnishingStatus', furnishing);
+        formData.append('parking', parking);
+        formData.append('availabilityStatus', availability);
+        formData.append('availableFrom', availableFrom.toISOString().split('T')[0]);
+        formData.append('availableFor', availableFor);
+        
+        // Contact preferences
+        formData.append('contactPreferences[phone]', phoneToggleEnabled.toString());
+        formData.append('contactPreferences[whatsapp]', whatsappToggleEnabled.toString());
+        formData.append('contactPreferences[chat]', chatToggleEnabled.toString());
+        
+        if (description?.trim()) formData.append('description', description.trim());
+        
+        // Property type specific
+        if (propertyType === 'Residential') {
+          formData.append('specificType', residentialType);
+          formData.append('bedrooms', parseInt(bedrooms));
+          formData.append('bathrooms', parseInt(bathrooms));
+          formData.append('kitchenType', kitchenType);
+          formData.append('balconies', balconies.toString());
+          if (floorNumber?.trim() && totalFloors?.trim()) {
+            formData.append('floorNumber', parseInt(floorNumber));
+            formData.append('totalFloors', parseInt(totalFloors));
           }
-          
-          if (!verifyRes || !verifyRes.success) {
-            Alert.alert('Payment Verification Failed', verifyRes?.message || 'Unable to verify payment. Please try again.');
-            setProcessingPayment(false);
-            setSubmitting(false);
-            return;
+          formData.append('societyMaintenance', societyMaintenance);
+          if (societyFeatures.length > 0) {
+            societyFeatures.forEach(feature => formData.append('societyFeatures[]', feature));
           }
-        } else {
-          // Online payment flow using Razorpay
-          if (!selectedPackage) {
-            Alert.alert('Select Package', 'Please select a subscription package before proceeding.');
-            setProcessingPayment(false);
-            setSubmitting(false);
-            return;
-          }
-
-          setCreatingOrder(true);
-
-          const amountPaise = Math.round((selectedPackage.price || selectedPackage.amount || 100) * 100);
-          const orderPayload = {
-            subscriptionPackageId: selectedPackage._id || selectedPackage.id,
-            amount: amountPaise,
-            currency: 'INR',
-            receipt: `receipt_${Date.now()}`,
-            notes: {
-              purpose,
-              contactNumber,
-            }
-          };
-
-          console.log('🔁 Creating subscription order with payload:', orderPayload);
-          const orderRes = await createSubscriptionOrder(orderPayload);
-          console.log('🔁 createSubscriptionOrder response:', orderRes);
-
-          const order = orderRes?.order || orderRes?.data?.order || orderRes?.data || orderRes;
-          const key = orderRes?.key || orderRes?.key_id || orderRes?.data?.key || orderRes?.data?.key_id || rzpKey || RAZORPAY_KEY_ID || null;
-
-          // Extract order id where available
-          const orderId = order?.id || order?.order_id || order?.orderId || null;
-
-          const userRaw = await AsyncStorage.getItem('userData');
-          let user = {};
-          try { user = userRaw ? JSON.parse(userRaw) : {}; } catch (e) {}
-
-          const options = {
-            description: selectedPackage.name || 'Subscription',
-            currency: 'INR',
-            key: key,
-            amount: amountPaise,
-            name: 'HomeQuest',
-            prefill: {
-              email: user?.email || '',
-              contact: contactNumber || user?.phone || user?.mobile || ''
-            },
-            theme: { color: '#f39c12' }
-          };
-
-          // Include order_id only if backend returned it
-          if (orderId) {
-            options.order_id = orderId;
-            console.log('[AddSellScreen] Using order_id from backend:', orderId);
-          } else {
-            console.warn('[AddSellScreen] No order_id returned from backend - proceeding with amount-only flow.');
-          }
-
-          console.log('🔁 Opening Razorpay with options:', options);
-
-          let paymentResult;
-          try {
-            paymentResult = await RazorpayCheckout.open(options);
-            console.log('🔁 Razorpay result:', paymentResult);
-          } catch (rzpErr) {
-            console.error('🔴 Razorpay checkout failed or was cancelled:', rzpErr);
-            Alert.alert('Payment Error', rzpErr?.message || 'Payment was cancelled or failed.');
-            setProcessingPayment(false);
-            setSubmitting(false);
-            return;
-          }
-
-          const verifyPayload = {
-            razorpay_payment_id: paymentResult.razorpay_payment_id || paymentResult.payment_id || paymentResult?.id || '',
-            razorpay_order_id: paymentResult.razorpay_order_id || paymentResult.order_id || paymentResult?.order_id || orderId || '',
-            razorpay_signature: paymentResult.razorpay_signature || paymentResult.signature || paymentResult?.signature || '',
-            subscriptionPackageId: orderPayload.subscriptionPackageId
-          };
-
-          // Save payment payload for later use (even if verification fails)
-          setPaymentVerificationPayload(verifyPayload);
-          console.log('🔁 Verifying payment with payload:', verifyPayload);
-
-          // Function that performs the actual FormData creation and submission
-          const performSubmission = async (forceUnverified = false) => {
-            // Build formData and include payment verification details (or unverified flag)
-            const formData = new FormData();
-
-            if (paymentVerificationPayload) {
-              try {
-                formData.append('razorpay_payment_id', paymentVerificationPayload.razorpay_payment_id || '');
-                formData.append('razorpay_order_id', paymentVerificationPayload.razorpay_order_id || '');
-                formData.append('razorpay_signature', paymentVerificationPayload.razorpay_signature || '');
-                formData.append('subscriptionPackageId', paymentVerificationPayload.subscriptionPackageId || selectedPackage?._id || DEFAULT_SUBSCRIPTION_PACKAGE_ID);
-              } catch (e) {
-                console.warn('[performSubmission] Failed to append paymentVerificationPayload to FormData:', e);
-              }
-            } else if (selectedPackage) {
-              try {
-                formData.append('subscriptionPackageId', selectedPackage._id || selectedPackage.id || DEFAULT_SUBSCRIPTION_PACKAGE_ID);
-              } catch (e) {
-                console.warn('[performSubmission] Failed to append selectedPackage to FormData:', e);
-              }
-            }
-
-            if (forceUnverified) {
-              formData.append('paymentVerificationFailed', 'true');
-            }
-
-            // Now append the rest of fields (replicating the original logic)
-            // Address - include district
-            formData.append('state', addressValidation.state);
-            formData.append('district', addressValidation.district);
-            formData.append('city', addressValidation.city);
-            formData.append('locality', addressValidation.locality);
-            formData.append('pincode', addressValidation.pincode);
-
-            // Required core fields
-            formData.append('areaSqFt', areaNum);
-            formData.append('price', priceNum);
-            formData.append('contactNumber', contactNumber.trim());
-            formData.append('propertyType', propertyType);
-            formData.append('purpose', purpose);
-            formData.append('furnishingStatus', furnishing);
-            formData.append('parking', parking);
-            if (propertyType === 'Residential') {
-              formData.append('kitchenType', kitchenType);
-            }
-            formData.append('availabilityStatus', availability);
-            formData.append('availableFrom', availableFrom.toISOString().split('T')[0]);
-            // Purpose is always 'Rent', so availableFor is always included
-            formData.append('availableFor', availableFor);
-            if (propertyType === 'Residential') {
-              formData.append('societyMaintenance', societyMaintenance);
-              if (societyFeatures.length > 0) {
-                societyFeatures.forEach(feature => formData.append('societyFeatures[]', feature));
-              }
-            }
-            formData.append('contactPreferences[phone]', phoneToggleEnabled.toString());
-            formData.append('contactPreferences[whatsapp]', whatsappToggleEnabled.toString());
-            formData.append('contactPreferences[chat]', chatToggleEnabled.toString());
-            if (description?.trim()) formData.append('description', description.trim());
-            if (propertyType === 'Residential') {
-              formData.append('specificType', residentialType);
-              formData.append('bedrooms', parseInt(bedrooms));
-              formData.append('bathrooms', parseInt(bathrooms));
-              formData.append('balconies', balconies.toString());
-              if (floorNumber?.trim() && totalFloors?.trim()) {
-                formData.append('floorNumber', parseInt(floorNumber));
-                formData.append('totalFloors', parseInt(totalFloors));
-              }
-            } else if (propertyType === 'Commercial') {
-              const formattedCommercialType = commercialType.charAt(0).toUpperCase() + commercialType.slice(1);
-              formData.append('specificType', formattedCommercialType);
-              formData.append('spaceAvailable', parseInt(spaceAvailable));
-            }
-
-            // Media
-            let photoCount = 0;
-            let videoCount = 0;
-            selectedMedia.forEach((media, index) => {
-              if (media.uri) {
-                const fileExtension = media.type === 'photo' ? 'jpg' : 'mp4';
-                const fileName = media.name || `media_${index}.${fileExtension}`;
-                const fieldName = media.type === 'photo' ? 'photos' : 'videos';
-                formData.append(fieldName, {
-                  uri: media.uri,
-                  type: media.type === 'photo' ? 'image/jpeg' : 'video/mp4',
-                  name: fileName
-                });
-                if (media.type === 'photo') photoCount++; else videoCount++;
-              }
-            });
-
-            console.log('🔍 FINAL PAYLOAD VERIFICATION (SUBMITTING):', { photoCount, videoCount });
-
-            // Submit to backend
-            try {
-              console.log('🚀 Submitting to backend API...');
-              const result = await addProperty(formData);
-              console.log('🚀 addProperty full response:', result);
-
-              if (result.success) {
-                const createdProperty = result.property || result.data?.property || result.data || result._id || result.id || null;
-                setShowPaymentModal(false);
-                setProcessingPayment(false);
-
-                if (createdProperty) {
-                  // Remove local draft if present
-                  if (currentDraftId) {
-                    try {
-                      const raw = await AsyncStorage.getItem('@local_draft_properties');
-                      let drafts = raw ? JSON.parse(raw) : [];
-                      drafts = drafts.filter(d => d._id !== currentDraftId);
-                      await AsyncStorage.setItem('@local_draft_properties', JSON.stringify(drafts));
-                      console.log('[performSubmission] Removed local draft:', currentDraftId);
-                    } catch (e) {
-                      console.warn('[performSubmission] Failed to remove local draft:', e);
-                    }
-                  }
-
-                  Alert.alert('Success', 'Property added successfully and is pending verification!', [
-                    { text: 'View My Properties', onPress: () => navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() }) }
-                  ]);
-                  navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() });
-                } else {
-                  console.warn('[performSubmission] Backend returned success but no created property data:', result);
-                  Alert.alert('Payment Verified', 'Payment verified, but server did not return created property details. Navigating to My Properties to refresh.');
-                  navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() });
-                }
-              } else {
-                console.error('❌ Property submission failed:', result);
-                
-                // Check for authentication error
-                if (result?.status === 403 || result?.status === 401 || result?.message?.toLowerCase().includes('token')) {
-                  Alert.alert(
-                    'Session Expired',
-                    'Your session has expired. Please login again to continue.',
-                    [
-                      {
-                        text: 'Login',
-                        onPress: () => navigation.navigate('LoginScreen')
-                      },
-                      { text: 'Cancel', style: 'cancel' }
-                    ]
-                  );
-                  return;
-                }
-                
-                let errorMessage = result.message || result.error || 'Failed to add property. Please try again.';
-                if (result.rawResponse && result.rawResponse.includes('validation')) errorMessage = 'Data validation failed. Please check all required fields.';
-                Alert.alert('Property Submission Failed', errorMessage, [{ text: 'OK' }]);
-              }
-            } catch (error) {
-              console.error('🔥 Submit error:', error);
-              Alert.alert('Submission Error', 'Network error occurred. Please try again.');
-            } finally {
-              setProcessingPayment(false);
-              setSubmitting(false);
-            }
-          };
-
-          // Attempt verification
-          const verifyRes = await verifySubscriptionPayment(verifyPayload);
-          console.log('🔁 verifySubscriptionPayment response:', verifyRes);
-
-          // Check for authentication error (401/403)
-          if (verifyRes?.status === 403 || verifyRes?.status === 401 || verifyRes?.message?.toLowerCase().includes('token')) {
-            Alert.alert(
-              'Session Expired',
-              'Your session has expired. Please login again to continue.',
-              [
-                {
-                  text: 'Login',
-                  onPress: () => {
-                    setProcessingPayment(false);
-                    setSubmitting(false);
-                    navigation.navigate('LoginScreen');
-                  }
-                },
-                {
-                  text: 'Cancel',
-                  onPress: () => {
-                    setProcessingPayment(false);
-                    setSubmitting(false);
-                  },
-                  style: 'cancel'
-                }
-              ]
-            );
-            return;
-          }
-
-          if (!verifyRes || !verifyRes.success) {
-            console.warn('[AddSellScreen] Payment verification failed:', verifyRes);
-
-            Alert.alert(
-              'Payment Verification Failed',
-              typeof verifyRes === 'object' ? JSON.stringify(verifyRes, null, 2) : (verifyRes?.message || 'Unable to verify payment.'),
-              [
-                {
-                  text: 'Retry Verify',
-                  onPress: async () => {
-                    try {
-                      setProcessingPayment(true);
-                      const retryRes = await verifySubscriptionPayment(verifyPayload);
-                      console.log('[AddSellScreen] Retry verify response:', retryRes);
-                      if (retryRes && retryRes.success) {
-                        await performSubmission(false);
-                      } else {
-                        Alert.alert('Retry Failed', retryRes?.message || 'Verification still failed. You can submit the property without verification or cancel.');
-                        setProcessingPayment(false);
-                        setSubmitting(false);
-                      }
-                    } catch (retryErr) {
-                      console.error('[AddSellScreen] Retry verify error:', retryErr);
-                      Alert.alert('Retry Error', retryErr?.message || 'Retry failed.');
-                      setProcessingPayment(false);
-                      setSubmitting(false);
-                    }
-                  }
-                },
-                {
-                  text: 'Submit Anyway',
-                  onPress: async () => {
-                    try {
-                      setProcessingPayment(true);
-                      await performSubmission(true);
-                    } catch (err) {
-                      console.error('[AddSellScreen] Submit anyway error:', err);
-                      Alert.alert('Error', 'Unable to submit. Please try again.');
-                      setProcessingPayment(false);
-                      setSubmitting(false);
-                      return;
-                    }
-                  }
-                },
-                {
-                  text: 'Cancel', onPress: () => { setProcessingPayment(false); setSubmitting(false); }, style: 'cancel'
-                }
-              ],
-              { cancelable: true }
-            );
-
-            return;
-          }
-
-          // If verification passed, continue to submit normally
-          await performSubmission(false);
+        } else if (propertyType === 'Commercial') {
+          const formattedCommercialType = commercialType.charAt(0).toUpperCase() + commercialType.slice(1);
+          formData.append('specificType', formattedCommercialType);
+          formData.append('spaceAvailable', parseInt(spaceAvailable));
         }
-      } catch (verifyError) {
-        console.error('🔥 Error verifying subscription/payment:', verifyError);
-        Alert.alert('Verification Error', 'Unable to verify payment. Please try again.');
+        
+        // Media
+        selectedMedia.forEach((media, index) => {
+          if (media.uri) {
+            const fileExtension = media.type === 'photo' ? 'jpg' : 'mp4';
+            const fileName = media.name || `media_${index}.${fileExtension}`;
+            const fieldName = media.type === 'photo' ? 'photos' : 'videos';
+            formData.append(fieldName, {
+              uri: media.uri,
+              type: media.type === 'photo' ? 'image/jpeg' : 'video/mp4',
+              name: fileName
+            });
+          }
+        });
+        
+        // Create property
+        const propertyResult = await addProperty(formData);
+        console.log('📦 Property creation result:', propertyResult);
+        
+        if (!propertyResult.success) {
+          Alert.alert('Error', propertyResult.message || 'Failed to create property. Please try again.');
+          setProcessingPayment(false);
+          setSubmitting(false);
+          return;
+        }
+        
+        // Extract propertyId from response
+        propertyId = propertyResult.property?._id || 
+                     propertyResult.data?.property?._id || 
+                     propertyResult.data?._id ||
+                     propertyResult._id;
+        
+        if (!propertyId) {
+          console.error('❌ No propertyId returned from backend:', propertyResult);
+          Alert.alert('Error', 'Property created but no ID returned. Please check My Properties.');
+          setProcessingPayment(false);
+          setSubmitting(false);
+          navigation.navigate('MyPropertyScreen', { refresh: true });
+          return;
+        }
+        
+        console.log('✅ Property created with ID:', propertyId);
+        setCurrentDraftId(propertyId); // Save for later use
+      }
+      
+      // =========================================================================
+      // STEP 2: CREATE RAZORPAY ORDER
+      // =========================================================================
+      console.log('💳 Step 2: Creating payment order...');
+      
+      if (!selectedPackage) {
+        Alert.alert('Select Package', 'Please select a subscription package.');
         setProcessingPayment(false);
         setSubmitting(false);
         return;
       }
+      
+      const orderRes = await createSubscriptionOrder({
+        subscriptionPackageId: selectedPackage._id || selectedPackage.id
+      });
+      
+      console.log('💳 Order response:', orderRes);
+      
+      const isFree = orderRes.isFree === true;
+      const order = orderRes.order || orderRes.data?.order;
+      
+      // =========================================================================
+      // STEP 3: PROCESS PAYMENT (Razorpay or Free)
+      // =========================================================================
+      let verifyPayload = {
+        subscriptionPackageId: selectedPackage._id || selectedPackage.id,
+        propertyId: propertyId, // NOW we have propertyId!
+        isFreeMode: isFree
+      };
+      
+      if (isFree) {
+        console.log('🆓 Free plan detected - skipping Razorpay');
+      } else {
+        console.log('💳 Step 3: Opening Razorpay...');
+        
+        const userRaw = await AsyncStorage.getItem('userData');
+        let user = {};
+        try { user = userRaw ? JSON.parse(userRaw) : {}; } catch (e) {}
+        
+        const amount = order?.amount || (selectedPackage.amount || selectedPackage.price) * 100;
+        
+        const options = {
+          description: selectedPackage.name || 'Subscription',
+          currency: 'INR',
+          key: orderRes.key || RAZORPAY_KEY_ID,
+          amount: amount,
+          name: 'Kirayedar',
+          order_id: order?.id,
+          prefill: {
+            email: user?.email || '',
+            contact: contactNumber || user?.phone || user?.mobile || ''
+          },
+          theme: { color: '#f39c12' }
+        };
+        
+        let paymentResult;
+        try {
+          paymentResult = await RazorpayCheckout.open(options);
+          console.log('💳 Razorpay result:', paymentResult);
+        } catch (rzpErr) {
+          console.error('🔴 Razorpay cancelled/failed:', rzpErr);
+          Alert.alert(
+            'Payment Cancelled',
+            'Payment was cancelled. Your property has been saved. You can pay later from My Properties.',
+            [
+              { text: 'Go to My Properties', onPress: () => navigation.navigate('MyPropertyScreen', { refresh: true }) },
+              { text: 'Stay Here', style: 'cancel' }
+            ]
+          );
+          setProcessingPayment(false);
+          setSubmitting(false);
+          return;
+        }
+        
+        // Add Razorpay details to verify payload
+        verifyPayload.razorpay_order_id = paymentResult.razorpay_order_id || paymentResult.order_id || order?.id;
+        verifyPayload.razorpay_payment_id = paymentResult.razorpay_payment_id || paymentResult.payment_id;
+        verifyPayload.razorpay_signature = paymentResult.razorpay_signature || paymentResult.signature;
+        verifyPayload.isFreeMode = false;
+      }
+      
+      // =========================================================================
+      // STEP 4: VERIFY PAYMENT WITH PROPERTY ID
+      // =========================================================================
+      console.log('✅ Step 4: Verifying payment with payload:', verifyPayload);
+      
+      const verifyRes = await verifySubscriptionPayment(verifyPayload);
+      console.log('✅ Verify result:', verifyRes);
+      
+      if (!verifyRes.success) {
+        Alert.alert(
+          'Payment Verification Issue',
+          verifyRes.message || 'Payment verification failed. Please contact support.',
+          [
+            { text: 'View My Properties', onPress: () => navigation.navigate('MyPropertyScreen', { refresh: true }) },
+            { text: 'OK' }
+          ]
+        );
+        setProcessingPayment(false);
+        setSubmitting(false);
+        return;
+      }
+      
+      // =========================================================================
+      // SUCCESS!
+      // =========================================================================
+      setShowPaymentModal(false);
+      setProcessingPayment(false);
+      setSubmitting(false);
+      
+      // Clear form
+      setCurrentStep(1);
+      setPropertyState('');
+      setCity('');
+      setDistrict('');
+      setLocality('');
+      setPincode('');
+      setSelectedMedia([]);
+      
+      Alert.alert(
+        'Success! 🎉',
+        'Property added and subscription created successfully!\n\nYour property is pending admin approval.',
+        [
+          { 
+            text: 'View My Properties', 
+            onPress: () => navigation.navigate('MyPropertyScreen', { refresh: true, timestamp: Date.now() }) 
+          }
+        ]
+      );
+      
     } catch (error) {
-      console.error('💥 Payment/submission error:', error);
-      Alert.alert('Error', error.message || 'Failed to process. Please try again.');
+      console.error('🔥 handlePropertySubmission error:', error);
+      Alert.alert('Error', error.message || 'Something went wrong. Please try again.');
       setProcessingPayment(false);
       setSubmitting(false);
     }
@@ -2043,7 +1923,7 @@ const AddSellScreen = ({ navigation, route }) => {
               />
 
               <InputField
-                label="Price (₹)*"
+                label="Price (?)*"
                 placeholder="Enter price in INR"
                 placeholderTextColor="#999"
                 keyboardType="numeric"

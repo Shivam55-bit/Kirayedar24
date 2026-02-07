@@ -39,11 +39,11 @@ const formatImageUrl = (url) => {
     
     // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
     if (url.startsWith('uploads/')) {
-        return `https://n5.bhoomitechzone.us/${url}`;
+        return `https://kiraeydarback.bhoomi.cloud/${url}`;
     }
     
     // For other relative paths, add base URL
-    return url.startsWith('/') ? `https://n5.bhoomitechzone.us${url}` : `https://n5.bhoomitechzone.us/${url}`;
+    return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
 };
 
 const formatPrice = (price) => {

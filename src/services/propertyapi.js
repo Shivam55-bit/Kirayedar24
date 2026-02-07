@@ -3,6 +3,7 @@ import {
   getSavedProperties as getSavedPropertiesAPI,
   removeSavedProperty as removeSavedPropertyAPI,
   getMySellProperties as getMySellPropertiesAPI,
+  getMyExpiredProperties as getMyExpiredPropertiesAPI,
   updateProperty as updatePropertyAPI,
   deleteProperty as deletePropertyAPI
 } from './api.js';
@@ -98,6 +99,22 @@ export const propertyService = {
       return {
         success: false,
         message: error.message || 'Failed to delete property'
+      };
+    }
+  },
+
+  // Get user's expired properties (subscription expired)
+  getMyExpiredProperties: async () => {
+    try {
+      const response = await getMyExpiredPropertiesAPI();
+      console.log('Property Service - Get My Expired Properties Response:', response);
+      return response;
+    } catch (error) {
+      console.error('Property Service - Get My Expired Properties Error:', error);
+      return {
+        success: false,
+        properties: [],
+        message: error.message || 'Failed to fetch your expired properties'
       };
     }
   },

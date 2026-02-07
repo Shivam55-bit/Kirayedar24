@@ -290,9 +290,16 @@ export const saveProperty = async (propertyId) => {
   });
 };
 
-// Verify Subscription Payment (called before adding a property when a payment/subscription is involved)
+// Verify Subscription Payment and link to property
+// IMPORTANT: propertyId is REQUIRED in the payload!
+// Payload structure:
+// - Paid Plan: { razorpay_order_id, razorpay_payment_id, razorpay_signature, subscriptionPackageId, propertyId, isFreeMode: false }
+// - Free Plan: { subscriptionPackageId, propertyId, isFreeMode: true }
 export const verifySubscriptionPayment = async (payload = {}) => {
   console.log('[api] verifySubscriptionPayment payload:', payload);
+  if (!payload.propertyId) {
+    console.warn('[api] WARNING: propertyId is required for verify-payment API');
+  }
   return makeRequest('/api/subscription-purchase/verify-payment', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -316,6 +323,15 @@ export const createSubscriptionOrder = async (payload = {}) => {
   });
 };
 
+// Renew an expired property - No admin approval needed for renewal!
+// Pre-requisite: User must purchase a subscription first (via verify-payment with propertyId)
+export const renewProperty = async (propertyId) => {
+  console.log('[api] renewProperty called for propertyId:', propertyId);
+  return makeRequest(`/property/properties/${propertyId}/renew`, {
+    method: 'PATCH'
+  });
+};
+
 export const getSavedProperties = async () => {
   return makeRequest('/api/properties/saved/all', {
     method: 'GET'
@@ -335,6 +351,20 @@ export const getMySellProperties = async () => {
     method: 'GET'
   });
   console.log('📋 [getMySellProperties] API Result:', {
+    success: result.success,
+    dataCount: result.data?.length || result.properties?.length || 0,
+    fullResponse: result
+  });
+  return result;
+};
+
+// Get user's expired properties (subscription expired)
+export const getMyExpiredProperties = async () => {
+  console.log('📋 [getMyExpiredProperties] Fetching expired properties from:', BASE_URL + '/property/my-expired');
+  const result = await makeRequest('/property/my-expired', {
+    method: 'GET'
+  });
+  console.log('📋 [getMyExpiredProperties] API Result:', {
     success: result.success,
     dataCount: result.data?.length || result.properties?.length || 0,
     fullResponse: result

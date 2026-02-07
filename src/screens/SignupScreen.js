@@ -69,7 +69,7 @@ const SignupScreen = ({ navigation, route }) => {
     try {
       setStatesLoading(true);
       console.log('🌐 Fetching states from API...');
-      const response = await fetch('https://n5.bhoomitechzone.us/api/location/states');
+      const response = await fetch('https://kiraeydarback.bhoomi.cloud/api/location/states');
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -107,7 +107,7 @@ const SignupScreen = ({ navigation, route }) => {
     try {
       setDistrictsLoading(true);
       console.log('🌐 Fetching districts for state:', stateName);
-      const response = await fetch(`https://n5.bhoomitechzone.us/api/location/districts/${stateName}`);
+      const response = await fetch(`https://kiraeydarback.bhoomi.cloud/api/location/districts/${stateName}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

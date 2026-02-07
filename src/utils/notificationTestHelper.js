@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Notification Test Helper - TEMPORARILY DISABLED
  */
 

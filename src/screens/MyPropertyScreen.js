@@ -11,6 +11,7 @@ import {
   Image,
   Dimensions,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,6 +22,9 @@ import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
 import ContactPreferenceIcons from '../components/ContactPreferenceIcons';
 import { useSubscription } from '../context/SubscriptionContext';
 import SubscriptionRenewalModal from '../components/SubscriptionRenewalModal';
+import { renewProperty, verifySubscriptionPayment, createSubscriptionOrder, getSubscriptionPackages } from '../services/api';
+import RazorpayCheckout from 'react-native-razorpay';
+import { RAZORPAY_KEY_ID } from '../config/api.config';
 
 // Get screen width for card calculations
 const { width } = Dimensions.get("window");
@@ -32,6 +36,8 @@ const MyPropertyScreen = ({ navigation, route }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [showRenewalModal, setShowRenewalModal] = useState(false);
   const [daysExpired, setDaysExpired] = useState(0);
+  const [renewingPropertyId, setRenewingPropertyId] = useState(null); // Track which property is being renewed
+  const [selectedPropertyForRenewal, setSelectedPropertyForRenewal] = useState(null); // Store property for renewal flow
 
   // Subscription context
   const { userHasPackage, activeSubscription, loadActiveSubscription } = useSubscription();
@@ -41,8 +47,14 @@ const MyPropertyScreen = ({ navigation, route }) => {
     console.log('📥📥📥 LOADING MY PROPERTIES - API CALL STARTING 📥📥📥');
     setLoading(true);
     try {
-      const response = await propertyService.getMySellProperties();
+      // Fetch both regular properties and expired properties in parallel
+      const [response, expiredResponse] = await Promise.all([
+        propertyService.getMySellProperties(),
+        propertyService.getMyExpiredProperties()
+      ]);
+      
       console.log('✅✅✅ API RESPONSE RECEIVED:', response.success, 'Properties count:', response.data?.length || 0);
+      console.log('✅✅✅ EXPIRED API RESPONSE:', expiredResponse.success, 'Expired count:', expiredResponse.data?.length || expiredResponse.properties?.length || 0);
       
       let propertiesData = [];
       if (response.success) {
@@ -50,6 +62,17 @@ const MyPropertyScreen = ({ navigation, route }) => {
       } else {
         console.error('[MyPropertyScreen] API Error:', response.message);
         Alert.alert('Error', response.message || 'Failed to load your properties');
+      }
+      
+      // Get expired properties from the separate endpoint
+      let expiredPropertiesData = [];
+      if (expiredResponse.success) {
+        expiredPropertiesData = expiredResponse.data || expiredResponse.properties || [];
+        // Mark all expired properties with status 'expired'
+        expiredPropertiesData = expiredPropertiesData.map(p => ({
+          ...p,
+          status: 'expired' // Ensure status is set to expired
+        }));
       }
 
       // Map API data to screen format
@@ -168,9 +191,58 @@ const MyPropertyScreen = ({ navigation, route }) => {
         };
       });
 
-      const combined = [...mappedDrafts, ...mappedProperties];
+      // Map expired properties to screen format (same mapping as regular properties)
+      const mappedExpired = expiredPropertiesData.map(property => {
+        let imageUrl = null;
+        if (property.photos && Array.isArray(property.photos) && property.photos.length > 0) {
+          const firstImage = property.photos[0];
+          if (typeof firstImage === 'string') {
+            imageUrl = formatImageUrl(firstImage);
+          } else if (firstImage && typeof firstImage === 'object') {
+            imageUrl = formatImageUrl(firstImage.uri || firstImage.url || firstImage);
+          }
+        } else if (property.image) {
+          imageUrl = formatImageUrl(property.image);
+        }
 
-      console.log('💾💾💾 SETTING PROPERTIES STATE WITH COUNT:', combined.length);
+        const locationText = property.propertyLocation || property.location || 
+          (property.address && typeof property.address === 'object' 
+            ? [
+                property.address.locality || '',
+                property.address.post || property.address.city || '',
+                property.address.city || '',
+                property.address.state || ''
+              ].filter(part => part.trim()).join(', ')
+            : property.address) || 'Location not specified';
+
+        return {
+          id: property._id || property.id,
+          title: property.description || property.title || `${property.specificType || 'Property'} in ${property.address?.city || 'City'}`,
+          location: locationText,
+          price: formatPrice(property.price || property.rentAmount || property.sellingPrice),
+          type: property.specificType || property.propertyType || 'Property',
+          bedrooms: property.bedrooms || property.beds || 'N/A',
+          bathrooms: property.bathrooms || property.baths || 'N/A',
+          area: `${property.areaSqFt || property.areaDetails || property.sqft || property.area || 'N/A'} sqft`,
+          status: 'expired', // Force status to expired
+          image: imageUrl || 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image',
+          purpose: property.purpose || property.purposeType || 'Rent',
+          furnishing: property.furnishingStatus || property.furnishing || 'Not specified',
+          parking: property.parking || 'Not specified',
+          availableFor: property.availableFor || 'Any',
+          views: property.visitCount || property.views || 0,
+          createdAt: property.createdAt || new Date().toISOString(),
+          contactPreferences: property.contactPreferences,
+          contactNumber: property.contactNumber || property.phone,
+          originalData: { ...property, status: 'expired' }, // Ensure originalData also has expired status
+          isExpired: true // Additional flag for easy identification
+        };
+      });
+
+      // Combine all: drafts first, then expired (need attention), then regular properties
+      const combined = [...mappedDrafts, ...mappedExpired, ...mappedProperties];
+
+      console.log('💾💾💾 SETTING PROPERTIES STATE - Drafts:', mappedDrafts.length, 'Expired:', mappedExpired.length, 'Regular:', mappedProperties.length, 'Total:', combined.length);
       setProperties(combined);
       console.log('✅✅✅ PROPERTIES STATE UPDATED SUCCESSFULLY!');
 
@@ -414,6 +486,7 @@ const MyPropertyScreen = ({ navigation, route }) => {
         return "#10B981"; // Green for approved
       case "pending":
       case "pending payment":
+      case "pending_approval":
         return "#FDB022"; // Orange for pending
       case "rejected":
         return "#EF4444"; // Red for rejected
@@ -421,6 +494,8 @@ const MyPropertyScreen = ({ navigation, route }) => {
         return "#10B981";
       case "available":
         return "#FDB022";
+      case "expired":
+        return "#EF4444"; // Red for expired
       default:
         return "#64748B";
     }
@@ -433,6 +508,7 @@ const MyPropertyScreen = ({ navigation, route }) => {
         return "checkmark-circle";
       case "pending":
       case "pending payment":
+      case "pending_approval":
         return "time";
       case "rejected":
         return "close-circle";
@@ -440,20 +516,168 @@ const MyPropertyScreen = ({ navigation, route }) => {
         return "checkmark-circle";
       case "available":
         return "time";
+      case "expired":
+        return "alert-circle";
       default:
         return "help-circle";
     }
   };
 
+  // Handle property renewal - starts the renewal flow
+  const handleRenewProperty = async (property) => {
+    const propertyId = property.id || property._id || property.originalData?._id;
+    console.log('[MyPropertyScreen] Starting renewal for property:', propertyId);
+    
+    // Store the property for renewal and show the renewal modal
+    setSelectedPropertyForRenewal(property);
+    setShowRenewalModal(true);
+  };
+
+  // Handle package selection from renewal modal
+  const handleRenewalPackageSelect = async (selectedPackage) => {
+    if (!selectedPropertyForRenewal) {
+      Alert.alert('Error', 'No property selected for renewal');
+      return;
+    }
+
+    const propertyId = selectedPropertyForRenewal.id || selectedPropertyForRenewal._id || selectedPropertyForRenewal.originalData?._id;
+    console.log('[MyPropertyScreen] Renewing property:', propertyId, 'with package:', selectedPackage.name);
+    
+    setShowRenewalModal(false);
+    setRenewingPropertyId(propertyId);
+
+    try {
+      // Step 1: Create order for subscription
+      const orderRes = await createSubscriptionOrder({
+        subscriptionPackageId: selectedPackage._id || selectedPackage.id
+      });
+
+      console.log('[MyPropertyScreen] Create order response:', orderRes);
+
+      if (!orderRes.success && !orderRes.order) {
+        Alert.alert('Error', orderRes.message || 'Failed to create subscription order');
+        setRenewingPropertyId(null);
+        return;
+      }
+
+      const isFree = orderRes.isFree === true;
+      const order = orderRes.order || orderRes.data?.order;
+
+      if (isFree) {
+        // Free plan - directly verify payment
+        await processRenewalPayment(null, selectedPackage, propertyId, true);
+      } else {
+        // Paid plan - Open Razorpay
+        const userData = await AsyncStorage.getItem('userData');
+        let user = {};
+        try { user = userData ? JSON.parse(userData) : {}; } catch (e) {}
+
+        const amount = order?.amount || (selectedPackage.amount || selectedPackage.price) * 100;
+        
+        const options = {
+          description: `Renewal: ${selectedPackage.name}`,
+          currency: 'INR',
+          key: orderRes.key || RAZORPAY_KEY_ID,
+          amount: amount,
+          name: 'Kirayedar',
+          order_id: order?.id,
+          prefill: {
+            email: user?.email || '',
+            contact: user?.phone || user?.mobile || ''
+          },
+          theme: { color: '#f39c12' }
+        };
+
+        console.log('[MyPropertyScreen] Opening Razorpay with options:', options);
+
+        try {
+          const paymentResult = await RazorpayCheckout.open(options);
+          console.log('[MyPropertyScreen] Razorpay result:', paymentResult);
+          await processRenewalPayment(paymentResult, selectedPackage, propertyId, false);
+        } catch (rzpErr) {
+          console.error('[MyPropertyScreen] Razorpay error:', rzpErr);
+          Alert.alert('Payment Cancelled', 'Payment was cancelled or failed.');
+          setRenewingPropertyId(null);
+        }
+      }
+    } catch (error) {
+      console.error('[MyPropertyScreen] Renewal error:', error);
+      Alert.alert('Error', error.message || 'Failed to process renewal');
+      setRenewingPropertyId(null);
+    }
+  };
+
+  // Process renewal payment - verify payment and call renew API
+  const processRenewalPayment = async (paymentResult, selectedPackage, propertyId, isFree) => {
+    try {
+      // Step 1: Verify payment with propertyId (REQUIRED!)
+      const verifyPayload = {
+        subscriptionPackageId: selectedPackage._id || selectedPackage.id,
+        propertyId: propertyId, // CRITICAL: propertyId is now required!
+        isFreeMode: isFree
+      };
+
+      if (!isFree && paymentResult) {
+        verifyPayload.razorpay_order_id = paymentResult.razorpay_order_id || paymentResult.order_id;
+        verifyPayload.razorpay_payment_id = paymentResult.razorpay_payment_id || paymentResult.payment_id;
+        verifyPayload.razorpay_signature = paymentResult.razorpay_signature || paymentResult.signature;
+      }
+
+      console.log('[MyPropertyScreen] Verifying payment with payload:', verifyPayload);
+      const verifyRes = await verifySubscriptionPayment(verifyPayload);
+      console.log('[MyPropertyScreen] Verify payment response:', verifyRes);
+
+      if (!verifyRes.success) {
+        Alert.alert('Payment Verification Failed', verifyRes.message || 'Unable to verify payment');
+        setRenewingPropertyId(null);
+        return;
+      }
+
+      // Step 2: Call renew API (No admin approval needed!)
+      console.log('[MyPropertyScreen] Calling renew API for property:', propertyId);
+      const renewRes = await renewProperty(propertyId);
+      console.log('[MyPropertyScreen] Renew API response:', renewRes);
+
+      if (renewRes.success) {
+        Alert.alert(
+          'Property Renewed! 🎉',
+          'Your property has been renewed successfully and is now active.',
+          [{ text: 'OK', onPress: () => loadMyProperties() }]
+        );
+      } else {
+        Alert.alert('Renewal Failed', renewRes.message || 'Failed to renew property');
+      }
+    } catch (error) {
+      console.error('[MyPropertyScreen] Process renewal error:', error);
+      Alert.alert('Error', error.message || 'Failed to complete renewal');
+    } finally {
+      setRenewingPropertyId(null);
+      setSelectedPropertyForRenewal(null);
+    }
+  };
+
   const renderPropertyCard = ({ item }) => {
     const isUnpaid = item.paymentStatus === 'unpaid' || item.status === 'draft' || item.isLocalDraft;
+    const isExpired = item.status?.toLowerCase() === 'expired' || item.originalData?.status?.toLowerCase() === 'expired';
     
     return (
     <TouchableOpacity 
-      style={[styles.residentialCard, isUnpaid && { opacity: 0.6 }]}
+      style={[
+        styles.residentialCard, 
+        isUnpaid && { opacity: 0.6 },
+        isExpired && { borderWidth: 2, borderColor: '#EF4444' }
+      ]}
       onPress={() => handlePropertyPress(item)}
       activeOpacity={0.9}
     >
+      {/* Expired Banner - Show prominently for expired properties */}
+      {isExpired && (
+        <View style={styles.expiredBanner}>
+          <Icon name="alert-circle" size={16} color="#FFFFFF" />
+          <Text style={styles.expiredBannerText}>PACKAGE EXPIRED - Not visible on Home Screen</Text>
+        </View>
+      )}
+      
       {/* Property Image Container */}
       <View style={styles.residentialImageContainer}>
         <Image 
@@ -592,6 +816,24 @@ const MyPropertyScreen = ({ navigation, route }) => {
               <Text style={styles.managementButtonText}>Pay Now</Text>
             </TouchableOpacity>
           )}
+          {/* Renew button for expired properties */}
+          {(item.status?.toLowerCase() === 'expired' || 
+            item.originalData?.status?.toLowerCase() === 'expired') && (
+            <TouchableOpacity
+              style={[styles.managementButton, styles.renewButton]}
+              onPress={() => handleRenewProperty(item)}
+              disabled={renewingPropertyId === (item.id || item._id)}
+            >
+              {renewingPropertyId === (item.id || item._id) ? (
+                <ActivityIndicator size="small" color="#10B981" />
+              ) : (
+                <>
+                  <Icon name="refresh-outline" size={16} color="#10B981" />
+                  <Text style={[styles.managementButtonText, { color: '#10B981' }]}>Renew</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
           <TouchableOpacity 
             style={styles.managementButton}
             onPress={() => handleDeleteProperty(item.id)}
@@ -638,26 +880,32 @@ const MyPropertyScreen = ({ navigation, route }) => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{properties.length}</Text>
-            <Text style={styles.statLabel}>Total Properties</Text>
+            <Text style={styles.statLabel}>Total</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
+          <View style={[styles.statCard, { borderColor: '#10B981' }]}>
+            <Text style={[styles.statNumber, { color: '#10B981' }]}>
               {properties.filter(p => 
-                p.originalData?.approvalStatus === "Approved" || 
                 p.originalData?.status === "approved" ||
-                p.status === "Approved" || 
-                p.status === "approved"
+                p.status?.toLowerCase() === "approved"
               ).length}
             </Text>
             <Text style={styles.statLabel}>Approved</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
+          <View style={[styles.statCard, { borderColor: '#EF4444' }]}>
+            <Text style={[styles.statNumber, { color: '#EF4444' }]}>
               {properties.filter(p => 
-                p.originalData?.approvalStatus === "Pending" || 
+                p.originalData?.status === "expired" ||
+                p.status?.toLowerCase() === "expired"
+              ).length}
+            </Text>
+            <Text style={styles.statLabel}>Expired</Text>
+          </View>
+          <View style={[styles.statCard, { borderColor: '#FDB022' }]}>
+            <Text style={[styles.statNumber, { color: '#FDB022' }]}>
+              {properties.filter(p => 
                 p.originalData?.status === "pending" ||
-                p.status === "Pending" || 
-                p.status === "pending" ||
+                p.originalData?.status === "pending_approval" ||
+                p.status?.toLowerCase() === "pending" ||
                 p.status === "Pending Payment"
               ).length}
             </Text>
@@ -665,17 +913,109 @@ const MyPropertyScreen = ({ navigation, route }) => {
           </View>
         </View>
 
+        {/* Expired Properties Section - Show first if any */}
+        {properties.filter(p => 
+          p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired"
+        ).length > 0 && (
+          <View style={styles.propertiesSection}>
+            <View style={[styles.sectionHeader, { backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name="alert-circle" size={24} color="#EF4444" style={{ marginRight: 8 }} />
+                <View>
+                  <Text style={[styles.sectionTitle, { color: '#EF4444' }]}>Expired Properties</Text>
+                  <Text style={[styles.sectionSubtitle, { color: '#DC2626' }]}>Renew to make visible on home screen</Text>
+                </View>
+              </View>
+            </View>
+            
+            <FlatList
+              data={properties.filter(p => 
+                p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired"
+              )}
+              renderItem={renderPropertyCard}
+              keyExtractor={(item) => `expired-${item.id}`}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.flatListContainer}
+            />
+          </View>
+        )}
+
+        {/* Approved Properties Section */}
         <View style={styles.propertiesSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Properties</Text>
-            <Text style={styles.sectionSubtitle}>Manage your rental listings</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="checkmark-circle" size={24} color="#10B981" style={{ marginRight: 8 }} />
+              <View>
+                <Text style={styles.sectionTitle}>Approved Properties</Text>
+                <Text style={styles.sectionSubtitle}>Visible on home screen</Text>
+              </View>
+            </View>
           </View>
           
           {loading && properties.length === 0 ? (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading properties...</Text>
             </View>
-          ) : properties.length === 0 ? (
+          ) : properties.filter(p => 
+              p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved"
+            ).length === 0 ? (
+            <View style={[styles.emptyContainer, { paddingVertical: 20 }]}>
+              <Text style={styles.emptySubtitle}>No approved properties yet</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={properties.filter(p => 
+                p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved"
+              )}
+              renderItem={renderPropertyCard}
+              keyExtractor={(item) => `approved-${item.id}`}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.flatListContainer}
+            />
+          )}
+        </View>
+
+        {/* Pending Properties Section */}
+        {properties.filter(p => 
+          p.originalData?.status === "pending" || 
+          p.originalData?.status === "pending_approval" ||
+          p.status?.toLowerCase() === "pending" ||
+          p.status === "Pending Payment" ||
+          p.isLocalDraft
+        ).length > 0 && (
+          <View style={styles.propertiesSection}>
+            <View style={styles.sectionHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name="time" size={24} color="#FDB022" style={{ marginRight: 8 }} />
+                <View>
+                  <Text style={styles.sectionTitle}>Pending Properties</Text>
+                  <Text style={styles.sectionSubtitle}>Awaiting approval or payment</Text>
+                </View>
+              </View>
+            </View>
+            
+            <FlatList
+              data={properties.filter(p => 
+                p.originalData?.status === "pending" || 
+                p.originalData?.status === "pending_approval" ||
+                p.status?.toLowerCase() === "pending" ||
+                p.status === "Pending Payment" ||
+                p.isLocalDraft
+              )}
+              renderItem={renderPropertyCard}
+              keyExtractor={(item) => `pending-${item.id}`}
+              scrollEnabled={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.flatListContainer}
+            />
+          </View>
+        )}
+
+        {/* Empty State - only show if no properties at all */}
+        {properties.length === 0 && !loading && (
+          <View style={styles.propertiesSection}>
             <View style={styles.emptyContainer}>
               <Icon name="home-outline" size={64} color="#E5E7EB" />
               <Text style={styles.emptyTitle}>No Properties Yet</Text>
@@ -689,30 +1029,21 @@ const MyPropertyScreen = ({ navigation, route }) => {
                 <Text style={styles.emptyButtonText}>Add Property</Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <FlatList
-              data={properties}
-              renderItem={renderPropertyCard}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.flatListContainer}
-            />
-          )}
-        </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Subscription Renewal Modal */}
       <SubscriptionRenewalModal
         visible={showRenewalModal}
-        onClose={() => setShowRenewalModal(false)}
-        onSelectPackage={(pkg) => {
+        onClose={() => {
           setShowRenewalModal(false);
-          // Navigate to AddSell screen with payment modal open
-          navigation.navigate('AddSell', { 
-            openPaymentModal: true,
-            selectedPackage: pkg
-          });
+          setSelectedPropertyForRenewal(null);
+        }}
+        onSelectPackage={handleRenewalPackageSelect}
+        onMaybeLater={() => {
+          setShowRenewalModal(false);
+          setSelectedPropertyForRenewal(null);
         }}
         expiredDate={activeSubscription?.expiryDate || activeSubscription?.expiry_date}
         daysExpired={daysExpired}
@@ -764,14 +1095,19 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: "row",
     marginBottom: 24,
+    flexWrap: 'wrap',
   },
   statCard: {
     flex: 1,
+    minWidth: '22%',
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 4,
+    padding: 12,
+    marginHorizontal: 3,
+    marginVertical: 4,
     alignItems: "center",
+    borderWidth: 2,
+    borderColor: '#F1F5F9',
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -779,10 +1115,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
-    color: "#FDB022",
-    marginBottom: 4,
+    color: "#1A1A1A",
+    marginBottom: 2,
   },
   statLabel: {
     fontSize: 12,
@@ -983,6 +1319,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748B',
     marginLeft: 4,
+  },
+
+  renewButton: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+
+  // Expired property styles
+  expiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  expiredBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   
   // Old styles (keeping for reference)

@@ -22,7 +22,7 @@ import LinearGradient from "react-native-linear-gradient";
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import DatePicker from 'react-native-date-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addProperty, verifySubscriptionPayment, getSubscriptionPackages, createSubscriptionOrder, getStates, getDistricts, getCities, extractPincode } from '../services/api';
+import { addProperty, updateProperty, verifySubscriptionPayment, getSubscriptionPackages, createSubscriptionOrder, getStates, getDistricts, getCities, extractPincode } from '../services/api';
 import { useSubscription } from '../context/SubscriptionContext'; // Import the API service (subscription helpers added)
 import RazorpayCheckout from 'react-native-razorpay';
 import { RAZORPAY_KEY_ID } from '../config/api.config';
@@ -735,7 +735,7 @@ const AddSellScreen = ({ navigation, route }) => {
 
       console.log('?? Making test API call...');
       
-      const response = await fetch('https://kiraeydarback.bhoomi.cloud/property/add', {
+      const response = await fetch('https://backend.kirayedar24.com/property/add', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1008,18 +1008,33 @@ const AddSellScreen = ({ navigation, route }) => {
     try {
       const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
       
+      // =================================================================
+      // STEP 1: Create property with FormData (same as Buy Package flow)
+      // Using FormData so images can be uploaded with property data
+      // =================================================================
+      
       const formData = new FormData();
       
-      // Address
+      // Address fields (flat format for FormData)
       formData.append('state', addressValidation.state);
-      formData.append('district', addressValidation.district);
+      formData.append('district', addressValidation.district || effectiveDistrict || '');
       formData.append('city', addressValidation.city);
       formData.append('locality', addressValidation.locality);
-      formData.append('pincode', addressValidation.pincode);
+      formData.append('pincode', addressValidation.pincode || '');
+      
+      // Also send address as JSON string for backend to parse
+      const addressObj = {
+        state: addressValidation.state,
+        district: addressValidation.district || effectiveDistrict || '',
+        city: addressValidation.city,
+        locality: addressValidation.locality,
+        pincode: addressValidation.pincode || ''
+      };
+      formData.append('address', JSON.stringify(addressObj));
       
       // Core fields
-      formData.append('areaSqFt', areaNum);
-      formData.append('price', priceNum);
+      formData.append('areaSqFt', areaNum.toString());
+      formData.append('price', priceNum.toString());
       formData.append('contactNumber', contactNumber.trim());
       formData.append('propertyType', propertyType);
       formData.append('purpose', purpose);
@@ -1029,130 +1044,78 @@ const AddSellScreen = ({ navigation, route }) => {
       formData.append('availableFrom', availableFrom.toISOString().split('T')[0]);
       formData.append('availableFor', availableFor);
       
-      // Residential specific
+      // Contact preferences as JSON string
+      const contactPrefsObj = {
+        phone: phoneToggleEnabled?.toString() || 'true',
+        whatsapp: whatsappToggleEnabled?.toString() || 'true',
+        chat: chatToggleEnabled?.toString() || 'true'
+      };
+      formData.append('contactPreferences', JSON.stringify(contactPrefsObj));
+      
+      // Status flags - UNPAID
+      formData.append('paymentStatus', 'unpaid');
+      formData.append('status', 'unpaid');
+      formData.append('hasPackage', 'false');
+      
+      // Property type specific fields
       if (propertyType === 'Residential') {
+        formData.append('specificType', residentialType);
         formData.append('residentialType', residentialType);
-        formData.append('bedrooms', bedrooms);
-        formData.append('bathrooms', bathrooms);
+        formData.append('bedrooms', bedrooms.toString());
+        formData.append('bathrooms', bathrooms.toString());
         formData.append('kitchenType', kitchenType);
-        formData.append('balconies', balconies);
-        formData.append('floorNumber', floorNumber);
-        formData.append('totalFloors', totalFloors);
+        formData.append('balconies', balconies.toString());
+        if (floorNumber?.trim() && totalFloors?.trim()) {
+          formData.append('floorNumber', floorNumber.toString());
+          formData.append('totalFloors', totalFloors.toString());
+        }
         formData.append('societyMaintenance', societyMaintenance);
         if (societyFeatures.length > 0) {
-          societyFeatures.forEach(feature => formData.append('societyFeatures[]', feature));
+          formData.append('societyFeatures', JSON.stringify(societyFeatures));
         }
       } else if (propertyType === 'Commercial') {
-        formData.append('commercialType', commercialType);
-        formData.append('spaceAvailable', spaceAvailable);
+        const formattedCommercialType = commercialType.charAt(0).toUpperCase() + commercialType.slice(1);
+        formData.append('specificType', formattedCommercialType);
+        formData.append('commercialType', formattedCommercialType);
+        formData.append('spaceAvailable', spaceAvailable.toString());
       }
       
-      formData.append('description', description);
-      formData.append('contactPreference', contactPreference);
-      formData.append('whatsappContact', contactBy.whatsapp);
-      formData.append('phoneContact', contactBy.phone);
-      formData.append('emailContact', contactBy.email);
+      if (description?.trim()) formData.append('description', description.trim());
       
-      // Media - don't include in FormData if there are issues
+      // Media files (photos and videos) - INCLUDED IN SAME REQUEST
+      // Using 'photos' field name as per backend curl requirement
       if (selectedMedia && selectedMedia.length > 0) {
+        console.log('📸 Adding', selectedMedia.length, 'media files to FormData');
         selectedMedia.forEach((media, index) => {
           if (media.uri) {
-            formData.append('media', {
+            const fileExtension = media.type === 'video' ? 'mp4' : 'jpg';
+            const fileName = media.name || `media_${index}.${fileExtension}`;
+            const fieldName = media.type === 'video' ? 'videos' : 'photos';
+            console.log(`📸 Adding ${fieldName} ${index + 1}: ${fileName}`);
+            formData.append(fieldName, {
               uri: media.uri,
-              type: media.type || 'image/jpeg',
-              name: media.name || `media_${index}.jpg`
+              type: media.type === 'video' ? 'video/mp4' : 'image/jpeg',
+              name: fileName
             });
           }
         });
       }
       
-      // ? IMPORTANT: Mark as unpaid/draft
-      formData.append('paymentStatus', 'unpaid');
-      formData.append('status', 'draft');
+      console.log('📦 ========================================');
+      console.log('📦 Saving property WITHOUT PACKAGE (FormData with images)...');
+      console.log('📦 Status: unpaid | HasPackage: false');
+      console.log('📦 Media files:', selectedMedia?.length || 0);
+      console.log('📦 ========================================');
       
-      console.log('?? Saving property as UNPAID DRAFT...');
-      console.log('?? Attempting to sync with backend...');
-      
-      let result = null;
-      let savedLocally = false;
-      
-      // Try to save to backend first
-      try {
-        result = await addProperty(formData);
-        console.log('?? addProperty response:', result);
-        
-        if (result && result.success) {
-          console.log('? Property saved to BACKEND!');
-        } else {
-          // Backend didn't accept it - save locally
-          console.warn('?? Backend rejected - saving locally instead');
-          throw new Error('Backend unavailable');
-        }
-      } catch (backendError) {
-        console.warn('?? Backend error, saving to local storage instead:', backendError.message);
-        
-        // Save locally as fallback
-        const localProperty = {
-          _id: Date.now().toString(), // Use timestamp as local ID
-          state: addressValidation.state,
-          district: addressValidation.district,
-          city: addressValidation.city,
-          locality: addressValidation.locality,
-          pincode: addressValidation.pincode,
-          areaSqFt: areaNum,
-          price: priceNum,
-          contactNumber: contactNumber.trim(),
-          propertyType,
-          purpose,
-          furnishingStatus: furnishing,
-          parking,
-          availabilityStatus: availability,
-          availableFrom: availableFrom.toISOString().split('T')[0],
-          availableFor,
-          residentialType: propertyType === 'Residential' ? residentialType : null,
-          bedrooms: propertyType === 'Residential' ? bedrooms : null,
-          bathrooms: propertyType === 'Residential' ? bathrooms : null,
-          kitchenType: propertyType === 'Residential' ? kitchenType : null,
-          balconies: propertyType === 'Residential' ? balconies : null,
-          floorNumber: propertyType === 'Residential' ? floorNumber : null,
-          totalFloors: propertyType === 'Residential' ? totalFloors : null,
-          societyMaintenance: propertyType === 'Residential' ? societyMaintenance : null,
-          societyFeatures: propertyType === 'Residential' ? societyFeatures : [],
-          commercialType: propertyType === 'Commercial' ? commercialType : null,
-          spaceAvailable: propertyType === 'Commercial' ? spaceAvailable : null,
-          description,
-          contactPreference,
-          whatsappContact: contactBy.whatsapp,
-          phoneContact: contactBy.phone,
-          emailContact: contactBy.email,
-          paymentStatus: 'unpaid',
-          status: 'draft',
-          photos: selectedMedia.filter(m => m.type === 'photo' || !m.type).map(m => m.uri) || [],
-          videos: selectedMedia.filter(m => m.type === 'video').map(m => m.uri) || [],
-          isLocalDraft: true,
-          createdAt: new Date().toISOString(),
-          syncedWithBackend: false
-        };
-        
-        // Save to AsyncStorage
-        try {
-          const existing = await AsyncStorage.getItem('@local_draft_properties');
-          const drafts = existing ? JSON.parse(existing) : [];
-          drafts.push(localProperty);
-          await AsyncStorage.setItem('@local_draft_properties', JSON.stringify(drafts));
-          console.log('? Property saved to LOCAL STORAGE');
-          savedLocally = true;
-          result = { success: true, data: localProperty };
-        } catch (storageError) {
-          console.error('? Failed to save locally:', storageError);
-          throw storageError;
-        }
-      }
+      // Send as FormData (includes images)
+      const result = await addProperty(formData);
+      console.log('📦 Backend response:', JSON.stringify(result, null, 2));
       
       if (result && result.success) {
         const createdProperty = result.data || result.property || result;
+        const propertyId = createdProperty?._id || createdProperty?.propertyId || result?.data?.propertyId;
         
-        console.log('? Property saved successfully!', createdProperty);
+        console.log('✅ Property created successfully with images! ID:', propertyId);
         
         // Clear form
         setCurrentStep(1);
@@ -1163,14 +1126,9 @@ const AddSellScreen = ({ navigation, route }) => {
         setPincode('');
         setSelectedMedia([]);
         
-        // Show success modal with appropriate message
-        const successMessage = savedLocally 
-          ? 'Saved locally. Will sync with server when online.'
-          : 'Property saved successfully!';
-        
         Alert.alert(
-          'Success! ?',
-          'Property saved as unpaid\n\n' + successMessage,
+          'Success! 🎉',
+          'Property saved as UNPAID!\n\nYour property has been saved. Purchase a package to activate it and get premium features.',
           [
             {
               text: 'View in My Properties',
@@ -1526,18 +1484,24 @@ const AddSellScreen = ({ navigation, route }) => {
         }
         
         // Media
+        console.log('📸 Appending', selectedMedia.length, 'media files');
         selectedMedia.forEach((media, index) => {
           if (media.uri) {
             const fileExtension = media.type === 'photo' ? 'jpg' : 'mp4';
             const fileName = media.name || `media_${index}.${fileExtension}`;
-            const fieldName = media.type === 'photo' ? 'photos' : 'videos';
-            formData.append(fieldName, {
+            console.log(`📸 Adding photosAndVideo ${index + 1}: ${fileName}`);
+            formData.append('photosAndVideo', {
               uri: media.uri,
               type: media.type === 'photo' ? 'image/jpeg' : 'video/mp4',
               name: fileName
             });
           }
         });
+        
+        // 📦 IMPORTANT: Mark as WITH PACKAGE - goes to "pending" for admin approval
+        formData.append('hasPackage', 'true');
+        formData.append('paymentStatus', 'paid'); // user is paying for package
+        formData.append('status', 'pending'); // pending for admin approval
         
         // Create property
         const propertyResult = await addProperty(formData);
@@ -2469,7 +2433,9 @@ const AddSellScreen = ({ navigation, route }) => {
         expiredDate={activeSubscription?.expiryDate || activeSubscription?.expiry_date}
         daysExpired={daysExpired}
         onMaybeLater={async () => {
+          console.log('📦 Maybe Later clicked (renewal) - saving WITHOUT package');
           setShowRenewalModal(false);
+          setSubmitting(true); // Show loading
           const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
           const addressValidation = {
             state: propertyState?.trim() || '',
@@ -2480,6 +2446,7 @@ const AddSellScreen = ({ navigation, route }) => {
           };
           const areaNum = parseInt(area);
           const priceNum = parseInt(price);
+          console.log('📦 Calling savePropertyAsDraft with status: unpaid, hasPackage: false');
           await savePropertyAsDraft(addressValidation, areaNum, priceNum);
         }}
       />
@@ -2493,7 +2460,9 @@ const AddSellScreen = ({ navigation, route }) => {
           setShowPaymentModal(true);
         }}
         onMaybeLater={async () => {
+          console.log('📦 Maybe Later clicked - saving WITHOUT package');
           setShowNoPackageModal(false);
+          setSubmitting(true); // Show loading
           const effectiveDistrict = isOtherDistrict ? manualDistrict?.trim() : district?.trim();
           const addressValidation = {
             state: propertyState?.trim() || '',
@@ -2504,6 +2473,7 @@ const AddSellScreen = ({ navigation, route }) => {
           };
           const areaNum = parseInt(area);
           const priceNum = parseInt(price);
+          console.log('📦 Calling savePropertyAsDraft with status: unpaid, hasPackage: false');
           await savePropertyAsDraft(addressValidation, areaNum, priceNum);
         }}
       />

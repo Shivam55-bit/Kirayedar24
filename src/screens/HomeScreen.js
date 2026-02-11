@@ -59,11 +59,11 @@ const formatImageUrl = (url) => {
     
     // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
     if (url.startsWith('uploads/')) {
-        return `https://kiraeydarback.bhoomi.cloud/${url}`;
+        return `https://backend.kirayedar24.com/${url}`;
     }
     
     // For other relative paths, add base URL
-    return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
+    return url.startsWith('/') ? `https://backend.kirayedar24.com${url}` : `https://backend.kirayedar24.com/${url}`;
 };
 
 const formatPrice = (price) => `₹ ${price}`; // Using Rupee symbol instead of dollar

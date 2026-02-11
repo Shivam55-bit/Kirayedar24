@@ -68,9 +68,14 @@ const NotificationListScreen = ({ navigation }) => {
         list = res.data;
       }
 
-      setNotifications(prev =>
-        pageNum === 1 ? list : [...prev, ...list]
-      );
+      // Filter out duplicates based on _id
+      setNotifications(prev => {
+        const combined = pageNum === 1 ? list : [...prev, ...list];
+        const uniqueList = combined.filter((item, index, self) => 
+          index === self.findIndex(t => t._id === item._id)
+        );
+        return uniqueList;
+      });
 
       setHasMore(
         pagination.totalPages
@@ -143,6 +148,14 @@ const NotificationListScreen = ({ navigation }) => {
     setModalVisible(true);
   };
 
+  // Handle modal close and refresh notifications
+  const handleCloseModal = () => {
+    setModalVisible(false);
+    // Refresh notifications to update read status and unread count
+    loadNotifications(1);
+    loadUnreadCount();
+  };
+
   const handleDelete = (item) => {
     Alert.alert('Delete', 'Delete this notification?', [
       { text: 'Cancel', style: 'cancel' },
@@ -195,9 +208,10 @@ const NotificationListScreen = ({ navigation }) => {
 
     return (
       <TouchableOpacity
-        style={styles.row}
+        style={[styles.row, unread && styles.rowUnread]}
         onPress={() => handleOpen(item)}
         onLongPress={() => handleDelete(item)}
+        activeOpacity={0.7}
       >
         <View style={styles.avatar}>
           <Icon name="notifications" size={22} color="#fff" />
@@ -217,7 +231,7 @@ const NotificationListScreen = ({ navigation }) => {
           </View>
 
           <Text
-            numberOfLines={1}
+            numberOfLines={2}
             style={[styles.message, unread && styles.bold]}
           >
             {item.body || item.message || ''}
@@ -229,6 +243,17 @@ const NotificationListScreen = ({ navigation }) => {
     );
   };
 
+  /* ================= EMPTY STATE ================= */
+  const renderEmpty = () => (
+    <View style={styles.emptyContainer}>
+      <Icon name="notifications-off-outline" size={48} color="#CCCCCC" style={styles.emptyIcon} />
+      <Text style={styles.emptyText}>No Notifications</Text>
+      <Text style={styles.emptySubText}>
+        You don't have any notifications yet
+      </Text>
+    </View>
+  );
+
   /* ================= UI ================= */
 
   return (
@@ -237,9 +262,9 @@ const NotificationListScreen = ({ navigation }) => {
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} />
+          <Icon name="arrow-back" size={24} color="#222222" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Messages</Text>
+        <Text style={styles.headerTitle}>Notifications</Text>
 
         {unreadCount > 0 && (
           <View style={styles.badge}>
@@ -251,13 +276,18 @@ const NotificationListScreen = ({ navigation }) => {
       {/* BODY */}
       {loading && page === 1 ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#2979FF" />
+          <ActivityIndicator size="large" color="#FDB022" />
         </View>
       ) : (
         <FlatList
           data={notifications}
-          keyExtractor={(i) => i._id}
+          keyExtractor={(item, index) => `${item._id || item.id || 'notif'}-${index}`}
           renderItem={renderItem}
+          contentContainerStyle={[
+            styles.listContent,
+            notifications.length === 0 && { flex: 1 }
+          ]}
+          ListEmptyComponent={renderEmpty}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -265,12 +295,23 @@ const NotificationListScreen = ({ navigation }) => {
                 setRefreshing(true);
                 loadNotifications(1);
               }}
+              colors={['#FDB022']}
+              tintColor="#FDB022"
             />
           }
           onEndReached={() =>
             hasMore && !loadingMore && loadNotifications(page + 1)
           }
           onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator 
+                size="small" 
+                color="#FDB022" 
+                style={{ paddingVertical: 16 }} 
+              />
+            ) : null
+          }
         />
       )}
 
@@ -279,19 +320,19 @@ const NotificationListScreen = ({ navigation }) => {
         visible={modalVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={handleCloseModal}
       >
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setModalVisible(false)}
+          onPress={handleCloseModal}
         >
           <Pressable style={styles.modalContent} onPress={() => {}}>
             {/* Close Button */}
             <TouchableOpacity
               style={styles.closeBtn}
-              onPress={() => setModalVisible(false)}
+              onPress={handleCloseModal}
             >
-              <Icon name="close-circle" size={28} color="#f39c12" />
+              <Icon name="close-circle" size={28} color="#FDB022" />
             </TouchableOpacity>
 
             {/* Title */}
@@ -303,7 +344,7 @@ const NotificationListScreen = ({ navigation }) => {
             {/* Close Button */}
             <TouchableOpacity
               style={styles.modalBtn}
-              onPress={() => setModalVisible(false)}
+              onPress={handleCloseModal}
               activeOpacity={0.7}
             >
               <Text style={styles.modalBtnText}>Close</Text>
@@ -317,35 +358,53 @@ const NotificationListScreen = ({ navigation }) => {
 
 export default NotificationListScreen;
 
-/* ================= STYLES ================= */
+/* ================= COLORS ================= */
+const COLORS = {
+  primary: '#FDB022',
+  background: '#FFFFFF',
+  white: '#FFFFFF',
+  text: '#222222',
+  textSecondary: '#666666',
+  border: '#EEEEEE',
+  unreadBg: '#FFF8E7',
+};
 
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.background,
+  },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: COLORS.border,
   },
 
   headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginLeft: 12,
+    fontSize: 20,
+    fontWeight: '600',
+    marginLeft: 14,
     flex: 1,
+    color: COLORS.text,
   },
 
   badge: {
-    backgroundColor: '#2979FF',
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    minWidth: 24,
+    alignItems: 'center',
   },
 
   badgeText: {
-    color: '#fff',
+    color: COLORS.white,
     fontWeight: '700',
     fontSize: 12,
   },
@@ -353,56 +412,65 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: COLORS.border,
+  },
+
+  rowUnread: {
+    backgroundColor: COLORS.unreadBg,
   },
 
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#4F8EF7',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
 
-  content: { flex: 1 },
+  content: { 
+    flex: 1,
+  },
 
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 3,
   },
 
   title: {
-    fontSize: 16,
-    color: '#222',
+    fontSize: 15,
+    color: COLORS.text,
     flex: 1,
     marginRight: 8,
   },
 
   message: {
     fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
   },
 
   bold: {
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: '600',
   },
 
   time: {
     fontSize: 12,
-    color: '#999',
+    color: '#999999',
   },
 
   dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2979FF',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
     marginLeft: 8,
   },
 
@@ -410,62 +478,82 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+
+  emptyIcon: {
+    marginBottom: 12,
+  },
+
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+
+  emptySubText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+
+  listContent: {
+    paddingBottom: 16,
   },
 
   /* ============ MODAL STYLES ============ */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 20,
     width: '85%',
-    maxWidth: 400,
-    borderWidth: 2,
-    borderColor: '#f39c12',
-    shadowColor: '#f39c12',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 12,
+    maxWidth: 360,
   },
 
   closeBtn: {
     alignSelf: 'flex-end',
-    marginBottom: 12,
+    padding: 4,
   },
 
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 12,
-    lineHeight: 24,
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 10,
   },
 
   modalMessage: {
-    fontSize: 16,
-    color: '#555',
-    lineHeight: 24,
-    marginBottom: 24,
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    lineHeight: 22,
+    marginBottom: 20,
   },
 
   modalBtn: {
-    backgroundColor: '#f39c12',
+    backgroundColor: COLORS.primary,
     paddingVertical: 12,
-    paddingHorizontal: 24,
     borderRadius: 8,
     alignItems: 'center',
   },
 
   modalBtnText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: COLORS.white,
   },
 });

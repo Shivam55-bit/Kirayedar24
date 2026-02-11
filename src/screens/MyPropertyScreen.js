@@ -37,7 +37,11 @@ const MyPropertyScreen = ({ navigation, route }) => {
   const [showRenewalModal, setShowRenewalModal] = useState(false);
   const [daysExpired, setDaysExpired] = useState(0);
   const [renewingPropertyId, setRenewingPropertyId] = useState(null); // Track which property is being renewed
+  const [renewalMode, setRenewalMode] = useState('expired'); // 'expired' | 'unpaid'
   const [selectedPropertyForRenewal, setSelectedPropertyForRenewal] = useState(null); // Store property for renewal flow
+  const [selectedPropertyForPayment, setSelectedPropertyForPayment] = useState(null); // Store property for payment flow
+  const [showPaymentModal, setShowPaymentModal] = useState(false); // Show payment modal for unpaid properties
+  const [selectedFilter, setSelectedFilter] = useState('all'); // Filter: 'all', 'approved', 'expired', 'pending', 'unpaid'
 
   // Subscription context
   const { userHasPackage, activeSubscription, loadActiveSubscription } = useSubscription();
@@ -47,14 +51,21 @@ const MyPropertyScreen = ({ navigation, route }) => {
     console.log('📥📥📥 LOADING MY PROPERTIES - API CALL STARTING 📥📥📥');
     setLoading(true);
     try {
-      // Fetch both regular properties and expired properties in parallel
-      const [response, expiredResponse] = await Promise.all([
+      // Fetch both: regular properties AND pending/unpaid properties in parallel
+      const [response, pendingResponse] = await Promise.all([
         propertyService.getMySellProperties(),
-        propertyService.getMyExpiredProperties()
+        propertyService.getMyPendingWithoutSubscription()
       ]);
       
       console.log('✅✅✅ API RESPONSE RECEIVED:', response.success, 'Properties count:', response.data?.length || 0);
-      console.log('✅✅✅ EXPIRED API RESPONSE:', expiredResponse.success, 'Expired count:', expiredResponse.data?.length || expiredResponse.properties?.length || 0);
+      console.log('✅✅✅ PENDING API RESPONSE RECEIVED:', pendingResponse.success, 'Pending count:', pendingResponse.data?.length || 0);
+      
+      // Debug: Log hasPackage and paymentStatus for each property
+      if (response.data) {
+        response.data.forEach((p, i) => {
+          console.log(`📦 Property ${i}: hasPackage=${p.hasPackage}, paymentStatus=${p.paymentStatus}, status=${p.status}`);
+        });
+      }
       
       let propertiesData = [];
       if (response.success) {
@@ -63,16 +74,12 @@ const MyPropertyScreen = ({ navigation, route }) => {
         console.error('[MyPropertyScreen] API Error:', response.message);
         Alert.alert('Error', response.message || 'Failed to load your properties');
       }
-      
-      // Get expired properties from the separate endpoint
-      let expiredPropertiesData = [];
-      if (expiredResponse.success) {
-        expiredPropertiesData = expiredResponse.data || expiredResponse.properties || [];
-        // Mark all expired properties with status 'expired'
-        expiredPropertiesData = expiredPropertiesData.map(p => ({
-          ...p,
-          status: 'expired' // Ensure status is set to expired
-        }));
+
+      // Get pending/unpaid properties (Maybe Later)
+      let pendingPropertiesData = [];
+      if (pendingResponse.success) {
+        pendingPropertiesData = pendingResponse.data || pendingResponse.properties || [];
+        console.log('📦 Pending properties (Maybe Later) loaded:', pendingPropertiesData.length);
       }
 
       // Map API data to screen format
@@ -127,6 +134,10 @@ const MyPropertyScreen = ({ navigation, route }) => {
           createdAt: property.createdAt || new Date().toISOString(),
           contactPreferences: property.contactPreferences,  // ✅ Include contact preferences
           contactNumber: property.contactNumber || property.phone,  // ✅ Include contact number
+          // 🔴 DON'T mark as unpaid here - only my-pending-without-subscription API properties are unpaid
+          hasPackage: property.hasPackage,  // ✅ Include hasPackage for unpaid detection
+          paymentStatus: property.paymentStatus,  // ✅ Include paymentStatus for unpaid detection
+          isPendingWithoutSubscription: false,  // 🔴 Regular API properties are NOT unpaid
           originalData: property  // ✅ Store complete original backend data
         };
       });
@@ -191,8 +202,8 @@ const MyPropertyScreen = ({ navigation, route }) => {
         };
       });
 
-      // Map expired properties to screen format (same mapping as regular properties)
-      const mappedExpired = expiredPropertiesData.map(property => {
+      // Map pending/unpaid properties (Maybe Later) - same format as regular properties
+      const mappedPendingProperties = pendingPropertiesData.map(property => {
         let imageUrl = null;
         if (property.photos && Array.isArray(property.photos) && property.photos.length > 0) {
           const firstImage = property.photos[0];
@@ -224,7 +235,7 @@ const MyPropertyScreen = ({ navigation, route }) => {
           bedrooms: property.bedrooms || property.beds || 'N/A',
           bathrooms: property.bathrooms || property.baths || 'N/A',
           area: `${property.areaSqFt || property.areaDetails || property.sqft || property.area || 'N/A'} sqft`,
-          status: 'expired', // Force status to expired
+          status: property.status || 'unpaid',
           image: imageUrl || 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image',
           purpose: property.purpose || property.purposeType || 'Rent',
           furnishing: property.furnishingStatus || property.furnishing || 'Not specified',
@@ -234,15 +245,39 @@ const MyPropertyScreen = ({ navigation, route }) => {
           createdAt: property.createdAt || new Date().toISOString(),
           contactPreferences: property.contactPreferences,
           contactNumber: property.contactNumber || property.phone,
-          originalData: { ...property, status: 'expired' }, // Ensure originalData also has expired status
-          isExpired: true // Additional flag for easy identification
+          hasPackage: false,  // 🔴 Mark as without package (unpaid/maybe later)
+          paymentStatus: 'unpaid',  // 🔴 Mark as unpaid
+          originalData: property,
+          isPendingWithoutSubscription: true  // 🔴 Flag to identify pending properties
         };
       });
 
-      // Combine all: drafts first, then expired (need attention), then regular properties
-      const combined = [...mappedDrafts, ...mappedExpired, ...mappedProperties];
+      // 🔴 IMPORTANT: Create set of unpaid property IDs from pending API
+      const unpaidPropertyIds = new Set(mappedPendingProperties.map(p => p.id));
+      
+      // 🔴 Mark regular properties that are in the unpaid list
+      const updatedMappedProperties = mappedProperties.map(p => {
+        if (unpaidPropertyIds.has(p.id)) {
+          // This property is unpaid - mark it
+          return {
+            ...p,
+            hasPackage: false,
+            paymentStatus: 'unpaid',
+            isPendingWithoutSubscription: true
+          };
+        }
+        return p;
+      });
 
-      console.log('💾💾💾 SETTING PROPERTIES STATE - Drafts:', mappedDrafts.length, 'Expired:', mappedExpired.length, 'Regular:', mappedProperties.length, 'Total:', combined.length);
+      // 🔴 Add any pending properties that are NOT in regular API (edge case)
+      const regularPropertyIds = new Set(mappedProperties.map(p => p.id));
+      const uniquePendingProperties = mappedPendingProperties.filter(p => !regularPropertyIds.has(p.id));
+
+      // Combine: local drafts first, then unique pending, then regular properties (now correctly marked)
+      const combined = [...mappedDrafts, ...uniquePendingProperties, ...updatedMappedProperties];
+
+      console.log('💾💾💾 SETTING PROPERTIES STATE WITH COUNT:', combined.length);
+      console.log('📦 Breakdown: Local drafts:', mappedDrafts.length, ', Unique pending:', uniquePendingProperties.length, ', Regular:', updatedMappedProperties.length, ', Unpaid marked:', unpaidPropertyIds.size);
       setProperties(combined);
       console.log('✅✅✅ PROPERTIES STATE UPDATED SUCCESSFULLY!');
 
@@ -479,11 +514,18 @@ const MyPropertyScreen = ({ navigation, route }) => {
     });
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status, item = null) => {
+    // Check if property is unpaid (without package) - takes priority
+    if (item && (item.hasPackage === false || item.hasPackage === 'false' || item.paymentStatus === 'unpaid')) {
+      return "#EF4444"; // Red for unpaid
+    }
+    
     const statusLower = (status || '').toLowerCase();
     switch (statusLower) {
       case "approved":
         return "#10B981"; // Green for approved
+      case "unpaid":
+        return "#EF4444"; // Red for unpaid
       case "pending":
       case "pending payment":
       case "pending_approval":
@@ -501,11 +543,18 @@ const MyPropertyScreen = ({ navigation, route }) => {
     }
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status, item = null) => {
+    // Check if property is unpaid (without package) - takes priority
+    if (item && (item.hasPackage === false || item.hasPackage === 'false' || item.paymentStatus === 'unpaid')) {
+      return "alert-circle"; // Alert icon for unpaid
+    }
+    
     const statusLower = (status || '').toLowerCase();
     switch (statusLower) {
       case "approved":
         return "checkmark-circle";
+      case "unpaid":
+        return "alert-circle";
       case "pending":
       case "pending payment":
       case "pending_approval":
@@ -530,6 +579,18 @@ const MyPropertyScreen = ({ navigation, route }) => {
     
     // Store the property for renewal and show the renewal modal
     setSelectedPropertyForRenewal(property);
+    setRenewalMode('expired');
+    setShowRenewalModal(true);
+  };
+
+  // Handle payment for unpaid properties (Maybe Later flow)
+  const handlePayForProperty = (property) => {
+    const propertyId = property.id || property._id || property.originalData?._id;
+    console.log('[MyPropertyScreen] Starting payment for unpaid property:', propertyId);
+    
+    // Set mode to 'unpaid' and show modal directly
+    setSelectedPropertyForRenewal(property);
+    setRenewalMode('unpaid');
     setShowRenewalModal(true);
   };
 
@@ -607,9 +668,16 @@ const MyPropertyScreen = ({ navigation, route }) => {
     }
   };
 
-  // Process renewal payment - verify payment and call renew API
+  // Process renewal payment - verify payment and activate property
   const processRenewalPayment = async (paymentResult, selectedPackage, propertyId, isFree) => {
     try {
+      // Check if this is an unpaid property (not expired)
+      const isUnpaidProperty = selectedPropertyForRenewal?.status === 'unpaid' || 
+                               selectedPropertyForRenewal?.paymentStatus === 'unpaid' ||
+                               selectedPropertyForRenewal?.hasPackage === false;
+      
+      console.log('[MyPropertyScreen] Processing payment for property:', propertyId, 'isUnpaid:', isUnpaidProperty);
+      
       // Step 1: Verify payment with propertyId (REQUIRED!)
       const verifyPayload = {
         subscriptionPackageId: selectedPackage._id || selectedPackage.id,
@@ -633,19 +701,31 @@ const MyPropertyScreen = ({ navigation, route }) => {
         return;
       }
 
-      // Step 2: Call renew API (No admin approval needed!)
-      console.log('[MyPropertyScreen] Calling renew API for property:', propertyId);
-      const renewRes = await renewProperty(propertyId);
-      console.log('[MyPropertyScreen] Renew API response:', renewRes);
-
-      if (renewRes.success) {
+      // Step 2: Handle based on property type
+      if (isUnpaidProperty) {
+        // For unpaid properties: verifySubscriptionPayment should update status to pending
+        // No need to call renew API
+        console.log('[MyPropertyScreen] Unpaid property activated successfully!');
         Alert.alert(
-          'Property Renewed! 🎉',
-          'Your property has been renewed successfully and is now active.',
+          'Property Activated! 🎉',
+          'Your property has been activated successfully and is now pending for admin approval.',
           [{ text: 'OK', onPress: () => loadMyProperties() }]
         );
       } else {
-        Alert.alert('Renewal Failed', renewRes.message || 'Failed to renew property');
+        // For expired properties: Call renew API
+        console.log('[MyPropertyScreen] Calling renew API for expired property:', propertyId);
+        const renewRes = await renewProperty(propertyId);
+        console.log('[MyPropertyScreen] Renew API response:', renewRes);
+
+        if (renewRes.success) {
+          Alert.alert(
+            'Property Renewed! 🎉',
+            'Your property has been renewed successfully and is now active.',
+            [{ text: 'OK', onPress: () => loadMyProperties() }]
+          );
+        } else {
+          Alert.alert('Renewal Failed', renewRes.message || 'Failed to renew property');
+        }
       }
     } catch (error) {
       console.error('[MyPropertyScreen] Process renewal error:', error);
@@ -657,14 +737,13 @@ const MyPropertyScreen = ({ navigation, route }) => {
   };
 
   const renderPropertyCard = ({ item }) => {
-    const isUnpaid = item.paymentStatus === 'unpaid' || item.status === 'draft' || item.isLocalDraft;
+    const isUnpaid = item.paymentStatus === 'unpaid' || item.status === 'draft' || item.isLocalDraft || item.isPendingWithoutSubscription || item.hasPackage === false;
     const isExpired = item.status?.toLowerCase() === 'expired' || item.originalData?.status?.toLowerCase() === 'expired';
     
     return (
     <TouchableOpacity 
       style={[
         styles.residentialCard, 
-        isUnpaid && { opacity: 0.6 },
         isExpired && { borderWidth: 2, borderColor: '#EF4444' }
       ]}
       onPress={() => handlePropertyPress(item)}
@@ -693,29 +772,33 @@ const MyPropertyScreen = ({ navigation, route }) => {
           }}
         />
         
-        {/* Status Badge - Show approval status (backend returns lowercase status) */}
-        <View style={[styles.statusBadgeNew, { backgroundColor: getStatusColor(
-          item.originalData?.status || item.originalData?.approvalStatus || item.status
-        ) }]}>
-          <Icon 
-            name={getStatusIcon(
-              item.originalData?.status || item.originalData?.approvalStatus || item.status
-            )} 
-            size={12} 
-            color="#FFFFFF" 
-          />
-          <Text style={styles.statusTextNew}>
-            {(item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending').charAt(0).toUpperCase() + (item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending').slice(1)}
-          </Text>
-        </View>
-
-        {/* Unpaid Badge - Show when property is unpaid or draft */}
-        {(item.paymentStatus === 'unpaid' || item.status === 'draft' || item.isLocalDraft) && (
-          <View style={[styles.statusBadgeNew, { backgroundColor: '#EF4444', position: 'absolute', right: 12, top: 12 }]}>
-            <Icon name="alert-circle" size={12} color="#FFFFFF" />
-            <Text style={styles.statusTextNew}>UNPAID</Text>
-          </View>
-        )}
+        {/* Status Badge - Show UNPAID for properties without package, else show approval status */}
+        {(() => {
+          // Check if property is unpaid (without package)
+          const isUnpaid = item.originalData?.hasPackage === false || 
+                           item.originalData?.hasPackage === 'false' || 
+                           item.originalData?.paymentStatus === 'unpaid' ||
+                           item.paymentStatus === 'unpaid' ||
+                           item.hasPackage === false ||
+                           item.hasPackage === 'false';
+          
+          const displayStatus = isUnpaid ? 'Unpaid' : 
+            (item.originalData?.status || item.originalData?.approvalStatus || item.status || 'pending');
+          const displayStatusCapitalized = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
+          
+          return (
+            <View style={[styles.statusBadgeNew, { backgroundColor: isUnpaid ? '#EF4444' : getStatusColor(displayStatus) }]}>
+              <Icon 
+                name={isUnpaid ? 'alert-circle' : getStatusIcon(displayStatus)} 
+                size={12} 
+                color="#FFFFFF" 
+              />
+              <Text style={styles.statusTextNew}>
+                {displayStatusCapitalized}
+              </Text>
+            </View>
+          );
+        })()}
       </View>
 
       {/* Property Details */}
@@ -796,24 +879,23 @@ const MyPropertyScreen = ({ navigation, route }) => {
             <Icon name="eye-outline" size={16} color="#3B82F6" />
             <Text style={styles.managementButtonText}>View</Text>
           </TouchableOpacity>
-          {/* Pay Now button for local drafts / pending payment items / unpaid properties */}
-          {(item.isLocalDraft || item.status === 'Pending Payment' || item.paymentStatus === 'unpaid' || item.status === 'draft') && (
+          {/* Pay Now button - Show for properties without package or unpaid */}
+          {(item.isLocalDraft || 
+            item.hasPackage === false || 
+            item.hasPackage === 'false' || 
+            item.originalData?.hasPackage === false ||
+            item.originalData?.hasPackage === 'false' ||
+            item.paymentStatus === 'unpaid' || 
+            item.originalData?.paymentStatus === 'unpaid' ||
+            item.isPendingWithoutSubscription ||
+            item.status === 'Pending Payment' || 
+            item.status === 'draft') && (
             <TouchableOpacity
-              style={styles.managementButton}
-              onPress={() => {
-                Alert.alert(
-                  'Payment Required',
-                  'This property has an unpaid payment. Do you want to proceed to pay now?',
-                  [
-                    { text: 'Later', style: 'cancel' },
-                    { text: 'Pay Now', onPress: () => navigation.navigate('AddSell', { openPayment: true, draftId: item.id, propertyId: item.id }) }
-                  ],
-                  { cancelable: true }
-                );
-              }}
+              style={styles.payNowButtonClean}
+              onPress={() => handlePayForProperty(item)}
             >
-              <Icon name="card-outline" size={16} color="#10B981" />
-              <Text style={styles.managementButtonText}>Pay Now</Text>
+              <Icon name="wallet" size={16} color="#FFFFFF" />
+              <Text style={styles.payNowButtonText}>Pay Now</Text>
             </TouchableOpacity>
           )}
           {/* Renew button for expired properties */}
@@ -878,139 +960,305 @@ const MyPropertyScreen = ({ navigation, route }) => {
         }
       >
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{properties.length}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
-          <View style={[styles.statCard, { borderColor: '#10B981' }]}>
-            <Text style={[styles.statNumber, { color: '#10B981' }]}>
+          <TouchableOpacity 
+            style={[styles.statCard, selectedFilter === 'all' && styles.statCardSelected]}
+            onPress={() => setSelectedFilter('all')}
+          >
+            <Text style={[styles.statNumber, selectedFilter === 'all' && styles.statNumberSelected]}>{properties.length}</Text>
+            <Text style={[styles.statLabel, selectedFilter === 'all' && styles.statLabelSelected]}>Total</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.statCard, { borderColor: '#10B981' }, selectedFilter === 'approved' && styles.statCardSelected, selectedFilter === 'approved' && { backgroundColor: '#10B981' }]}
+            onPress={() => setSelectedFilter('approved')}
+          >
+            <Text style={[styles.statNumber, { color: '#10B981' }, selectedFilter === 'approved' && styles.statNumberSelected]}>
               {properties.filter(p => 
                 p.originalData?.status === "approved" ||
                 p.status?.toLowerCase() === "approved"
               ).length}
             </Text>
-            <Text style={styles.statLabel}>Approved</Text>
-          </View>
-          <View style={[styles.statCard, { borderColor: '#EF4444' }]}>
-            <Text style={[styles.statNumber, { color: '#EF4444' }]}>
+            <Text style={[styles.statLabel, selectedFilter === 'approved' && styles.statLabelSelected]}>Approved</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.statCard, { borderColor: '#EF4444' }, selectedFilter === 'expired' && styles.statCardSelected, selectedFilter === 'expired' && { backgroundColor: '#EF4444' }]}
+            onPress={() => setSelectedFilter('expired')}
+          >
+            <Text style={[styles.statNumber, { color: '#EF4444' }, selectedFilter === 'expired' && styles.statNumberSelected]}>
               {properties.filter(p => 
                 p.originalData?.status === "expired" ||
                 p.status?.toLowerCase() === "expired"
               ).length}
             </Text>
-            <Text style={styles.statLabel}>Expired</Text>
-          </View>
-          <View style={[styles.statCard, { borderColor: '#FDB022' }]}>
-            <Text style={[styles.statNumber, { color: '#FDB022' }]}>
+            <Text style={[styles.statLabel, selectedFilter === 'expired' && styles.statLabelSelected]}>Expired</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.statCard, { borderColor: '#FDB022' }, selectedFilter === 'pending' && styles.statCardSelected, selectedFilter === 'pending' && { backgroundColor: '#FDB022' }]}
+            onPress={() => setSelectedFilter('pending')}
+          >
+            <Text style={[styles.statNumber, { color: '#FDB022' }, selectedFilter === 'pending' && styles.statNumberSelected]}>
+              {properties.filter(p => {
+                // Exclude unpaid properties from pending count
+                const isUnpaid = p.hasPackage === false || p.paymentStatus === 'unpaid' || 
+                  p.isPendingWithoutSubscription === true || p.originalData?.hasPackage === false || 
+                  p.originalData?.paymentStatus === 'unpaid';
+                if (isUnpaid) return false;
+                return p.originalData?.status === "pending" ||
+                  p.originalData?.status === "pending_approval" ||
+                  p.status?.toLowerCase() === "pending" ||
+                  p.status === "Pending Payment";
+              }).length}
+            </Text>
+            <Text style={[styles.statLabel, selectedFilter === 'pending' && styles.statLabelSelected]}>Pending</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.statCard, { borderColor: '#F97316' }, selectedFilter === 'unpaid' && styles.statCardSelected, selectedFilter === 'unpaid' && { backgroundColor: '#F97316' }]}
+            onPress={() => setSelectedFilter('unpaid')}
+          >
+            <Text style={[styles.statNumber, { color: '#F97316' }, selectedFilter === 'unpaid' && styles.statNumberSelected]}>
               {properties.filter(p => 
-                p.originalData?.status === "pending" ||
-                p.originalData?.status === "pending_approval" ||
-                p.status?.toLowerCase() === "pending" ||
-                p.status === "Pending Payment"
+                p.hasPackage === false ||
+                p.paymentStatus === 'unpaid' ||
+                p.isPendingWithoutSubscription === true ||
+                p.originalData?.hasPackage === false ||
+                p.originalData?.paymentStatus === 'unpaid'
               ).length}
             </Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
+            <Text style={[styles.statLabel, selectedFilter === 'unpaid' && styles.statLabelSelected]}>Unpaid</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Expired Properties Section - Show first if any */}
-        {properties.filter(p => 
-          p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired"
-        ).length > 0 && (
+        {/* Filtered Properties List */}
+        {selectedFilter !== 'all' ? (
+          // Show filtered properties in a single list
           <View style={styles.propertiesSection}>
-            <View style={[styles.sectionHeader, { backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+            <View style={[styles.sectionHeader, { 
+              backgroundColor: selectedFilter === 'expired' ? '#FEF2F2' : selectedFilter === 'approved' ? '#ECFDF5' : selectedFilter === 'unpaid' ? '#FFF7ED' : '#FFFBEB',
+              borderRadius: 8, 
+              padding: 12, 
+              marginBottom: 12 
+            }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon name="alert-circle" size={24} color="#EF4444" style={{ marginRight: 8 }} />
+                <Icon 
+                  name={selectedFilter === 'expired' ? 'alert-circle' : selectedFilter === 'approved' ? 'checkmark-circle' : selectedFilter === 'unpaid' ? 'wallet-outline' : 'time'} 
+                  size={24} 
+                  color={selectedFilter === 'expired' ? '#EF4444' : selectedFilter === 'approved' ? '#10B981' : selectedFilter === 'unpaid' ? '#F97316' : '#FDB022'} 
+                  style={{ marginRight: 8 }} 
+                />
                 <View>
-                  <Text style={[styles.sectionTitle, { color: '#EF4444' }]}>Expired Properties</Text>
-                  <Text style={[styles.sectionSubtitle, { color: '#DC2626' }]}>Renew to make visible on home screen</Text>
+                  <Text style={[styles.sectionTitle, { 
+                    color: selectedFilter === 'expired' ? '#EF4444' : selectedFilter === 'approved' ? '#10B981' : selectedFilter === 'unpaid' ? '#F97316' : '#FDB022' 
+                  }]}>
+                    {selectedFilter === 'expired' ? 'Expired' : selectedFilter === 'approved' ? 'Approved' : selectedFilter === 'unpaid' ? 'Unpaid' : 'Pending'} Properties
+                  </Text>
+                  <Text style={[styles.sectionSubtitle, { 
+                    color: selectedFilter === 'expired' ? '#DC2626' : selectedFilter === 'approved' ? '#059669' : selectedFilter === 'unpaid' ? '#EA580C' : '#D97706' 
+                  }]}>
+                    {selectedFilter === 'expired' ? 'Renew to make visible' : selectedFilter === 'approved' ? 'Visible on home screen' : selectedFilter === 'unpaid' ? 'Pay to activate property' : 'Awaiting approval or payment'}
+                  </Text>
                 </View>
               </View>
+              <TouchableOpacity onPress={() => setSelectedFilter('all')} style={{ padding: 8 }}>
+                <Icon name="close-circle" size={24} color="#9CA3AF" />
+              </TouchableOpacity>
             </View>
             
-            <FlatList
-              data={properties.filter(p => 
-                p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired"
-              )}
-              renderItem={renderPropertyCard}
-              keyExtractor={(item) => `expired-${item.id}`}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.flatListContainer}
-            />
+            {(() => {
+              const filteredProps = properties.filter(p => {
+                if (selectedFilter === 'approved') {
+                  return p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved";
+                } else if (selectedFilter === 'expired') {
+                  return p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired";
+                } else if (selectedFilter === 'pending') {
+                  // Exclude unpaid properties from pending filter
+                  const isUnpaid = p.hasPackage === false || p.paymentStatus === 'unpaid' || 
+                    p.isPendingWithoutSubscription === true || p.originalData?.hasPackage === false || 
+                    p.originalData?.paymentStatus === 'unpaid';
+                  if (isUnpaid) return false;
+                  return p.originalData?.status === "pending" || 
+                    p.originalData?.status === "pending_approval" ||
+                    p.status?.toLowerCase() === "pending" ||
+                    p.status === "Pending Payment" ||
+                    p.isLocalDraft;
+                } else if (selectedFilter === 'unpaid') {
+                  return p.hasPackage === false ||
+                    p.paymentStatus === 'unpaid' ||
+                    p.isPendingWithoutSubscription === true ||
+                    p.originalData?.hasPackage === false ||
+                    p.originalData?.paymentStatus === 'unpaid';
+                }
+                return true;
+              });
+              
+              if (filteredProps.length === 0) {
+                return (
+                  <View style={[styles.emptyContainer, { paddingVertical: 20 }]}>
+                    <Icon name="search-outline" size={48} color="#E5E7EB" />
+                    <Text style={styles.emptySubtitle}>No {selectedFilter} properties</Text>
+                  </View>
+                );
+              }
+              
+              return (
+                <FlatList
+                  data={filteredProps}
+                  renderItem={renderPropertyCard}
+                  keyExtractor={(item) => `filtered-${item.id}`}
+                  scrollEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.flatListContainer}
+                />
+              );
+            })()}
           </View>
-        )}
-
-        {/* Approved Properties Section */}
-        <View style={styles.propertiesSection}>
-          <View style={styles.sectionHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Icon name="checkmark-circle" size={24} color="#10B981" style={{ marginRight: 8 }} />
-              <View>
-                <Text style={styles.sectionTitle}>Approved Properties</Text>
-                <Text style={styles.sectionSubtitle}>Visible on home screen</Text>
+        ) : (
+          // Show all sections when no filter is selected
+          <>
+            {/* Unpaid Properties Section (Maybe Later) - Show first */}
+            {properties.filter(p => 
+              p.hasPackage === false ||
+              p.paymentStatus === 'unpaid' ||
+              p.isPendingWithoutSubscription === true ||
+              p.originalData?.hasPackage === false ||
+              p.originalData?.paymentStatus === 'unpaid'
+            ).length > 0 && (
+              <View style={styles.propertiesSection}>
+                <View style={[styles.sectionHeader, { backgroundColor: '#FFF7ED', borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Icon name="wallet-outline" size={24} color="#F97316" style={{ marginRight: 8 }} />
+                    <View>
+                      <Text style={[styles.sectionTitle, { color: '#F97316' }]}>Unpaid Properties</Text>
+                      <Text style={[styles.sectionSubtitle, { color: '#EA580C' }]}>Pay now to activate and make visible</Text>
+                    </View>
+                  </View>
+                </View>
+                
+                <FlatList
+                  data={properties.filter(p => 
+                    p.hasPackage === false ||
+                    p.paymentStatus === 'unpaid' ||
+                    p.isPendingWithoutSubscription === true ||
+                    p.originalData?.hasPackage === false ||
+                    p.originalData?.paymentStatus === 'unpaid'
+                  )}
+                  renderItem={renderPropertyCard}
+                  keyExtractor={(item) => `unpaid-${item.id}`}
+                  scrollEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.flatListContainer}
+                />
               </View>
-            </View>
-          </View>
-          
-          {loading && properties.length === 0 ? (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Loading properties...</Text>
-            </View>
-          ) : properties.filter(p => 
-              p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved"
-            ).length === 0 ? (
-            <View style={[styles.emptyContainer, { paddingVertical: 20 }]}>
-              <Text style={styles.emptySubtitle}>No approved properties yet</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={properties.filter(p => 
-                p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved"
-              )}
-              renderItem={renderPropertyCard}
-              keyExtractor={(item) => `approved-${item.id}`}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.flatListContainer}
-            />
-          )}
-        </View>
+            )}
 
-        {/* Pending Properties Section */}
-        {properties.filter(p => 
-          p.originalData?.status === "pending" || 
-          p.originalData?.status === "pending_approval" ||
-          p.status?.toLowerCase() === "pending" ||
-          p.status === "Pending Payment" ||
-          p.isLocalDraft
-        ).length > 0 && (
-          <View style={styles.propertiesSection}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon name="time" size={24} color="#FDB022" style={{ marginRight: 8 }} />
-                <View>
-                  <Text style={styles.sectionTitle}>Pending Properties</Text>
-                  <Text style={styles.sectionSubtitle}>Awaiting approval or payment</Text>
+            {/* Expired Properties Section - Show after unpaid */}
+            {properties.filter(p => 
+              p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired"
+            ).length > 0 && (
+              <View style={styles.propertiesSection}>
+                <View style={[styles.sectionHeader, { backgroundColor: '#FEF2F2', borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Icon name="alert-circle" size={24} color="#EF4444" style={{ marginRight: 8 }} />
+                    <View>
+                      <Text style={[styles.sectionTitle, { color: '#EF4444' }]}>Expired Properties</Text>
+                      <Text style={[styles.sectionSubtitle, { color: '#DC2626' }]}>Renew to make visible on home screen</Text>
+                    </View>
+                  </View>
+                </View>
+                
+                <FlatList
+                  data={properties.filter(p => 
+                    p.originalData?.status === "expired" || p.status?.toLowerCase() === "expired"
+                  )}
+                  renderItem={renderPropertyCard}
+                  keyExtractor={(item) => `expired-${item.id}`}
+                  scrollEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.flatListContainer}
+                />
+              </View>
+            )}
+
+            {/* Approved Properties Section */}
+            <View style={styles.propertiesSection}>
+              <View style={styles.sectionHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Icon name="checkmark-circle" size={24} color="#10B981" style={{ marginRight: 8 }} />
+                  <View>
+                    <Text style={styles.sectionTitle}>Approved Properties</Text>
+                    <Text style={styles.sectionSubtitle}>Visible on home screen</Text>
+                  </View>
                 </View>
               </View>
+              
+              {loading && properties.length === 0 ? (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Loading properties...</Text>
+                </View>
+              ) : properties.filter(p => 
+                  p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved"
+                ).length === 0 ? (
+                <View style={[styles.emptyContainer, { paddingVertical: 20 }]}>
+                  <Text style={styles.emptySubtitle}>No approved properties yet</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={properties.filter(p => 
+                    p.originalData?.status === "approved" || p.status?.toLowerCase() === "approved"
+                  )}
+                  renderItem={renderPropertyCard}
+                  keyExtractor={(item) => `approved-${item.id}`}
+                  scrollEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.flatListContainer}
+                />
+              )}
             </View>
-            
-            <FlatList
-              data={properties.filter(p => 
-                p.originalData?.status === "pending" || 
+
+            {/* Pending Properties Section - Excludes unpaid properties */}
+            {properties.filter(p => {
+              // Exclude unpaid properties from pending section
+              const isUnpaid = p.hasPackage === false || p.paymentStatus === 'unpaid' || 
+                p.isPendingWithoutSubscription === true || p.originalData?.hasPackage === false || 
+                p.originalData?.paymentStatus === 'unpaid';
+              if (isUnpaid) return false;
+              return p.originalData?.status === "pending" || 
                 p.originalData?.status === "pending_approval" ||
                 p.status?.toLowerCase() === "pending" ||
                 p.status === "Pending Payment" ||
-                p.isLocalDraft
-              )}
-              renderItem={renderPropertyCard}
-              keyExtractor={(item) => `pending-${item.id}`}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.flatListContainer}
-            />
-          </View>
+                p.isLocalDraft;
+            }).length > 0 && (
+              <View style={styles.propertiesSection}>
+                <View style={styles.sectionHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Icon name="time" size={24} color="#FDB022" style={{ marginRight: 8 }} />
+                    <View>
+                      <Text style={styles.sectionTitle}>Pending Properties</Text>
+                      <Text style={styles.sectionSubtitle}>Awaiting approval or payment</Text>
+                    </View>
+                  </View>
+                </View>
+                
+                <FlatList
+                  data={properties.filter(p => {
+                    // Exclude unpaid properties from pending list
+                    const isUnpaid = p.hasPackage === false || p.paymentStatus === 'unpaid' || 
+                      p.isPendingWithoutSubscription === true || p.originalData?.hasPackage === false || 
+                      p.originalData?.paymentStatus === 'unpaid';
+                    if (isUnpaid) return false;
+                    return p.originalData?.status === "pending" || 
+                      p.originalData?.status === "pending_approval" ||
+                      p.status?.toLowerCase() === "pending" ||
+                      p.status === "Pending Payment" ||
+                      p.isLocalDraft;
+                  })}
+                  renderItem={renderPropertyCard}
+                  keyExtractor={(item) => `pending-${item.id}`}
+                  scrollEnabled={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.flatListContainer}
+                />
+              </View>
+            )}
+          </>
         )}
 
         {/* Empty State - only show if no properties at all */}
@@ -1047,6 +1295,7 @@ const MyPropertyScreen = ({ navigation, route }) => {
         }}
         expiredDate={activeSubscription?.expiryDate || activeSubscription?.expiry_date}
         daysExpired={daysExpired}
+        mode={renewalMode}
       />
     </SafeAreaView>
   );
@@ -1124,6 +1373,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#64748B",
+  },
+  statCardSelected: {
+    backgroundColor: '#1A1A1A',
+    borderColor: '#1A1A1A',
+  },
+  statNumberSelected: {
+    color: '#FFFFFF',
+  },
+  statLabelSelected: {
+    color: '#FFFFFF',
   },
   propertiesSection: {
     marginBottom: 20,
@@ -1326,6 +1585,30 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#10B981',
+  },
+
+  payNowButton: {
+    backgroundColor: '#10B981',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+
+  // 🔴 UNPAID PROPERTY STYLES - Clean & Simple
+  payNowButtonClean: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+
+  payNowButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 4,
   },
 
   // Expired property styles

@@ -39,29 +39,46 @@ export const makeRequest = async (endpoint, options = {}) => {
     const contentType = response.headers.get('content-type');
     console.log('📄 Content-Type:', contentType);
     
+    // Always read as text first to avoid stream consumption issues
+    const responseText = await response.text();
+    
+    // Handle empty body
+    if (!responseText || responseText.trim() === '') {
+      console.warn('⚠️ Empty response body from server. Status:', response.status);
+      if (response.status === 401) {
+        return { success: false, status: 401, message: 'Session expired. Please login again.', error: 'Authentication failed' };
+      }
+      if (response.status === 403) {
+        return { success: false, status: 403, message: 'Access denied. Please login again.', error: 'Forbidden' };
+      }
+      return {
+        success: response.ok,
+        status: response.status,
+        message: response.ok ? 'Success' : `Server error (Status ${response.status}). Please try again.`,
+        data: null
+      };
+    }
+    
     let data;
     if (contentType && contentType.includes('application/json')) {
       try {
-        data = await response.json();
+        data = JSON.parse(responseText);
         console.log('📡 API Response:', { status: response.status, data });
       } catch (jsonError) {
         console.error('❌ JSON Parse Error:', jsonError);
-        const responseText = await response.text();
-        console.error('📄 Raw response:', responseText);
+        console.error('📄 Raw response:', responseText.substring(0, 500));
         return {
           success: false,
           status: response.status,
-          message: 'Server returned invalid JSON response',
+          message: `Server error (Status ${response.status}). Invalid JSON response.`,
           error: `JSON Parse Error: ${jsonError.message}`,
           rawResponse: responseText
         };
       }
     } else {
-      // Not JSON response - get as text for debugging
-      const responseText = await response.text();
-      console.warn('⚠️ Non-JSON response received from server:', { status: response.status, contentType, raw: responseText });
+      // Not JSON response
+      console.warn('⚠️ Non-JSON response received from server:', { status: response.status, contentType, raw: responseText.substring(0, 200) });
 
-      // If the HTTP status is OK (2xx) treat it as success but include rawResponse so callers can handle it gracefully
       if (response.ok) {
         return {
           success: true,
@@ -72,7 +89,6 @@ export const makeRequest = async (endpoint, options = {}) => {
         };
       }
 
-      // Otherwise return a structured error containing the raw response for easier debugging
       return {
         success: false,
         status: response.status,
@@ -372,8 +388,23 @@ export const getMyExpiredProperties = async () => {
   return result;
 };
 
+// Get user's pending properties without subscription (Maybe Later / Unpaid)
+export const getMyPendingWithoutSubscription = async () => {
+  console.log('📋 [getMyPendingWithoutSubscription] Fetching pending properties from:', BASE_URL + '/property/my-pending-without-subscription');
+  const result = await makeRequest('/property/my-pending-without-subscription', {
+    method: 'GET'
+  });
+  console.log('📋 [getMyPendingWithoutSubscription] API Result:', {
+    success: result.success,
+    dataCount: result.data?.length || result.properties?.length || 0,
+    fullResponse: result
+  });
+  return result;
+};
+
 // Add new property
-export const addProperty = async (formData) => {
+// Accepts either FormData (legacy) or plain JS object (preferred for nested address)
+export const addProperty = async (formDataOrObject) => {
   const token = await AsyncStorage.getItem('authToken');
   
   if (!token) {
@@ -388,13 +419,31 @@ export const addProperty = async (formData) => {
     const url = `${BASE_URL}/property/add`;
     console.log('🚀 Making property API call to:', url);
     
+    // Detect if input is FormData or plain object
+    const isFormData = formDataOrObject instanceof FormData || 
+      (formDataOrObject && formDataOrObject.constructor && formDataOrObject.constructor.name === 'FormData') ||
+      (formDataOrObject && typeof formDataOrObject.append === 'function');
+    
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+    };
+    
+    let body;
+    if (isFormData) {
+      // Legacy FormData approach - don't set Content-Type
+      body = formDataOrObject;
+      console.log('📦 Sending as FormData (multipart)');
+    } else {
+      // New approach: send as JSON for proper nested object support
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(formDataOrObject);
+      console.log('📦 Sending as JSON body:', body.substring(0, 300));
+    }
+    
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        // Don't set Content-Type for FormData - let fetch handle it
-      },
-      body: formData
+      headers,
+      body
     });
 
     console.log('📡 Property API Response Status:', response.status);
@@ -404,16 +453,47 @@ export const addProperty = async (formData) => {
     const responseText = await response.text();
     console.log('📄 Raw Property API Response:', responseText);
 
+    // Handle empty response body
+    if (!responseText || responseText.trim() === '') {
+      console.error('❌ Backend returned empty response body. Status:', response.status);
+      if (response.status === 401) {
+        return {
+          success: false,
+          status: 401,
+          message: 'Session expired. Please login again.',
+          error: 'Authentication failed'
+        };
+      }
+      return {
+        success: false,
+        status: response.status,
+        message: `Server error (Status ${response.status}). Please try again.`,
+        error: 'Empty response from server'
+      };
+    }
+
     let data;
     try {
       data = JSON.parse(responseText);
       console.log('✅ Parsed Property API Response:', data);
     } catch (parseError) {
       console.error('❌ Failed to parse property API response as JSON:', parseError.message);
+      console.error('❌ Raw response was:', responseText.substring(0, 500));
+      
+      // Check if it's an HTML error page
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        return {
+          success: false,
+          status: response.status,
+          message: `Server error (Status ${response.status}). Backend returned HTML instead of JSON. Please check backend logs.`,
+          error: 'HTML response received instead of JSON'
+        };
+      }
+      
       return {
         success: false,
         status: response.status,
-        message: 'Server returned invalid response format',
+        message: `Server error (Status ${response.status}). Invalid response format.`,
         error: parseError.message,
         rawResponse: responseText
       };

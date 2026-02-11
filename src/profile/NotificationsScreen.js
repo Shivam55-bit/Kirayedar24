@@ -89,7 +89,12 @@ const NotificationsScreen = ({ navigation }) => {
             <Text style={styles.rowTitle}>Push Notifications</Text>
             <Text style={styles.rowSubtitle}>Receive app alerts for messages and enquiries</Text>
           </View>
-          <Switch value={pushEnabled} onValueChange={togglePush} thumbColor={pushEnabled ? '#FF7A00' : undefined} />
+          <Switch 
+            value={pushEnabled} 
+            onValueChange={togglePush} 
+            thumbColor={pushEnabled ? '#FF7A00' : '#f4f3f4'}
+            trackColor={{ false: '#767577', true: '#FF7A0033' }}
+          />
         </View>
 
         <View style={styles.row}>
@@ -97,7 +102,12 @@ const NotificationsScreen = ({ navigation }) => {
             <Text style={styles.rowTitle}>Email Notifications</Text>
             <Text style={styles.rowSubtitle}>Weekly summaries and important updates</Text>
           </View>
-          <Switch value={emailEnabled} onValueChange={toggleEmail} thumbColor={emailEnabled ? '#FF7A00' : undefined} />
+          <Switch 
+            value={emailEnabled} 
+            onValueChange={toggleEmail} 
+            thumbColor={emailEnabled ? '#FF7A00' : '#f4f3f4'}
+            trackColor={{ false: '#767577', true: '#FF7A0033' }}
+          />
         </View>
 
         <View style={styles.row}>
@@ -105,7 +115,12 @@ const NotificationsScreen = ({ navigation }) => {
             <Text style={styles.rowTitle}>SMS Notifications</Text>
             <Text style={styles.rowSubtitle}>Time-critical alerts via SMS</Text>
           </View>
-          <Switch value={smsEnabled} onValueChange={toggleSms} thumbColor={smsEnabled ? '#FF7A00' : undefined} />
+          <Switch 
+            value={smsEnabled} 
+            onValueChange={toggleSms} 
+            thumbColor={smsEnabled ? '#FF7A00' : '#f4f3f4'}
+            trackColor={{ false: '#767577', true: '#FF7A0033' }}
+          />
         </View>
 
         <TouchableOpacity style={styles.resetButton} onPress={resetAll} activeOpacity={0.8}>

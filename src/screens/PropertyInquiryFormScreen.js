@@ -87,7 +87,7 @@ const PropertyInquiryFormScreen = ({ navigation }) => {
     console.log('Submitting payload:', JSON.stringify(payload, null, 2));
 
     // Send request to API
-    fetch('https://kiraeydarback.bhoomi.cloud/api/enquiries', {
+    fetch('https://backend.kirayedar24.com/api/enquiries', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

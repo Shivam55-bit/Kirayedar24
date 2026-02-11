@@ -293,9 +293,9 @@ export const initializeFCM = async (callbacks = {}) => {
  * Handle notifications received in FOREGROUND
  * App is open and visible to user
  * 
- * IMPORTANT: Foreground notifications are handled by Android FCMNotificationService.java
- * We only log here for debugging and call the callback for React-side handling
- * DO NOT call displayLocalNotification - it conflicts with native notifications
+ * Firebase SDK does NOT auto-display in foreground - we need to display manually
+ * FCMNotificationService.java only handles DATA-ONLY messages
+ * So we display notification here for messages with notification payload
  */
 const setupForegroundNotificationHandler = (callback) => {
   try {
@@ -303,9 +303,32 @@ const setupForegroundNotificationHandler = (callback) => {
       console.log(`${TAG} 📬 Foreground notification received in React`);
       console.log(`${TAG} Title: ${remoteMessage.notification?.title}`);
       console.log(`${TAG} Body: ${remoteMessage.notification?.body}`);
-      console.log(`${TAG} ℹ️ Native Android service is handling the notification display`);
       
-      // Call custom callback for React-side handling (but don't display notification)
+      // Display notification for foreground messages with notification payload
+      if (remoteMessage.notification) {
+        const title = remoteMessage.notification.title || 'Notification';
+        const body = remoteMessage.notification.body || '';
+        
+        try {
+          await notifee.displayNotification({
+            title: title,
+            body: body,
+            android: {
+              channelId: 'default_notification_channel',
+              smallIcon: 'ic_launcher',
+              pressAction: {
+                id: 'default',
+                launchActivity: 'default',
+              },
+            },
+          });
+          console.log(`${TAG} ✅ Foreground notification displayed via notifee`);
+        } catch (displayError) {
+          console.error(`${TAG} ❌ Error displaying foreground notification:`, displayError);
+        }
+      }
+      
+      // Call custom callback for React-side handling
       if (callback) {
         callback(remoteMessage);
       }
@@ -337,7 +360,38 @@ export const setupBackgroundNotificationHandler = (callback) => {
       console.log(`${TAG} Title: ${remoteMessage.notification?.title}`);
       console.log(`${TAG} Body: ${remoteMessage.notification?.body}`);
       console.log(`${TAG} Has Notification: ${!!remoteMessage.notification}`);
-      console.log(`${TAG} Has Data: ${remoteMessage.data?.size > 0}`);
+      console.log(`${TAG} Has Data: ${Object.keys(remoteMessage.data || {}).length > 0}`);
+      
+      // Save notification to AsyncStorage for NotificationListScreen
+      try {
+        if (remoteMessage && remoteMessage.notification) {
+          const existingData = await AsyncStorage.getItem('app_notifications');
+          const existingNotifications = existingData ? JSON.parse(existingData) : [];
+          
+          const newNotification = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            type: remoteMessage.data?.type || 'system',
+            title: remoteMessage.notification.title,
+            message: remoteMessage.notification.body,
+            propertyId: remoteMessage.data?.propertyId,
+            chatId: remoteMessage.data?.chatId,
+            inquiryId: remoteMessage.data?.inquiryId,
+            image: remoteMessage.data?.image,
+            timestamp: new Date().toISOString(),
+            read: false
+          };
+          
+          const updatedNotifications = [newNotification, ...existingNotifications].slice(0, 50);
+          await AsyncStorage.setItem('app_notifications', JSON.stringify(updatedNotifications));
+          
+          const unreadCount = updatedNotifications.filter(n => !n.read).length;
+          await AsyncStorage.setItem('notification_count', unreadCount.toString());
+          
+          console.log(`${TAG} ✅ Background notification saved to AsyncStorage`);
+        }
+      } catch (saveError) {
+        console.error(`${TAG} ❌ Error saving background notification:`, saveError);
+      }
       
       // If has notification payload, Firebase will show it automatically
       if (remoteMessage.notification) {
@@ -355,6 +409,7 @@ export const setupBackgroundNotificationHandler = (callback) => {
             body: body,
             android: {
               channelId: 'default_notification_channel',
+              smallIcon: 'ic_launcher',
               pressAction: {
                 id: 'default',
                 launchActivity: 'default',

@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveProperty, getSavedProperties } from '../services/api';
 import { getPropertyById } from '../services/propertyService';
 import { useSubscription } from '../context/SubscriptionContext';
@@ -41,14 +42,14 @@ const formatImageUrl = (url) => {
   
   // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
   if (url.startsWith('uploads/')) {
-    return `https://kiraeydarback.bhoomi.cloud/${url}`;
+    return `https://backend.kirayedar24.com/${url}`;
   }
   
   // For other relative paths, add base URL
-  return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
+  return url.startsWith('/') ? `https://backend.kirayedar24.com${url}` : `https://backend.kirayedar24.com/${url}`;
 };
 
-const formatPrice = (price) => price ? `?${Number(price).toLocaleString()}` : '?0';
+const formatPrice = (price) => price ? `₹${Number(price).toLocaleString()}` : '₹0';
 const getRecentProperties = async (limit) => ({ success: true, properties: [] });
 const getNearbyProperties = async (lat, lng) => ({ success: true, properties: [] });
 
@@ -163,7 +164,25 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isSaved, setIsSaved] = useState(false);
   const [savingProperty, setSavingProperty] = useState(false);
+  const [userRole, setUserRole] = useState(null); // Track if user is Owner or Tenant
   const scrollX = useRef(new Animated.Value(0)).current;
+
+  // Load user role to determine if subscription is needed
+  useEffect(() => {
+    const loadUserRole = async () => {
+      try {
+        const role = await AsyncStorage.getItem('userRole');
+        console.log('📋 PropertyDetailsScreen - User role:', role);
+        setUserRole(role);
+      } catch (error) {
+        console.error('Error loading user role:', error);
+      }
+    };
+    loadUserRole();
+  }, []);
+
+  // Check if user is Owner - owners don't need package to view/contact
+  const isOwner = userRole === 'Owner' || userRole === 'owner';
   
   // Smart back navigation handler
   const handleBackPress = () => {
@@ -422,8 +441,8 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
 
   // Handle call button press
   const handleCallPress = () => {
-    // Check if user has active package
-    if (!userHasPackage) {
+    // Owners don't need package to contact - only tenants need subscription
+    if (!isOwner && !userHasPackage) {
       setPropertyForSubscription(property);
       setShowSubscriptionModal(true);
       return;
@@ -704,7 +723,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
         <View style={styles.infoCard}>
           {routeUser ? (
             <View style={styles.userBanner}>
-              <Text style={styles.userBannerText}>Viewing as: {routeUser.name} � {routeUser.phone}</Text>
+              <Text style={styles.userBannerText}>Viewing as: {routeUser.name} � {routeUser.phone}</Text>
             </View>
           ) : null}
           
@@ -712,7 +731,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
             <Text style={styles.priceText}>{price}</Text>
             {(property.propertyLocation || getAddressField(property, 'locality') || getAddressField(property, 'city')) && (
               <Text style={styles.locationText} numberOfLines={1}>
-                ?? {safeString(property.propertyLocation) || 
+                📍 {safeString(property.propertyLocation) || 
                     `${getAddressField(property, 'locality') || ''}${getAddressField(property, 'locality') && getAddressField(property, 'city') ? ', ' : ''}${getAddressField(property, 'city') || ''}`}
               </Text>
             )}
@@ -1026,7 +1045,7 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
                   <View style={styles.societyMaintenanceRow}>
                     <Icon name="cash-outline" size={18} color={colors.primary} />
                     <Text style={styles.societyMaintenanceText}>
-                      Maintenance: ?{maintenance}
+                      Maintenance: ₹{maintenance}
                     </Text>
                   </View>
                 )}
@@ -1135,8 +1154,8 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={[styles.actionBtn, styles.whatsappBtn]}
             onPress={() => {
-              // Check if user has active package
-              if (!userHasPackage) {
+              // Owners don't need package to contact - only tenants need subscription
+              if (!isOwner && !userHasPackage) {
                 setPropertyForSubscription(property);
                 setShowSubscriptionModal(true);
                 return;
@@ -1177,8 +1196,8 @@ const PropertyDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={[styles.actionBtn, styles.chatBtn]}
             onPress={() => {
-              // Check if user has active package
-              if (!userHasPackage) {
+              // Owners don't need package to contact - only tenants need subscription
+              if (!isOwner && !userHasPackage) {
                 setPropertyForSubscription(property);
                 setShowSubscriptionModal(true);
                 return;

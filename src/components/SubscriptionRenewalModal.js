@@ -19,6 +19,7 @@ const SubscriptionRenewalModal = ({
   onMaybeLater,
   expiredDate = null,
   daysExpired = 0,
+  mode = 'expired', // 'expired' | 'unpaid'
 }) => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -77,15 +78,26 @@ const SubscriptionRenewalModal = ({
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
-          <LinearGradient colors={['#ff6b6b', '#ee5a6f']} style={styles.header}>
+          <LinearGradient 
+            colors={mode === 'unpaid' ? ['#f39c12', '#e67e22'] : ['#ff6b6b', '#ee5a6f']} 
+            style={styles.header}
+          >
             <View style={styles.headerContent}>
-              <Icon name="warning" size={32} color="#fff" />
+              <Icon 
+                name={mode === 'unpaid' ? 'cart' : 'warning'} 
+                size={32} 
+                color="#fff" 
+              />
               <View style={styles.headerText}>
-                <Text style={styles.headerTitle}>Package Expired</Text>
+                <Text style={styles.headerTitle}>
+                  {mode === 'unpaid' ? 'Complete Payment' : 'Package Expired'}
+                </Text>
                 <Text style={styles.headerSubtitle}>
-                  {daysExpired > 0 
-                    ? `Expired ${daysExpired} day${daysExpired > 1 ? 's' : ''} ago` 
-                    : 'Renew your package to post properties'}
+                  {mode === 'unpaid' 
+                    ? 'Purchase a package to activate your property'
+                    : daysExpired > 0 
+                      ? `Expired ${daysExpired} day${daysExpired > 1 ? 's' : ''} ago` 
+                      : 'Renew your package to post properties'}
                 </Text>
               </View>
             </View>
@@ -201,14 +213,21 @@ const SubscriptionRenewalModal = ({
             <TouchableOpacity
               style={[
                 styles.renewButton,
+                mode === 'unpaid' && styles.buyButton,
                 !selectedPackage && styles.renewButtonDisabled,
               ]}
               onPress={handleRenew}
               disabled={!selectedPackage}
               activeOpacity={0.8}
             >
-              <Icon name="refresh" size={20} color="#fff" />
-              <Text style={styles.renewButtonText}>Renew Package</Text>
+              <Icon 
+                name={mode === 'unpaid' ? 'cart' : 'refresh'} 
+                size={20} 
+                color="#fff" 
+              />
+              <Text style={styles.renewButtonText}>
+                {mode === 'unpaid' ? 'Buy Package' : 'Renew Package'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -438,6 +457,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+  },
+  buyButton: {
+    backgroundColor: '#27ae60',
   },
   renewButtonDisabled: {
     backgroundColor: '#ccc',

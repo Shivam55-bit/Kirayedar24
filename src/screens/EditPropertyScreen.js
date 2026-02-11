@@ -9,9 +9,11 @@ import {
   Image,
   Alert,
   FlatList,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from "react-native-vector-icons/Ionicons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { formatImageUrl, formatPrice } from '../services/propertyHelpers';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -21,8 +23,8 @@ import propertyService from '../services/propertyapi';
 const safeFormatImageUrl = (url) => {
   if (!url) return 'https://placehold.co/400x200/CCCCCC/888888?text=No+Image';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('uploads/')) return `https://kiraeydarback.bhoomi.cloud/${url}`;
-  return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
+  if (url.startsWith('uploads/')) return `https://backend.kirayedar24.com/${url}`;
+  return url.startsWith('/') ? `https://backend.kirayedar24.com${url}` : `https://backend.kirayedar24.com/${url}`;
 };
 
 const safeFormatPrice = (price) => {
@@ -185,6 +187,10 @@ const EditPropertyScreen = ({ navigation, route }) => {
     propertyType: initialProperty.propertyType || 'Residential',
     // Contact number
     contactNumber: initialProperty.contactNumber || initialProperty.phone || '',
+    // Available From date
+    availableFrom: initialProperty.availableFrom ? new Date(initialProperty.availableFrom) : new Date(),
+    // Space Available (for commercial)
+    spaceAvailable: initialProperty.spaceAvailable || '',
   };
 
   // Debug: Log the location fields to help troubleshoot
@@ -218,6 +224,7 @@ const EditPropertyScreen = ({ navigation, route }) => {
   const [property, setProperty] = useState(normalizedProperty);
   const [removedImages, setRemovedImages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   // Derived display values for preview
   const firstImage = (property.images && property.images.length > 0)
@@ -288,19 +295,52 @@ const EditPropertyScreen = ({ navigation, route }) => {
           propertyType: property.propertyType || undefined,
           // Contact number
           contactNumber: property.contactNumber || undefined,
+          // Available From date
+          availableFrom: property.availableFrom instanceof Date ? property.availableFrom.toISOString() : undefined,
+          // Space Available (for commercial)
+          spaceAvailable: property.spaceAvailable || undefined,
           removedFiles: removedImages.length ? JSON.stringify(removedImages) : undefined,
           removePhotos: removedImages.length ? JSON.stringify(removedImages) : undefined,
         };
 
-        // Collect only local file objects for upload
+        // Separate existing server photos from new local photos
+        const existingPhotos = (property.images || []).filter(img => {
+          if (!img) return false;
+          // Server photos are strings that don't start with file: or content:
+          if (typeof img === 'string') {
+            return !img.startsWith('file:') && !img.startsWith('content:');
+          }
+          // Or objects with uri that are server URLs
+          if (typeof img === 'object' && img.uri) {
+            return img.uri.startsWith('http') || img.uri.startsWith('uploads') || img.uri.includes('/uploads/');
+          }
+          return false;
+        }).map(img => typeof img === 'string' ? img : img.uri);
+
+        // Collect only local file objects for upload (new photos)
         const files = (property.images || []).filter(img => {
           if (!img) return false;
-          if (typeof img === 'object' && img.uri) return true;
+          if (typeof img === 'object' && img.uri) {
+            // Only local files, not server URLs
+            return img.uri.startsWith('file:') || img.uri.startsWith('content:');
+          }
           if (typeof img === 'string') {
             return img.startsWith('file:') || img.startsWith('content:');
           }
           return false;
         }).map(img => (typeof img === 'string' ? { uri: img, fileName: `file-${Date.now()}` } : img));
+
+        console.log('[EditPropertyScreen] Existing photos to keep:', existingPhotos);
+        console.log('[EditPropertyScreen] New photos to upload:', files.length);
+        console.log('[EditPropertyScreen] Photos to remove:', removedImages);
+        
+        // DEBUG: Show what's being sent to backend
+        console.log('========================================');
+        console.log('SENDING TO BACKEND:');
+        console.log('Existing photos (should be kept):', existingPhotos.length, existingPhotos);
+        console.log('New photos (to upload):', files.length);
+        console.log('Total expected photos after save:', existingPhotos.length + files.length);
+        console.log('========================================');
 
         // Prepare FormData for file upload
         const formData = new FormData();
@@ -309,6 +349,13 @@ const EditPropertyScreen = ({ navigation, route }) => {
             formData.append(key, value);
           }
         });
+
+        // Send existing photos to keep (important! so backend doesn't delete them)
+        if (existingPhotos.length > 0) {
+          formData.append('existingPhotos', JSON.stringify(existingPhotos));
+          // Also send as keepPhotos for backend compatibility
+          formData.append('keepPhotos', JSON.stringify(existingPhotos));
+        }
 
         // Add society features if present
         if (property.societyFeatures && property.societyFeatures.length > 0) {
@@ -326,7 +373,7 @@ const EditPropertyScreen = ({ navigation, route }) => {
 
         // Attach files
         files.forEach((file, idx) => {
-          formData.append('photos', {
+          formData.append('photosAndVideo', {
             uri: file.uri,
             name: file.fileName || `photo_${idx}.jpg`,
             type: file.type || 'image/jpeg',
@@ -413,6 +460,9 @@ const EditPropertyScreen = ({ navigation, route }) => {
 
   const handleImagePicker = () => {
     const options = { mediaType: 'photo', selectionLimit: 10 };
+    console.log('[EditPropertyScreen] Opening image picker. Current images count:', (property.images || []).length);
+    console.log('[EditPropertyScreen] Current images:', property.images);
+    
     launchImageLibrary(options, (response) => {
       if (response.didCancel || response.errorCode) {
         if (response.errorCode) {
@@ -423,8 +473,18 @@ const EditPropertyScreen = ({ navigation, route }) => {
       }
 
       const assets = response.assets || [];
+      console.log('[EditPropertyScreen] New images selected:', assets.length);
+      
       const normalized = assets.map((a) => ({ uri: a.uri, type: a.type, fileName: a.fileName || `file-${Date.now()}` }));
-      setProperty(prev => ({ ...prev, images: [...(prev.images || []), ...normalized] }));
+      
+      setProperty(prev => {
+        const existingImages = prev.images || [];
+        const newImages = [...existingImages, ...normalized];
+        console.log('[EditPropertyScreen] Existing images:', existingImages.length);
+        console.log('[EditPropertyScreen] After adding new images:', newImages.length);
+        console.log('[EditPropertyScreen] Combined images:', newImages);
+        return { ...prev, images: newImages };
+      });
     });
   };
 
@@ -572,17 +632,38 @@ const EditPropertyScreen = ({ navigation, route }) => {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.imageScrollContent}
           >
-            {(property.images || []).map((item, index) => (
-              <View key={index} style={styles.imageThumbContainer}>
-                <Image source={{ uri: typeof item === 'string' ? (formatImageUrl || safeFormatImageUrl)(item) : item.uri }} style={styles.imageThumb} />
-                <TouchableOpacity 
-                  style={styles.deleteImageBtn} 
-                  onPress={() => removeImage(index)}
-                >
-                  <Icon name="close-circle" size={24} color={COLORS.danger} />
-                </TouchableOpacity>
-              </View>
-            ))}
+            {(property.images || []).map((item, index) => {
+              // Handle both string URLs and object with uri
+              let imageUri = '';
+              if (typeof item === 'string') {
+                imageUri = (formatImageUrl || safeFormatImageUrl)(item);
+              } else if (item && item.uri) {
+                // Check if it's a local file or a server URL
+                if (item.uri.startsWith('file:') || item.uri.startsWith('content:')) {
+                  imageUri = item.uri; // Local file, use directly
+                } else {
+                  imageUri = (formatImageUrl || safeFormatImageUrl)(item.uri);
+                }
+              }
+              
+              console.log(`[EditPropertyScreen] Rendering image ${index}:`, imageUri);
+              
+              return (
+                <View key={index} style={styles.imageThumbContainer}>
+                  <Image 
+                    source={{ uri: imageUri || 'https://placehold.co/100x100/CCCCCC/888888?text=Error' }} 
+                    style={styles.imageThumb}
+                    onError={(e) => console.log('[EditPropertyScreen] Image load error:', index, e.nativeEvent.error)}
+                  />
+                  <TouchableOpacity 
+                    style={styles.deleteImageBtn} 
+                    onPress={() => removeImage(index)}
+                  >
+                    <Icon name="close-circle" size={24} color={COLORS.danger} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
             
             <TouchableOpacity style={styles.addMediaBtn} onPress={handleImagePicker}>
               <Icon name="add-circle" size={32} color={COLORS.primary} />
@@ -705,11 +786,11 @@ const EditPropertyScreen = ({ navigation, route }) => {
           />
         </View>
 
-        {/* Section 4: Property Type & Purpose */}
+        {/* Section 4: Property Type */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="home" size={20} color={COLORS.primary} />
-            <Text style={styles.sectionTitle}>Property Type & Purpose</Text>
+            <Text style={styles.sectionTitle}>Property Type</Text>
           </View>
           
           <OptionSelector
@@ -727,21 +808,12 @@ const EditPropertyScreen = ({ navigation, route }) => {
               onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
             />
           ) : (
-            <>
-              <OptionSelector
-                label="Residential Type"
-                options={["Apartment", "Villa", "Plot", "Singlex", "Duplex", "Room", "Flat"]}
-                value={property.specificType || property.type}
-                onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
-              />
-              
-              <OptionSelector
-                label="Purpose"
-                options={["Rent", "Paying Guest"]}
-                value={property.purpose}
-                onChange={(val) => handleChange('purpose', val)}
-              />
-            </>
+            <OptionSelector
+              label="Residential Type"
+              options={["Apartment", "Villa", "Plot", "Singlex", "Duplex", "Room", "Flat"]}
+              value={property.specificType || property.type}
+              onChange={(val) => { handleChange('specificType', val); handleChange('type', val); }}
+            />
           )}
           
           <OptionSelector
@@ -757,6 +829,46 @@ const EditPropertyScreen = ({ navigation, route }) => {
             value={property.availableFor}
             onChange={(val) => handleChange('availableFor', val)}
           />
+          
+          {/* Available From Date Picker */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Available From</Text>
+            <TouchableOpacity 
+              style={styles.datePickerButton}
+              onPress={() => setDatePickerOpen(true)}
+            >
+              <Icon name="calendar-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.datePickerText}>
+                {property.availableFrom instanceof Date 
+                  ? property.availableFrom.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : 'Select Date'}
+              </Text>
+            </TouchableOpacity>
+            {datePickerOpen && (
+              <DateTimePicker
+                value={property.availableFrom instanceof Date ? property.availableFrom : new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  setDatePickerOpen(Platform.OS === 'ios');
+                  if (selectedDate) {
+                    handleChange('availableFrom', selectedDate);
+                  }
+                }}
+                minimumDate={new Date()}
+              />
+            )}
+          </View>
+          
+          {/* Space Available (Commercial Only) */}
+          {property.propertyType === 'Commercial' && (
+            <InputField 
+              label="Space Available (sqft)" 
+              value={String(property.spaceAvailable || '')}
+              onChangeText={(text) => handleChange('spaceAvailable', text)} 
+              keyboardType="numeric"
+            />
+          )}
         </View>
 
         {/* Section 4: Financials & Size */}
@@ -1120,6 +1232,24 @@ const styles = StyleSheet.create({
     height: 120,
     textAlignVertical: 'top',
     paddingVertical: 14,
+  },
+  
+  // --- Date Picker ---
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  datePickerText: {
+    fontSize: 15,
+    color: '#1A1A1A',
+    fontWeight: '500',
   },
 
   // --- Layout Wrappers ---

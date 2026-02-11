@@ -4,6 +4,7 @@ import {
   removeSavedProperty as removeSavedPropertyAPI,
   getMySellProperties as getMySellPropertiesAPI,
   getMyExpiredProperties as getMyExpiredPropertiesAPI,
+  getMyPendingWithoutSubscription as getMyPendingWithoutSubscriptionAPI,
   updateProperty as updatePropertyAPI,
   deleteProperty as deletePropertyAPI
 } from './api.js';
@@ -115,6 +116,22 @@ export const propertyService = {
         success: false,
         properties: [],
         message: error.message || 'Failed to fetch your expired properties'
+      };
+    }
+  },
+
+  // Get user's pending properties without subscription (Maybe Later / Unpaid)
+  getMyPendingWithoutSubscription: async () => {
+    try {
+      const response = await getMyPendingWithoutSubscriptionAPI();
+      console.log('Property Service - Get Pending Without Subscription Response:', response);
+      return response;
+    } catch (error) {
+      console.error('Property Service - Get Pending Without Subscription Error:', error);
+      return {
+        success: false,
+        properties: [],
+        message: error.message || 'Failed to fetch your pending properties'
       };
     }
   },

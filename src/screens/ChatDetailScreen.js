@@ -898,8 +898,8 @@ const ChatDetailScreen = ({ navigation, route }) => {
             <StatusBar barStyle="dark-content" backgroundColor={colors.white} translucent={false} />
             <KeyboardAvoidingView
                 style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                 enabled={true}
             >
             {/* Custom Header */}
@@ -930,33 +930,7 @@ const ChatDetailScreen = ({ navigation, route }) => {
                     )}
                 </View>
 
-                <TouchableOpacity
-                    style={styles.headerButton}
-                    onPress={async () => {
-                        if (chatId && receiverId) {
-                            try {
-                                const chat = await getOrCreateChat(receiverId);
-                                if (chat && chat.messages && Array.isArray(chat.messages)) {
-                                    const refreshedMessages = chat.messages
-                                        .map(formatAPIMessage)
-                                        .filter(msg => msg !== null);
-                                    setMessages(refreshedMessages);
-                                    setTimeout(() => {
-                                        try {
-                                            flatListRef.current?.scrollToEnd({ animated: true });
-                                        } catch (scrollError) {
-                                            // Silently handle scroll error
-                                        }
-                                    }, 100);
-                                }
-                            } catch (error) {
-                                Alert.alert('Refresh Failed', 'Could not refresh messages. Please check your connection and try again.');
-                            }
-                        }
-                    }}
-                >
-                    <Icon name="refresh-outline" size={24} color={colors.primary} />
-                </TouchableOpacity>
+                {/* Refresh button removed */}
             </View>
 
             {/* Message List */}
@@ -965,7 +939,7 @@ const ChatDetailScreen = ({ navigation, route }) => {
                 data={messages}
                 renderItem={renderMessage}
                 keyExtractor={(item) => item.id.toString()}
-                contentContainerStyle={[styles.messageList, { paddingBottom: showEmojiPicker ? 380 : 140 }]}
+                contentContainerStyle={[styles.messageList, { paddingBottom: showEmojiPicker ? 380 : 20 }]}
                 keyboardShouldPersistTaps={'handled'}
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={true}
@@ -1146,8 +1120,7 @@ const styles = StyleSheet.create({
     inputContainer: { 
         flexDirection: 'row', 
         padding: 12,
-        paddingBottom: Platform.OS === 'android' ? 12 : 12,
-        marginBottom: 0,
+        paddingBottom: Platform.OS === 'android' ? 8 : 12,
         backgroundColor: colors.white, 
         alignItems: 'flex-end', 
         borderTopWidth: 1, 

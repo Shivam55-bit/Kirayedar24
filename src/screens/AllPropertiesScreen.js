@@ -39,11 +39,11 @@ const formatImageUrl = (url) => {
     
     // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
     if (url.startsWith('uploads/')) {
-        return `https://kiraeydarback.bhoomi.cloud/${url}`;
+        return `https://backend.kirayedar24.com/${url}`;
     }
     
     // For other relative paths, add base URL
-    return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
+    return url.startsWith('/') ? `https://backend.kirayedar24.com${url}` : `https://backend.kirayedar24.com/${url}`;
 };
 
 const formatPrice = (price) => {
@@ -217,6 +217,7 @@ const AllPropertiesScreen = ({ navigation, route }) => {
             try {
                 const role = await AsyncStorage.getItem('userRole');
                 setUserRole(role);
+                console.log('[AllPropertiesScreen] User role loaded:', role);
             } catch (error) {
                 console.warn('Error loading user role:', error);
             }
@@ -229,6 +230,8 @@ const AllPropertiesScreen = ({ navigation, route }) => {
         if (category === 'Featured') return 'Featured Estates';
         if (category === 'Recent') return 'Recent Estates';
         if (category === 'Nearby') return 'Nearby Properties';
+        if (category === 'Residential') return 'Residential Properties';
+        if (category === 'Commercial') return 'Commercial Properties';
         if (searchQuery) return `Search Results`;
         return 'All Properties';
     }, [category, searchQuery]);
@@ -348,6 +351,13 @@ const AllPropertiesScreen = ({ navigation, route }) => {
                 console.log('Unexpected API response format:', response);
                 propertyData = [];
             }
+
+            // Filter only approved properties (same as HomeScreen)
+            const approvedProperties = propertyData.filter(p => 
+                p.status === 'approved' || p.approvalStatus === 'Approved'
+            );
+            console.log('✅ Approved properties:', approvedProperties.length, 'out of', propertyData.length);
+            propertyData = approvedProperties;
 
             // Enhanced search filtering
             if (searchQuery && searchQuery.trim()) {
@@ -479,16 +489,19 @@ const AllPropertiesScreen = ({ navigation, route }) => {
 
     // Enhanced property navigation
     const openProperty = useCallback(async (item) => {
-        // Check if user has active subscription
-        if (!userHasPackage) {
+        // Check if user is Owner - Owners don't need package to view properties
+        const isOwner = userRole === 'Owner' || userRole === 'owner';
+        
+        // Only check subscription for Tenants (non-owners)
+        if (!isOwner && !userHasPackage) {
             setPropertyForSubscription(item);
             setShowSubscriptionModal(true);
             return;
         }
         
-        // User has subscription, navigate to details
+        // User has subscription OR is Owner, navigate to details
         navigation.navigate('PropertyDetailsScreen', { property: item });
-    }, [navigation, userHasPackage, setPropertyForSubscription]);
+    }, [navigation, userHasPackage, setPropertyForSubscription, userRole]);
 
     // Property action handlers
     const handlePhoneCall = useCallback((property) => {

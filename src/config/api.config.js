@@ -6,7 +6,11 @@
  */
 
 // ⚠️ IMPORTANT: Update this URL when your new backend is ready
-export const BASE_URL = 'https://kiraeydarback.bhoomi.cloud';
+export const BASE_URL = 'https://backend.kirayedar24.com';
+
+// Image/uploads base URL - images are stored on this server
+// Use this for loading property photos, NOT the API BASE_URL
+export const IMAGE_BASE_URL = 'https://backend.kirayedar24.com';
 
 // API timeout configuration
 export const API_TIMEOUT = 15000; // 15 seconds
@@ -15,7 +19,7 @@ export const API_TIMEOUT = 15000; // 15 seconds
 export const API_VERSION = 'v1';
 
 // Socket configuration
-export const SOCKET_URL = 'https://kiraeydarback.bhoomi.cloud';  // Same as BASE_URL for socket connections
+export const SOCKET_URL = 'https://backend.kirayedar24.com';  // Same as BASE_URL for socket connections
 
 // Image upload configuration
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB

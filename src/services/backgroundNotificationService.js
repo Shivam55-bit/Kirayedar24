@@ -199,8 +199,8 @@ const displayLocalNotification = async (notification) => {
       body: body,
       android: {
         channelId: channelId,
-        // Small icon in status bar (white/monochrome icon)
-        smallIcon: 'ic_notification', // You need this icon in android/app/src/main/res/drawable
+        // Small icon in status bar (uses launcher icon)
+        smallIcon: 'ic_launcher',
         // Large icon (app icon) shown on right side like 99acres
         largeIcon: 'ic_launcher',
         // Brand color for notification accent
@@ -277,7 +277,7 @@ const displayGroupedNotification = async (notifications) => {
       body: titles[0] + (count > 1 ? ` and ${count - 1} more` : ''),
       android: {
         channelId: 'kirayedar24_notifications',
-        smallIcon: 'ic_notification',
+        smallIcon: 'ic_launcher',
         largeIcon: 'ic_launcher',
         circularLargeIcon: true,
         color: '#FDB022',

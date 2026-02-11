@@ -35,8 +35,11 @@ public class FCMNotificationService extends FirebaseMessagingService {
     private static final int NOTIFICATION_ID = 1;
 
     /**
-     * Called when message is received while app is in foreground
-     * IMPORTANT: This ALWAYS shows notification - don't suppress it
+     * Called when message is received
+     * 
+     * IMPORTANT: Only show notification for DATA-ONLY messages
+     * Firebase SDK auto-displays notification for messages with notification payload
+     * This prevents duplicate notifications
      */
     @Override
     public void onMessageReceived(RemoteMessage remoteMessage) {
@@ -48,46 +51,39 @@ public class FCMNotificationService extends FirebaseMessagingService {
         Log.d(TAG, "  - Has Data Payload: " + (remoteMessage.getData().size() > 0));
         Log.d(TAG, "  - Data Keys: " + remoteMessage.getData().keySet());
         
-        // ALWAYS show notification in foreground - don't let React suppress it
         RemoteMessage.Notification notification = remoteMessage.getNotification();
         Map<String, String> data = remoteMessage.getData();
         
-        // Extract title and body from either notification or data payload
-        final String finalTitle;
-        final String finalBody;
-        
+        // If message has notification payload, Firebase SDK will auto-display it
+        // We only need to handle DATA-ONLY messages manually
         if (notification != null) {
-            finalTitle = notification.getTitle();
-            finalBody = notification.getBody();
-            Log.d(TAG, "📬 Using Notification Payload - Title: " + finalTitle + ", Body: " + finalBody);
+            Log.d(TAG, "📬 Message has notification payload - Firebase SDK will auto-display");
+            Log.d(TAG, "📬 Title: " + notification.getTitle() + ", Body: " + notification.getBody());
+            // Let Firebase handle displaying the notification - don't show duplicate
+            handleNotificationPayload(remoteMessage);
         } else if (data.containsKey("title") || data.containsKey("body")) {
-            finalTitle = data.get("title");
-            finalBody = data.get("body");
-            Log.d(TAG, "📦 Using Data Payload - Title: " + finalTitle + ", Body: " + finalBody);
+            // DATA-ONLY message - we need to show notification manually
+            Log.d(TAG, "📦 DATA-ONLY message - showing manually");
+            final String finalTitle = data.get("title");
+            final String finalBody = data.get("body");
+            
+            final String displayTitle = (finalTitle == null || finalTitle.isEmpty()) ? "Notification" : finalTitle;
+            final String displayBody = (finalBody == null || finalBody.isEmpty()) ? "" : finalBody;
+            
+            Log.d(TAG, "📢 Showing DATA-ONLY notification on main thread");
+            
+            // Show notification on main thread
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Log.d(TAG, "🔔 Executing showNotification for DATA-ONLY message");
+                showNotification(displayTitle, displayBody, data);
+            });
         } else {
             Log.w(TAG, "⚠️ No title or body found in either payload!");
-            return; // No notification to show
         }
         
-        final String displayTitle = (finalTitle == null || finalTitle.isEmpty()) ? "Notification" : finalTitle;
-        final String displayBody = (finalBody == null || finalBody.isEmpty()) ? "" : finalBody;
-        
-        Log.d(TAG, "📢 Preparing to show notification immediately on main thread");
-        
-        // Show notification on main thread with immediate timing
-        new Handler(Looper.getMainLooper()).post(() -> {
-            Log.d(TAG, "🔔 Executing showNotification on main thread");
-            showNotification(displayTitle, displayBody, data);
-        });
-        
-        // Also handle the payloads for other processing
-        if (notification != null) {
-            Log.d(TAG, "📬 Message has notification payload");
-            handleNotificationPayload(remoteMessage);
-        }
-        
+        // Handle data payload for other processing
         if (data.size() > 0) {
-            Log.d(TAG, "📦 Message has data payload");
+            Log.d(TAG, "📦 Processing data payload");
             handleDataPayload(data);
         }
     }

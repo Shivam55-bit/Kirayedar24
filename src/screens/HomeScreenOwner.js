@@ -161,11 +161,11 @@ const formatImageUrl = (url) => {
     
     // If it's a relative path from API (like "uploads/filename.jpg"), make it absolute
     if (url.startsWith('uploads/')) {
-        return `https://kiraeydarback.bhoomi.cloud/${url}`;
+        return `https://backend.kirayedar24.com/${url}`;
     }
     
     // For other relative paths, add base URL
-    return url.startsWith('/') ? `https://kiraeydarback.bhoomi.cloud${url}` : `https://kiraeydarback.bhoomi.cloud/${url}`;
+    return url.startsWith('/') ? `https://backend.kirayedar24.com${url}` : `https://backend.kirayedar24.com/${url}`;
 };
 
 const formatPrice = (price) => `₹ ${price}`; // Using Rupee symbol instead of dollar
@@ -639,14 +639,8 @@ const HomeScreenOwner = ({ navigation }) => {
     };
 
     // Property action button handlers
+    // NOTE: Owners don't need package checks - this is HomeScreenOwner
     const handlePhoneCall = (property) => {
-        // Check if user has active package
-        if (!userHasPackage) {
-            setPropertyForSubscription(property);
-            setShowSubscriptionModal(true);
-            return;
-        }
-        
         const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
         const phoneUrl = `tel:${phoneNumber}`;
         
@@ -657,13 +651,7 @@ const HomeScreenOwner = ({ navigation }) => {
     };
 
     const handleWhatsApp = (property) => {
-        // Check if user has active package
-        if (!userHasPackage) {
-            setPropertyForSubscription(property);
-            setShowSubscriptionModal(true);
-            return;
-        }
-        
+        // NOTE: Owners don't need package checks - this is HomeScreenOwner
         const phoneNumber = property.contactNumber || property.phoneNumber || property.ownerPhone || '1234567890';
         const message = encodeURIComponent(`Hi, I'm interested in your property: ${property.description || property.title || 'Property'}`);
         const whatsappUrl = `whatsapp://send?phone=+91${phoneNumber}&text=${message}`;
@@ -675,13 +663,7 @@ const HomeScreenOwner = ({ navigation }) => {
     };
 
     const handlePropertyChat = async (property) => {
-        // Check if user has active package
-        if (!userHasPackage) {
-            setPropertyForSubscription(property);
-            setShowSubscriptionModal(true);
-            return;
-        }
-        
+        // NOTE: Owners don't need package checks - this is HomeScreenOwner
         try {
             // Navigate to chat with property owner
             // ChatDetailScreen expects 'user' object with '_id' field
